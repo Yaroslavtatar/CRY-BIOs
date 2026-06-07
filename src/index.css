@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;700&family=Space+Grotesk:wght@400;700&family=Playfair+Display:ital,wght@0,400;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-outfit: "Outfit", sans-serif;
+  --animate-shine: shine 3s linear infinite;
+  --animate-typing: typing 3s steps(20, end) infinite, blink-caret .75s step-end infinite;
+  --animate-glitch: glitch 1s linear infinite;
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
+  }
+}
+
+@keyframes typing {
+  0% { width: 0 }
+  50% { width: 100% }
+  100% { width: 100% }
+}
+
+@keyframes blink-caret {
+  from, to { border-color: transparent }
+  50% { border-color: white; }
+}
+
+@keyframes glitch {
+  2%, 64% { transform: translate(2px,0) skew(0deg); }
+  4%, 60% { transform: translate(-2px,0) skew(0deg); }
+  62% { transform: translate(0,0) skew(5deg); }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(80%); }
+  100% { transform: translateX(-80%); }
+}
+
+.animate-marquee {
+  display: inline-block;
+  animation: marquee 14s linear infinite;
+}
+
+/* Custom glow card pulsers */
+.glow-card {
+  box-shadow: 0 0 25px rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease-in-out;
+}
+.glow-card:hover {
+  box-shadow: 0 0 35px rgba(0, 242, 255, 0.15);
+}
+

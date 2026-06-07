@@ -1,0 +1,17 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+data/
+*.sqlite
+*.sqlite3
+biogun.db
+biogun-stack/
+uploads/
+bios.json
+users.json
+analytics.json
