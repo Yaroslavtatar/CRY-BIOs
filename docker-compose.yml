@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  cry-bios:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cry_bios_app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Раскомментируйте и настройте по необходимости:
+      # - GEMINI_API_KEY=your_key_here
+      # - APP_URL=https://bio.cryteam.ru
+    volumes:
+      - cry_bios_data:/app/data
+
+volumes:
+  cry_bios_data:
+    driver: local
