@@ -7,9 +7,10 @@ import { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import BioPage from './components/BioPage';
+import AdminPanel from './components/AdminPanel';
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'dashboard' | 'bio'>('landing');
+  const [view, setView] = useState<'landing' | 'dashboard' | 'bio' | 'admin'>('landing');
   const [username, setUsername] = useState('');
 
   useEffect(() => {
@@ -27,8 +28,8 @@ export default function App() {
         subUsername = hostParts[0];
       }
 
-      // If we are on a custom bio subdomain, default to loading that user's bio (unless they explicitly visit /dashboard)
-      if (subUsername && !path.startsWith('/dashboard') && !path.startsWith('/u/')) {
+      // If we are on a custom bio subdomain, default to loading that user's bio (unless they explicitly visit /dashboard or /admin)
+      if (subUsername && !path.startsWith('/dashboard') && !path.startsWith('/admin') && !path.startsWith('/u/')) {
         setUsername(subUsername.toLowerCase());
         setView('bio');
         return;
@@ -42,6 +43,8 @@ export default function App() {
         }
       } else if (path === '/dashboard') {
         setView('dashboard');
+      } else if (path === '/admin') {
+        setView('admin');
       } else {
         // Support hash route fallback as well
         const hash = window.location.hash;
@@ -53,6 +56,8 @@ export default function App() {
           }
         } else if (hash === '#dashboard') {
           setView('dashboard');
+        } else if (hash === '#admin') {
+          setView('admin');
         } else {
           setView('landing');
         }
@@ -84,6 +89,14 @@ export default function App() {
     setUsername(uname.toLowerCase());
     setView('bio');
   };
+
+  if (view === 'admin') {
+    return (
+      <AdminPanel
+        onExit={navigateToLanding}
+      />
+    );
+  }
 
   if (view === 'dashboard') {
     return (

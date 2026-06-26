@@ -37,6 +37,12 @@ db.exec(`
   );
 `);
 
+try {
+  db.exec("ALTER TABLE analytics ADD COLUMN host TEXT DEFAULT ''");
+} catch (e) {
+  // Column already exists
+}
+
 // MIGRATION FROM JSON IF DB IS EMPTY
 const countUsers = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
 if (countUsers.count === 0) {
@@ -129,13 +135,28 @@ export function getAllBios(): BioConfig[] {
   return rows.map(r => JSON.parse(r.data));
 }
 
+export function getAllUsersWithStats() {
+  const users = db.prepare('SELECT username FROM users').all() as { username: string }[];
+  return users.map(u => {
+    const bioRow = db.prepare('SELECT data FROM bios WHERE username = ?').get(u.username) as any;
+    const bio = bioRow ? JSON.parse(bioRow.data) : null;
+    const visitsCount = (db.prepare('SELECT COUNT(*) as count FROM analytics WHERE username = ?').get(u.username) as any).count;
+    return {
+      username: u.username,
+      displayName: bio?.displayName || u.username,
+      verified: bio?.verified || false,
+      visitsCount
+    };
+  });
+}
+
 export function saveBio(username: string, config: BioConfig) {
   db.prepare('INSERT INTO bios (username, data) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET data = excluded.data').run(username, JSON.stringify(config));
 }
 
 export function addAnalytic(username: string, record: VisitRecord) {
-  db.prepare('INSERT INTO analytics (username, timestamp, referrer, device, browser, country) VALUES (?, ?, ?, ?, ?, ?)').run(
-    username, record.timestamp, record.referrer, record.device, record.browser, record.country
+  db.prepare('INSERT INTO analytics (username, timestamp, referrer, device, browser, country, host) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    username, record.timestamp, record.referrer, record.device, record.browser, record.country, record.host || ''
   );
   
   // Prune (keep last 5000)
@@ -147,6 +168,54 @@ export function addAnalytic(username: string, record: VisitRecord) {
 }
 
 export function getAnalytics(username: string): VisitRecord[] {
-  return db.prepare('SELECT timestamp, referrer, device, browser, country FROM analytics WHERE username = ? ORDER BY timestamp ASC').all(username) as VisitRecord[];
+  return db.prepare('SELECT timestamp, referrer, device, browser, country, host FROM analytics WHERE username = ? ORDER BY timestamp ASC').all(username) as VisitRecord[];
 }
+
+export function deleteUser(username: string) {
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM bios WHERE username = ?').run(username);
+    db.prepare('DELETE FROM analytics WHERE username = ?').run(username);
+    db.prepare('DELETE FROM users WHERE username = ?').run(username);
+  });
+  transaction();
+}
+
+export function updateUserPassword(username: string, passwordHash: string) {
+  db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(passwordHash, username);
+}
+
+export function exportDatabase() {
+  const users = db.prepare('SELECT * FROM users').all();
+  const bios = db.prepare('SELECT * FROM bios').all();
+  const analytics = db.prepare('SELECT * FROM analytics').all();
+  return { users, bios, analytics };
+}
+
+export function importDatabase(dump: { users?: any[], bios?: any[], analytics?: any[] }) {
+  const transaction = db.transaction(() => {
+    if (dump.users) {
+      db.prepare('DELETE FROM users').run();
+      const insertUser = db.prepare('INSERT INTO users (username, password_hash, token) VALUES (?, ?, ?)');
+      for (const u of dump.users) {
+        insertUser.run(u.username, u.password_hash, u.token);
+      }
+    }
+    if (dump.bios) {
+      db.prepare('DELETE FROM bios').run();
+      const insertBio = db.prepare('INSERT INTO bios (username, data) VALUES (?, ?)');
+      for (const b of dump.bios) {
+        insertBio.run(b.username, b.data);
+      }
+    }
+    if (dump.analytics) {
+      db.prepare('DELETE FROM analytics').run();
+      const insertAnalytic = db.prepare('INSERT INTO analytics (username, timestamp, referrer, device, browser, country) VALUES (?, ?, ?, ?, ?, ?)');
+      for (const a of dump.analytics) {
+        insertAnalytic.run(a.username, a.timestamp, a.referrer, a.device, a.browser, a.country);
+      }
+    }
+  });
+  transaction();
+}
+
 

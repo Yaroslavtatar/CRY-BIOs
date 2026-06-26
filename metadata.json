@@ -1,6 +1,6 @@
 {
   "name": "CRY BIOS",
-  "description": "A fully free open-source and self-hostable counterpart of guns.lol",
+  "description": "A fully free open-source and self-hostable counterpart of guns.lol featuring visual canvas background types, custom HTML embedding, background music, badge controls, and advanced visit analytics graphs.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
