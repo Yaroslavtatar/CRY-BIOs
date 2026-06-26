@@ -3,6 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export interface SongConfig {
+  id: string;
+  url: string;
+  title: string;
+  artist: string;
+}
+
 export interface SocialLink {
   id: string;
   platform: 'discord' | 'github' | 'telegram' | 'youtube' | 'steam' | 'spotify' | 'twitter' | 'instagram' | 'tiktok' | 'website';
@@ -105,6 +112,10 @@ export interface BioConfig {
   audioTitle: string;
   audioArtist: string;
   audioEnabled: boolean;
+  audioVisualizerEnabled?: boolean;
+  audioVisualizerStyle?: 'bars' | 'wave' | 'retro' | 'circular';
+  playlist?: SongConfig[];
+  customDomain?: string;
   enterText: string; // Click-to-enter splash screen text, e.g. "enter"
   clickToEnterEnabled?: boolean;
   customCursorUrl?: string;
@@ -123,6 +134,7 @@ export interface VisitRecord {
   device: string;
   browser: string;
   country: string;
+  host?: string;
 }
 
 export interface AnalyticsSummary {
@@ -134,4 +146,5 @@ export interface AnalyticsSummary {
   devicesHistogram: { device: string; count: number }[];
   browsersHistogram: { browser: string; count: number }[];
   countriesHistogram: { country: string; count: number }[];
+  hostsHistogram?: { host: string; count: number }[];
 }

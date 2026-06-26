@@ -369,8 +369,12 @@ services:
             <span className="text-[#00f2ff]">v1.2.0-STABLE</span>
             <span className="opacity-30 text-white">OPEN SOURCE MIT</span>
           </div>
-          <div className="text-[9px] text-neutral-600 uppercase tracking-widest font-mono">
-            ПАНЕЛЬ УПРАВЛЕНИЯ В КОМПЛЕКТЕ • ПОДДЕРЖКА DOCKER ВКЛЮЧЕНА
+          <div className="text-[9px] text-neutral-600 uppercase tracking-widest font-mono flex items-center gap-2 justify-end">
+            <span>ПАНЕЛЬ УПРАВЛЕНИЯ В КОМПЛЕКТЕ</span>
+            <span>•</span>
+            <a href="/admin" className="text-neutral-500 hover:text-[#00f2ff] underline transition">АДМИН-ПАНЕЛЬ</a>
+            <span>•</span>
+            <span>ПОДДЕРЖКА DOCKER ВКЛЮЧЕНА</span>
           </div>
         </div>
       </footer>

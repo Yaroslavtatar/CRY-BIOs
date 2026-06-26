@@ -54,9 +54,293 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(211); // default 3:31 (211 sec)
   const [discordUser, setDiscordUser] = useState<any>(null);
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
+  const [volume, setVolume] = useState(0.8); // 80% default volume
+  const [showPlaylistDrawer, setShowPlaylistDrawer] = useState(false);
   
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Audio Visualizer refs
+  const visualizerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  // Hook to set up Web Audio Analyser safely when audio element is ready
+  useEffect(() => {
+    if (!entered || !audioRef.current || !config?.audioEnabled) return;
+
+    // Check if the current audio URL is same-origin
+    const url = audioRef.current.src || "";
+    const isSameOrigin = url.startsWith('/') || url.startsWith(window.location.origin) || !url.startsWith('http');
+
+    // If not same-origin, bypass Web Audio entirely to prevent browsers from muting the audio
+    if (!isSameOrigin) {
+      if (sourceRef.current) {
+        try {
+          sourceRef.current.disconnect();
+        } catch (e) {}
+        sourceRef.current = null;
+      }
+      analyserRef.current = null;
+      return;
+    }
+
+    const setupAudioAnalysis = () => {
+      try {
+        let ctx = audioContextRef.current;
+        if (!ctx) {
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+          if (!AudioContextClass) return;
+          ctx = new AudioContextClass();
+          audioContextRef.current = ctx;
+        }
+
+        // Disconnect existing source if any
+        if (sourceRef.current) {
+          try {
+            sourceRef.current.disconnect();
+          } catch (e) {}
+          sourceRef.current = null;
+        }
+
+        const analyserNode = ctx.createAnalyser();
+        analyserNode.fftSize = 128; // low fftSize for smooth large visualizer bars
+        analyserRef.current = analyserNode;
+
+        const source = ctx.createMediaElementSource(audioRef.current);
+        sourceRef.current = source;
+        source.connect(analyserNode);
+        analyserNode.connect(ctx.destination);
+      } catch (err) {
+        // Fallback gracefully if Web Audio API is restricted or blocked
+        console.warn("Web Audio API binding bypassed (using high-fidelity procedural simulation):", err);
+      }
+    };
+
+    setupAudioAnalysis();
+
+    return () => {
+      if (sourceRef.current) {
+        try {
+          sourceRef.current.disconnect();
+        } catch (e) {}
+        sourceRef.current = null;
+      }
+    };
+  }, [entered, audioRef.current, config?.audioEnabled, currentSongIndex]);
+
+  // Visualizer Canvas Drawing Loop
+  useEffect(() => {
+    if (!entered || !visualizerCanvasRef.current || !config?.audioEnabled || config?.audioVisualizerEnabled === false) return;
+
+    const canvas = visualizerCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animId: number;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const handleResize = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', handleResize);
+
+    const bufferLength = analyserRef.current ? analyserRef.current.frequencyBinCount : 64;
+    const dataArray = new Uint8Array(bufferLength);
+    const smoothData = new Array(bufferLength).fill(0);
+    let localTime = 0;
+
+    const draw = () => {
+      ctx.clearRect(0, 0, width, height);
+      localTime += isPlaying ? (0.015 * (volume || 0.5)) : 0.002;
+
+      // 1. Gather audio frequency data (Real-time or Procedural Fallback)
+      let hasRealData = false;
+      if (analyserRef.current && isPlaying && !isMuted) {
+        analyserRef.current.getByteFrequencyData(dataArray);
+        // Check if analyser contains real data or just silence due to CORS
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        if (sum > 0) {
+          hasRealData = true;
+        }
+      }
+
+      if (!hasRealData) {
+        // High-fidelity procedural frequency wave simulation (synced to play/pause state & volume)
+        for (let i = 0; i < bufferLength; i++) {
+          if (isPlaying && !isMuted) {
+            const factor = 1 - (i / bufferLength); // high frequencies are naturally lower
+            const wave1 = Math.sin(localTime * 10 + i * 0.3) * 35;
+            const wave2 = Math.cos(localTime * 4 - i * 0.15) * 20;
+            const noise = Math.sin(localTime * 18 + i * 0.8) * 12;
+            const volumeScale = volume * 1.5;
+            let val = (60 + wave1 + wave2 + noise) * factor * volumeScale;
+            if (val < 0) val = 0;
+            dataArray[i] = Math.min(255, val);
+          } else {
+            // Soft background pulse when paused/idle
+            const wave = Math.sin(localTime * 2 + i * 0.1) * 8;
+            let val = 8 + wave;
+            if (val < 0) val = 0;
+            dataArray[i] = val;
+          }
+        }
+      }
+
+      // Smooth interpolation for fluid aesthetics
+      for (let i = 0; i < bufferLength; i++) {
+        smoothData[i] += (dataArray[i] - smoothData[i]) * 0.15;
+      }
+
+      // 2. Render selected visualizer style
+      const style = config?.audioVisualizerStyle || 'bars';
+      const primaryColor = config?.primaryColor || '#00f2ff';
+
+      if (style === 'bars') {
+        // Neon frequency bars rising from bottom edge
+        const barWidth = (width / bufferLength) * 1.6;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const percent = smoothData[i] / 255;
+          const barHeight = percent * (height * 0.28); // Max 28% screen height
+
+          // Glowing linear gradient
+          const grad = ctx.createLinearGradient(0, height, 0, height - barHeight);
+          grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+          grad.addColorStop(0.5, `${primaryColor}18`);
+          grad.addColorStop(1, `${primaryColor}88`);
+
+          ctx.fillStyle = grad;
+          ctx.fillRect(x, height - barHeight, barWidth - 1.5, barHeight);
+
+          // Vivid tip point with neon glow
+          if (barHeight > 4) {
+            ctx.fillStyle = primaryColor;
+            ctx.shadowColor = primaryColor;
+            ctx.shadowBlur = 8;
+            ctx.fillRect(x, height - barHeight - 1.5, barWidth - 1.5, 2);
+            ctx.shadowBlur = 0; // reset shadow
+          }
+          x += barWidth;
+        }
+      } else if (style === 'wave') {
+        // Continuous organic soundwave stretching across the screen
+        ctx.strokeStyle = primaryColor;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = primaryColor;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+
+        const sliceWidth = width / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const percent = smoothData[i] / 255;
+          const offset = percent * (height * 0.12) * Math.sin(localTime + i * 0.15);
+          const y = (height * 0.85) + offset; // Positioned near bottom of card
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+          x += sliceWidth;
+        }
+
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Semi-transparent depth overlay below the wave line
+        ctx.fillStyle = `${primaryColor}08`;
+        ctx.beginPath();
+        x = 0;
+        ctx.moveTo(0, height);
+        for (let i = 0; i < bufferLength; i++) {
+          const percent = smoothData[i] / 255;
+          const offset = percent * (height * 0.12) * Math.sin(localTime + i * 0.15);
+          const y = (height * 0.85) + offset;
+          ctx.lineTo(x, y);
+          x += sliceWidth;
+        }
+        ctx.lineTo(width, height);
+        ctx.closePath();
+        ctx.fill();
+      } else if (style === 'retro') {
+        // 8-bit grid/blocks visualizer
+        const barCount = Math.min(32, bufferLength);
+        const barWidth = width / barCount;
+        const blockHeight = 6;
+        const gap = 2.5;
+
+        for (let i = 0; i < barCount; i++) {
+          const percent = smoothData[i] / 255;
+          const totalHeight = percent * (height * 0.22);
+          const blocks = Math.floor(totalHeight / (blockHeight + gap));
+          const x = i * barWidth + (barWidth - 10) / 2;
+
+          for (let b = 0; b < blocks; b++) {
+            const y = height - b * (blockHeight + gap) - 15;
+            const opacity = 0.35 + (b / 15) * 0.65;
+            ctx.fillStyle = `${primaryColor}${Math.floor(opacity * 255).toString(16).padStart(2, '0')}`;
+            ctx.fillRect(x, y, 8, blockHeight);
+          }
+        }
+      } else if (style === 'circular') {
+        // Cosmic circular pulsing spectrum behind the content card
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const baseRadius = Math.min(width, height) * 0.28 + 25;
+
+        ctx.shadowColor = primaryColor;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = `${primaryColor}cc`;
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        for (let i = 0; i < bufferLength; i++) {
+          const angle = (i / bufferLength) * Math.PI * 2;
+          const percent = smoothData[i] / 255;
+          const offset = percent * 50;
+          const r = baseRadius + offset;
+          const x = centerX + Math.cos(angle) * r;
+          const y = centerY + Math.sin(angle) * r;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Soft inner steady pulse
+        ctx.strokeStyle = `${primaryColor}22`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, baseRadius - 15, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      animId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [entered, isPlaying, isMuted, volume, config?.primaryColor, config?.audioVisualizerEnabled, config?.audioVisualizerStyle]);
 
   // Load lanyard if available
   useEffect(() => {
@@ -121,12 +405,55 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
     }
   }, [entered, username, previewConfig]);
 
-  // Audio setup and autoplay cycle
+  // Helper to compile final song list
+  const getPlaylist = () => {
+    const list: any[] = [];
+    if (config?.playlist && config.playlist.length > 0) {
+      return config.playlist;
+    }
+    if (config?.audioUrl) {
+      list.push({
+        id: 'main',
+        url: config.audioUrl,
+        title: config.audioTitle || 'Soundtrack',
+        artist: config.audioArtist || 'CRY BIOS Player'
+      });
+    }
+    return list;
+  };
+
+  const songs = getPlaylist();
+  const currentSong = songs[currentSongIndex] || null;
+
+  const handleNextSong = () => {
+    if (songs.length <= 1) return;
+    setCurrentSongIndex((prev) => (prev + 1) % songs.length);
+  };
+
+  const handlePrevSong = () => {
+    if (songs.length <= 1) return;
+    setCurrentSongIndex((prev) => (prev - 1 + songs.length) % songs.length);
+  };
+
+  // Audio setup and autoplay cycle with Playlist Support
   useEffect(() => {
-    if (!config || !config.audioUrl || !config.audioEnabled) return;
-    
-    const audio = new Audio(config.audioUrl);
-    audio.loop = true;
+    if (!config || !config.audioEnabled || !currentSong || !currentSong.url) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      return;
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    const audio = new Audio();
+    audio.src = currentSong.url;
+    audio.loop = songs.length <= 1; // loop if only single track, otherwise play next
+    audio.volume = volume;
+    audio.muted = isMuted;
     audioRef.current = audio;
 
     const handleTimeUpdate = () => {
@@ -139,14 +466,21 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       }
     };
 
+    const handleEnded = () => {
+      if (songs.length > 1) {
+        handleNextSong();
+      }
+    };
+
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('ended', handleEnded);
 
     if (entered && !isMuted) {
       audio.play()
         .then(() => setIsPlaying(true))
         .catch(err => {
-          console.log("Browser policy blocked autoplay of audio context", err);
+          console.log("Audio autoplay restricted:", err);
           setIsPlaying(false);
         });
     }
@@ -155,9 +489,17 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       audio.pause();
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('ended', handleEnded);
       audioRef.current = null;
     };
-  }, [config?.audioUrl, config?.audioEnabled, entered]);
+  }, [currentSong?.url, config?.audioEnabled, entered, currentSongIndex]);
+
+  // Handle live volume adjustments
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
 
   // Mute toggle helper
   const toggleMute = () => {
@@ -170,6 +512,17 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       audioRef.current.muted = true;
       setIsMuted(true);
       setIsPlaying(false);
+    }
+  };
+
+  // Play/Pause control helper
+  const handlePlayPause = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
 
@@ -540,6 +893,150 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
     );
   }
 
+  const renderCRYBIOSPlayer = () => {
+    if (!config || !currentSong) return null;
+    return (
+      <div key="player" className="w-[98%] max-w-[400px] bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 p-4 mb-4 flex flex-col space-y-3.5 shadow-[0_0_25px_rgba(0,f2,ff,0.15)] transition-all relative overflow-hidden">
+        {/* Glowing Accent line */}
+        <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#00f2ff]/60 to-transparent"></div>
+
+        <div className="flex justify-between items-center px-1">
+           <div className="flex items-center space-x-3 overflow-hidden">
+             <div className={`w-[38px] h-[38px] flex items-center justify-center bg-[#00f2ff]/10 border border-[#00f2ff]/20 rounded-xl backdrop-blur-md shadow-inner flex-shrink-0 ${isPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '8s' }}>
+               <Music className="w-[18px] h-[18px] text-[#00f2ff] drop-shadow-[0_0_8px_#00f2ff]" />
+             </div>
+             <div className="flex flex-col text-left overflow-hidden">
+               <span className="text-[13px] font-bold text-white drop-shadow-md truncate max-w-[170px]">{currentSong.title || 'Soundtrack'}</span>
+               <span className="text-[10px] text-[#00f2ff] drop-shadow-md truncate max-w-[170px] uppercase tracking-wider font-semibold mt-0.5">{currentSong.artist || 'CRY BIOS'}</span>
+             </div>
+           </div>
+           
+           {/* Control buttons */}
+           <div className="flex items-center space-x-2 text-white/80 p-1.5 bg-white/5 rounded-xl border border-white/5 shadow-inner">
+             <button 
+               type="button"
+               onClick={handlePrevSong} 
+               disabled={songs.length <= 1}
+               className="hover:text-[#00f2ff] disabled:opacity-20 disabled:hover:text-white/80 transition-all cursor-pointer p-1.5"
+               title="Предыдущая песня"
+             >
+               <SkipBack className="w-[14px] h-[14px] fill-current" />
+             </button>
+             <button 
+               type="button"
+               onClick={handlePlayPause} 
+               className="hover:text-[#00f2ff] hover:scale-110 active:scale-95 transition-all cursor-pointer p-1.5 text-white"
+               title={isPlaying ? "Пауза" : "Играть"}
+             >
+               {isPlaying ? <Pause className="w-[18px] h-[18px] fill-current" /> : <Play className="w-[18px] h-[18px] fill-current" />}
+             </button>
+             <button 
+               type="button"
+               onClick={handleNextSong} 
+               disabled={songs.length <= 1}
+               className="hover:text-[#00f2ff] disabled:opacity-20 disabled:hover:text-white/80 transition-all cursor-pointer p-1.5"
+               title="Следующая песня"
+             >
+               <SkipForward className="w-[14px] h-[14px] fill-current" />
+             </button>
+           </div>
+        </div>
+
+        {/* Progress Bar with seeking */}
+        <div className="flex items-center space-x-3 text-[10px] text-white/50 drop-shadow-md font-mono">
+          <span className="w-8 text-right">{formatTime(audioCurrentTime)}</span>
+          <div 
+            onClick={(e) => {
+              if (!audioRef.current || !audioDuration) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const widthPercent = clickX / rect.width;
+              audioRef.current.currentTime = widthPercent * audioDuration;
+            }}
+            className="flex-1 h-[5px] bg-white/10 rounded-full cursor-pointer relative group overflow-hidden"
+          >
+            <div className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-[#00f2ff] to-[#00aaff] shadow-[0_0_8px_#00f2ff] rounded-full transition-all" style={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}></div>
+          </div>
+          <span className="w-8 text-left">{formatTime(audioDuration)}</span>
+        </div>
+
+        {/* Volume and Playlist Toggle section */}
+        <div className="flex items-center justify-between border-t border-white/5 pt-3 mt-1 px-1">
+          {/* Slick Volume Control with hover sliding */}
+          <div className="flex items-center space-x-2 text-neutral-400 group/volume">
+            <button type="button" onClick={toggleMute} className="hover:text-white transition cursor-pointer">
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-4 h-4 text-red-400" />
+              ) : (
+                <Volume2 className="w-4 h-4 text-cyan-400" />
+              )}
+            </button>
+            <input 
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setVolume(val);
+                if (val > 0 && isMuted) {
+                  setIsMuted(false);
+                  if (audioRef.current) audioRef.current.muted = false;
+                }
+              }}
+              className="w-20 sm:w-24 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#00f2ff] focus:outline-none transition-all hover:bg-white/20"
+              title={`Громкость: ${Math.round(volume * 100)}%`}
+            />
+            <span className="text-[9px] font-mono text-neutral-500 w-6 text-left">{Math.round(volume * 100)}%</span>
+          </div>
+
+          {/* Playlist Drawer Toggle */}
+          {songs.length > 1 && (
+            <button 
+              type="button"
+              onClick={() => setShowPlaylistDrawer(!showPlaylistDrawer)}
+              className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-sm border transition-all cursor-pointer flex items-center gap-1 ${
+                showPlaylistDrawer 
+                  ? 'bg-[#00f2ff]/20 border-[#00f2ff]/40 text-[#00f2ff] shadow-[0_0_8px_rgba(0,f2,ff,0.2)]' 
+                  : 'bg-white/5 border-white/10 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200'
+              }`}
+            >
+              Плейлист ({songs.length})
+            </button>
+          )}
+        </div>
+
+        {/* Playlist Drawer List */}
+        {showPlaylistDrawer && songs.length > 1 && (
+          <div className="border-t border-white/5 pt-3 mt-1 flex flex-col space-y-1.5 max-h-[140px] overflow-y-auto custom-scrollbar">
+            {songs.map((song, idx) => (
+              <div 
+                key={song.id}
+                onClick={() => {
+                  setCurrentSongIndex(idx);
+                }}
+                className={`flex justify-between items-center px-2.5 py-2 rounded-sm cursor-pointer transition-all text-left ${
+                  idx === currentSongIndex 
+                    ? 'bg-[#00f2ff]/10 border border-[#00f2ff]/20 text-[#00f2ff]' 
+                    : 'bg-black/20 hover:bg-white/5 border border-transparent text-neutral-400 hover:text-white'
+                }`}
+              >
+                <div className="flex flex-col overflow-hidden pr-2">
+                  <span className="text-[11px] font-semibold truncate leading-tight">{song.title || `Песня #${idx + 1}`}</span>
+                  <span className="text-[9px] text-neutral-500 truncate mt-0.5">{song.artist || 'Исполнитель'}</span>
+                </div>
+                {idx === currentSongIndex && isPlaying && (
+                  <span className="text-[10px] text-[#00f2ff] font-mono animate-pulse">PLAYING</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (!config) {
     return (
       <div className="fixed inset-0 bg-[#050505] flex items-center justify-center font-mono text-xs text-red-400 z-50 p-6 text-center">
@@ -581,6 +1078,11 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       {/* Background canvas for animation streams with support for fallback snow effects */}
       {entered && (['matrix', 'stars', 'rain', 'snow'].includes(config.bgType) || config.snowEffectsEnabled) && (
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-0" />
+      )}
+
+      {/* Audio Visualizer Canvas Overlay */}
+      {entered && config.audioEnabled && (config.audioVisualizerEnabled !== false) && (
+        <canvas ref={visualizerCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-[1]" />
       )}
 
       {/* Direct styling override for custom guns.lol cursors */}
@@ -684,15 +1186,114 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         </div>
       )}
 
-      {/* Floating volume / audio control for public bio view */}
-      {!previewConfig && config.audioUrl && entered && (
-        <button 
-          onClick={toggleMute} 
-          className="fixed top-4 right-4 z-50 p-3 bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-all cursor-pointer shadow-lg hover:scale-110 active:scale-95"
-          title={isMuted ? "Включить звук" : "Выключить звук"}
+      {/* Floating Interactive Music Player and Volume Controller in the Corner */}
+      {config?.audioEnabled && config?.audioUrl && entered && (
+        <div 
+          className="fixed bottom-4 left-4 z-50 flex items-center bg-black/75 backdrop-blur-md border border-white/10 rounded-full p-2 text-white shadow-[0_10px_35px_rgba(0,0,0,0.8)] transition-all duration-500 ease-out max-w-[42px] hover:max-w-[420px] overflow-hidden group"
+          style={{ boxShadow: `0 0 20px rgba(0, 242, 255, 0.15)` }}
         >
-          {isMuted ? <VolumeX className="w-4 h-4 fill-current" /> : <Volume2 className="w-4 h-4 fill-current" />}
-        </button>
+          {/* Main spinning disc trigger / status indicator */}
+          <button
+            type="button"
+            onClick={handlePlayPause}
+            className={`w-[26px] h-[26px] flex items-center justify-center bg-[#00f2ff]/10 border border-[#00f2ff]/20 rounded-full text-[#00f2ff] flex-shrink-0 cursor-pointer shadow-inner relative hover:bg-[#00f2ff]/20 transition-colors ${
+              isPlaying ? 'animate-spin' : ''
+            }`}
+            style={{ animationDuration: '6s' }}
+            title={isPlaying ? 'Пауза' : 'Воспроизвести'}
+          >
+            <Music className="w-3.5 h-3.5 drop-shadow-[0_0_5px_#00f2ff]" />
+            {/* Pulsing glow if playing */}
+            {isPlaying && (
+              <span className="absolute inset-0 rounded-full border border-[#00f2ff] animate-ping opacity-45"></span>
+            )}
+          </button>
+
+          {/* Expanded panel on hover */}
+          <div className="flex items-center space-x-3.5 ml-3 opacity-0 group-hover:opacity-100 transition-all duration-300 delay-75 pointer-events-none group-hover:pointer-events-auto whitespace-nowrap">
+            {/* Song details */}
+            <div className="flex flex-col text-left">
+              <span className="text-[11px] font-black text-white max-w-[100px] truncate leading-tight">
+                {currentSong?.title || 'Soundtrack'}
+              </span>
+              <span className="text-[8px] text-[#00f2ff] max-w-[100px] truncate uppercase tracking-widest font-mono mt-0.5">
+                {currentSong?.artist || 'CRY BIOS'}
+              </span>
+            </div>
+
+            {/* Micro Controls */}
+            <div className="flex items-center space-x-2.5 bg-white/5 border border-white/5 rounded-full px-2.5 py-1">
+              <button 
+                type="button"
+                onClick={handlePrevSong}
+                disabled={songs.length <= 1}
+                className="hover:text-[#00f2ff] disabled:opacity-25 disabled:hover:text-white transition cursor-pointer p-0.5"
+                title="Предыдущий трек"
+              >
+                <SkipBack className="w-3 h-3 fill-current" />
+              </button>
+              
+              <button 
+                type="button"
+                onClick={handlePlayPause}
+                className="hover:text-[#00f2ff] hover:scale-110 active:scale-95 transition cursor-pointer p-0.5"
+                title={isPlaying ? 'Пауза' : 'Играть'}
+              >
+                {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current text-[#00f2ff]" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              </button>
+
+              <button 
+                type="button"
+                onClick={handleNextSong}
+                disabled={songs.length <= 1}
+                className="hover:text-[#00f2ff] disabled:opacity-25 disabled:hover:text-white transition cursor-pointer p-0.5"
+                title="Следующий трек"
+              >
+                <SkipForward className="w-3 h-3 fill-current" />
+              </button>
+            </div>
+
+            {/* Sliding Volume Slider - Slides out horizontally on hover of the volume icon! */}
+            <div className="flex items-center space-x-1 bg-white/5 border border-white/5 rounded-full px-2 py-1 overflow-hidden transition-all duration-300 max-w-[28px] hover:max-w-[140px] group/volume">
+              <button 
+                type="button"
+                onClick={toggleMute}
+                className="text-neutral-400 hover:text-white transition cursor-pointer flex-shrink-0"
+                title={isMuted ? 'Включить звук' : 'Выключить звук'}
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="w-3.5 h-3.5 text-red-400" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5 text-[#00f2ff]" />
+                )}
+              </button>
+
+              <div className="w-0 group-hover/volume:w-20 overflow-hidden transition-all duration-300 ease-out flex items-center">
+                <input 
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={volume}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setVolume(val);
+                    if (val > 0 && isMuted) {
+                      setIsMuted(false);
+                      if (audioRef.current) audioRef.current.muted = false;
+                    }
+                  }}
+                  className="w-16 h-1 bg-white/15 rounded-lg appearance-none cursor-pointer accent-[#00f2ff] focus:outline-none ml-2 flex-shrink-0"
+                  title={`Громкость: ${Math.round(volume * 100)}%`}
+                />
+                <span className="text-[8px] font-mono text-neutral-400 w-6 text-right ml-1 flex-shrink-0">
+                  {Math.round(volume * 100)}%
+                </span>
+              </div>
+            </div>
+
+          </div>
+        </div>
       )}
 
       {/* Core Profile container without heavy card borders */}
@@ -742,8 +1343,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                       {config.displayName || config.username}
                     </h1>
                     {verifiedBadge && (
-                      <div className="relative flex items-center justify-center bg-[#1d9bf0] rounded-full w-[24px] h-[24px] shadow-sm ml-1" title="Verified">
-                        <svg viewBox="0 0 24 24" aria-label="Verified account" role="img" className="w-[16px] h-[16px] text-white fill-current"><g><path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.918-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.337 2.25c-.416-.165-.866-.25-1.336-.25-2.21 0-3.918 1.79-3.918 4 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.46.728 2.76 1.833 3.533-.066.31-.103.63-.103.953 0 2.21 1.71 4 3.918 4 .554 0 1.082-.12 1.564-.342.585 1.134 1.737 1.91 3.104 1.91s2.518-.776 3.104-1.91c.48.22 1.01.34 1.563.34 2.21 0 3.918-1.79 3.918-4 0-.32-.037-.64-.103-.95 1.106-.77 1.834-2.07 1.834-3.53zm-9.39 5.86l-3.62-3.61 1.58-1.58 2.04 2.03 4.96-4.95 1.58 1.58-6.54 6.53z"></path></g></svg>
+                      <div className="relative flex items-center justify-center bg-gradient-to-tr from-[#1d9bf0] to-[#00f2ff] rounded-full w-[20px] h-[20px] shadow-[0_0_12px_rgba(29,155,240,0.8)] border border-cyan-300/30 ml-2 animate-pulse" title="Верифицированный профиль">
+                        <svg viewBox="0 0 24 24" aria-label="Verified account" role="img" className="w-[12px] h-[12px] text-white fill-current"><g><path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.918-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.337 2.25c-.416-.165-.866-.25-1.336-.25-2.21 0-3.918 1.79-3.918 4 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.46.728 2.76 1.833 3.533-.066.31-.103.63-.103.953 0 2.21 1.71 4 3.918 4 .554 0 1.082-.12 1.564-.342.585 1.134 1.737 1.91 3.104 1.91s2.518-.776 3.104-1.91c.48.22 1.01.34 1.563.34 2.21 0 3.918-1.79 3.918-4 0-.32-.037-.64-.103-.95 1.106-.77 1.834-2.07 1.834-3.53zm-9.39 5.86l-3.62-3.61 1.58-1.58 2.04 2.03 4.96-4.95 1.58 1.58-6.54 6.53z"></path></g></svg>
                       </div>
                     )}
                   </div>
@@ -1040,8 +1641,12 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
               );
             }
 
-            if (section === 'player') {
-              if (config.audioEnabled && config.audioUrl) {
+            if (section === 'player') { // custom player
+              if (config.audioEnabled && currentSong) {
+                return renderCRYBIOSPlayer();
+              }
+            }
+            if (false) {
                 return (
                   <div key="player" className="w-[98%] max-w-[400px] bg-black/30 backdrop-blur-md rounded-2xl border border-white/5 p-4 mb-4 flex flex-col space-y-3 shadow-[0_0_20px_rgba(0,0,0,0.5)] transition-all">
                     <div className="flex justify-between items-center px-1">
@@ -1078,7 +1683,6 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                     </div>
                   </div>
                 );
-              }
             }
             return null;
           })}

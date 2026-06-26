@@ -7,7 +7,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BioConfig, BlockConfig, SocialLink, AnalyticsSummary, BackgroundType, UserBadge } from '../types';
 import AnalyticsView from './AnalyticsView';
 import BioPage from './BioPage';
-import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload } from 'lucide-react';
+import QRCode from 'qrcode';
+import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy } from 'lucide-react';
 
 const renderDashboardBadgeIcon = (iconName: string) => {
   const iconProps = { className: "w-3.5 h-3.5 flex-shrink-0" };
@@ -62,7 +63,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
 
   // Profile configuration states
   const [config, setConfig] = useState<BioConfig | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'layout' | 'background' | 'visuals' | 'audio' | 'blocks' | 'analytics' | 'selfhost'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'layout' | 'background' | 'visuals' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr'>('overview');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
 
@@ -81,6 +82,127 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   const [copiedLink, setCopiedLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadTarget, setUploadTarget] = useState<'avatarUrl' | 'bgValue' | 'audioUrl' | null>(null);
+
+  // QR Code generator states
+  const [qrText, setQrText] = useState('');
+  const [qrFgColor, setQrFgColor] = useState('#00f2ff');
+  const [qrBgColor, setQrBgColor] = useState('#050505');
+  const [qrMargin, setQrMargin] = useState(2);
+  const [qrErrorCorrection, setQrErrorCorrection] = useState<'L' | 'M' | 'Q' | 'H'>('H');
+  const [qrIncludeAvatar, setQrIncludeAvatar] = useState(true);
+  const [qrAvatarSize, setQrAvatarSize] = useState(0.18);
+  const [qrCopied, setQrCopied] = useState(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (username) {
+      setQrText(`${window.location.origin}/u/${username}`);
+    }
+  }, [username]);
+
+  useEffect(() => {
+    if (activeTab === 'qr' && qrCanvasRef.current && qrText) {
+      const renderQR = async () => {
+        try {
+          const canvas = qrCanvasRef.current!;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+
+          // Clear previous canvas drawing fully to avoid traces
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          await QRCode.toCanvas(canvas, qrText, {
+            width: 320,
+            margin: qrMargin,
+            color: {
+              dark: qrFgColor,
+              light: qrBgColor
+            },
+            errorCorrectionLevel: qrErrorCorrection
+          });
+
+          // Draw custom center avatar logo overlay if requested
+          if (qrIncludeAvatar && config?.avatarUrl) {
+            const img = new window.Image();
+            img.crossOrigin = 'anonymous'; // request CORS access
+            img.src = config.avatarUrl;
+            img.onload = () => {
+              const size = canvas.width;
+              const logoSize = size * qrAvatarSize;
+              const x = (size - logoSize) / 2;
+              const y = (size - logoSize) / 2;
+
+              // Draw solid background container behind the avatar to erase underlying QR dots
+              ctx.fillStyle = qrBgColor;
+              ctx.beginPath();
+              ctx.arc(size / 2, size / 2, (logoSize + 10) / 2, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Draw circular clipped avatar
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(size / 2, size / 2, logoSize / 2, 0, Math.PI * 2);
+              ctx.clip();
+              ctx.drawImage(img, x, y, logoSize, logoSize);
+              ctx.restore();
+
+              // Draw a border outline for better polish
+              ctx.strokeStyle = qrFgColor;
+              ctx.lineWidth = 2.5;
+              ctx.beginPath();
+              ctx.arc(size / 2, size / 2, logoSize / 2, 0, Math.PI * 2);
+              ctx.stroke();
+            };
+            img.onerror = () => {
+              console.warn("Avatar image failed to load for QR Code overlay.");
+            };
+          }
+        } catch (err) {
+          console.error("Error drawing custom QR Code on canvas:", err);
+        }
+      };
+
+      renderQR();
+    }
+  }, [activeTab, qrText, qrFgColor, qrBgColor, qrMargin, qrErrorCorrection, qrIncludeAvatar, qrAvatarSize, config?.avatarUrl]);
+
+  const handleDownloadPNG = () => {
+    if (!qrCanvasRef.current) return;
+    const canvas = qrCanvasRef.current;
+    const url = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${username}_qr.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDownloadSVG = async () => {
+    try {
+      const svgString = await QRCode.toString(qrText, {
+        type: 'svg',
+        margin: qrMargin,
+        color: {
+          dark: qrFgColor,
+          light: qrBgColor
+        },
+        errorCorrectionLevel: qrErrorCorrection
+      });
+      
+      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${username}_qr.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to generate SVG QR:", err);
+    }
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -125,6 +247,50 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       if (fileInputRef.current) fileInputRef.current.value = '';
       setUploadTarget(null);
     }
+  };
+
+  // JSON configuration importer states and functions
+  const jsonImportInputRef = useRef<HTMLInputElement | null>(null);
+  const [jsonImportError, setJsonImportError] = useState('');
+  const [jsonImportSuccess, setJsonImportSuccess] = useState('');
+
+  const handleJSONImportClick = () => {
+    setJsonImportError('');
+    setJsonImportSuccess('');
+    if (jsonImportInputRef.current) {
+      jsonImportInputRef.current.click();
+    }
+  };
+
+  const handleJSONImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const importedData = JSON.parse(text);
+
+        if (!importedData || typeof importedData !== 'object') {
+          throw new Error('Файл не содержит корректный JSON-объект');
+        }
+
+        const updatedConfig = {
+          ...importedData,
+          username: username
+        };
+
+        setConfig(updatedConfig);
+        setJsonImportSuccess('Конфигурация успешно загружена в панель управления! Нажмите кнопку «Сохранить» в правом верхнем углу, чтобы применить её.');
+      } catch (err: any) {
+        console.error(err);
+        setJsonImportError('Ошибка парсинга JSON: ' + (err.message || 'некорректный формат'));
+      } finally {
+        if (jsonImportInputRef.current) jsonImportInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   // Guns.lol direct importer states
@@ -982,18 +1148,34 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
             <div className="w-full lg:w-[50%] border-r border-white/10 flex flex-col justify-between overflow-y-auto bg-[#050505]">
               
               {/* Navigation Tabs Options */}
-              <div className="p-4 border-b border-white/10 bg-[#0c0c0c] grid grid-cols-4 sm:grid-cols-3 gap-1.5 text-center text-[10px] font-mono whitespace-nowrap overflow-x-auto scrollbar-none">
-                {(['overview', 'profile', 'layout', 'background', 'visuals', 'audio', 'blocks', 'analytics', 'selfhost'] as const).map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`p-2 py-2.5 flex-1 rounded-sm transition font-black uppercase tracking-widest cursor-pointer text-[8px] sm:text-[9px] ${
-                      activeTab === tab ? 'bg-[#00f2ff] text-black shadow-[0_0_15px_rgba(0,242,255,0.3)]' : 'bg-white/5 text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    {tab === 'selfhost' ? 'Host' : tab}
-                  </button>
-                ))}
+              <div className="p-4 border-b border-white/10 bg-[#0c0c0c] grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
+                {(['overview', 'profile', 'layout', 'background', 'visuals', 'audio', 'blocks', 'analytics', 'selfhost', 'qr'] as const).map(tab => {
+                  let tabName = '';
+                  switch (tab) {
+                    case 'overview': tabName = 'Обзор'; break;
+                    case 'profile': tabName = 'Профиль'; break;
+                    case 'layout': tabName = 'Макет'; break;
+                    case 'background': tabName = 'Фон'; break;
+                    case 'visuals': tabName = 'Эффекты'; break;
+                    case 'audio': tabName = 'Аудио'; break;
+                    case 'blocks': tabName = 'Блоки'; break;
+                    case 'analytics': tabName = 'Статистика'; break;
+                    case 'selfhost': tabName = 'Экспорт'; break;
+                    case 'qr': tabName = 'QR'; break;
+                    default: tabName = tab;
+                  }
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`p-2 py-2.5 rounded-sm transition font-black uppercase tracking-widest cursor-pointer text-[8px] sm:text-[9px] ${
+                        activeTab === tab ? 'bg-[#00f2ff] text-black shadow-[0_0_15px_rgba(0,242,255,0.3)]' : 'bg-white/5 text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      {tabName}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Accordion Panels Context */}
@@ -1374,16 +1556,15 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
 
                       <div className="grid grid-cols-2 gap-4 pt-2">
                         <div>
-                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Верификация (Значок Галочки)</label>
-                          <button
-                            type="button"
-                            onClick={() => updateConfigValue('verified', !config.verified)}
-                            className={`w-full py-2.5 rounded-sm border font-black tracking-widest text-[10px] uppercase transition cursor-pointer ${
-                              config.verified ? 'bg-[#00f2ff]/10 border-[#00f2ff]/50 text-[#00f2ff]' : 'bg-black/25 border-white/10 text-neutral-500'
+                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Верификация</label>
+                          <div
+                            className={`w-full py-2.5 rounded-sm border font-black tracking-widest text-[10px] uppercase text-center ${
+                              config.verified ? 'bg-[#00f2ff]/10 border-[#00f2ff]/50 text-[#00f2ff]' : 'bg-black/25 border-white/5 text-neutral-600'
                             }`}
                           >
-                            {config.verified ? '[ ВЕРИФИКАЦИЯ АКТИВНА ]' : '[ ОТКЛЮЧЕНА ]'}
-                          </button>
+                            {config.verified ? '[ ВЕРИФИЦИРОВАН АДМИНОМ ]' : '[ НЕТ ВЕРИФИКАЦИИ ]'}
+                          </div>
+                          <span className="block text-[8px] text-neutral-600 mt-1 uppercase text-center font-mono">Выдается только администратором</span>
                         </div>
 
                         <div>
@@ -1616,6 +1797,42 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
 
                                 {/* Customizers of current badge inline-expansion / grid */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 shadow-inner p-2.5 bg-black/60 rounded-sm border border-white/5 gap-2.5 text-[10px]">
+                                  {/* Presets Selector */}
+                                  <div className="sm:col-span-2 border-b border-white/5 pb-2">
+                                    <label className="block text-[8px] uppercase tracking-wider text-neutral-500 mb-1">Применить готовый шаблон бейджа</label>
+                                    <select
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === 'verified') {
+                                          handleUpdateBadge(badge.id, { label: 'Verified', description: 'Официально верифицированный профиль', icon: 'shieldcheck', glow: true, glowColor: '#00f2ff' });
+                                        } else if (val === 'premium') {
+                                          handleUpdateBadge(badge.id, { label: 'Premium', description: 'Премиум-подписка Pro', icon: 'gem', glow: true, glowColor: '#a855f7' });
+                                        } else if (val === 'vip') {
+                                          handleUpdateBadge(badge.id, { label: 'VIP', description: 'Особо важный гость (VIP)', icon: 'crown', glow: true, glowColor: '#eab308' });
+                                        } else if (val === 'seller') {
+                                          handleUpdateBadge(badge.id, { label: 'Seller', description: 'Проверенный продавец платформы', icon: 'award', glow: true, glowColor: '#22c55e' });
+                                        } else if (val === 'designer') {
+                                          handleUpdateBadge(badge.id, { label: 'Designer', description: 'Официальный дизайнер проектов', icon: 'heart', glow: true, glowColor: '#ec4899' });
+                                        } else if (val === 'sponsor') {
+                                          handleUpdateBadge(badge.id, { label: 'Sponsor', description: 'Почетный спонсор и меценат', icon: 'star', glow: true, glowColor: '#f97316' });
+                                        } else if (val === 'coder') {
+                                          handleUpdateBadge(badge.id, { label: 'Developer', description: 'Разработчик и создатель кода', icon: 'code', glow: true, glowColor: '#3b82f6' });
+                                        }
+                                        e.target.value = ''; // Reset
+                                      }}
+                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1 px-2 text-[10px] text-[#00f2ff] focus:outline-none cursor-pointer"
+                                    >
+                                      <option value="">-- Выберите шаблон для автозаполнения --</option>
+                                      <option value="verified">✅ Верифицирован (Verified)</option>
+                                      <option value="premium">💎 Премиум (Premium Pro)</option>
+                                      <option value="vip">👑 Особо Важная Персона (VIP)</option>
+                                      <option value="seller">🎖️ Проверенный Продавец (Seller)</option>
+                                      <option value="designer">❤️ Креативный Дизайнер (Designer)</option>
+                                      <option value="sponsor">⭐ Почетный Спонсор (Sponsor)</option>
+                                      <option value="coder">💻 Профессиональный Разработчик (Developer)</option>
+                                    </select>
+                                  </div>
+
                                   {/* Title Label */}
                                   <div>
                                     <label className="block text-[8px] uppercase tracking-wider text-neutral-500 mb-1">Название бейджа</label>
@@ -2077,6 +2294,171 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
 
                       <div className="p-3.5 bg-white/5 rounded-sm border border-white/10 text-[10px] leading-relaxed font-sans text-neutral-400">
                         📻 <strong>Важная информация об автоматическом воспроизведении:</strong> Современные интернет-браузеры блокируют нежелательное воспроизведение музыки до первого клика на странице. Наша интерактивная клик-заставка (Click to Enter) прекрасно решает эту проблему — звук зазвучит чистейшим образом сразу после входа в ваш профиль. Ссылка обязательно должна оканчиваться на `.mp3`.
+                      </div>
+
+                      {/* --- AUDIO VISUALIZER SETTINGS --- */}
+                      <div className="border-t border-white/5 pt-4 space-y-4">
+                        <h4 className="text-[11px] font-black uppercase tracking-widest text-[#00f2ff] flex items-center gap-2 italic">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Аудио Визуализатор (Canvas)</span>
+                        </h4>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Отображение визуализатора</label>
+                            <button
+                              type="button"
+                              onClick={() => updateConfigValue('audioVisualizerEnabled', config.audioVisualizerEnabled === false ? true : false)}
+                              className={`w-full py-2.5 rounded-sm border font-black text-[10px] uppercase transition tracking-widest cursor-pointer ${
+                                config.audioVisualizerEnabled !== false ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]' : 'bg-black/20 border-white/10 text-neutral-500'
+                              }`}
+                            >
+                              {config.audioVisualizerEnabled !== false ? '[ АКТИВЕН (РЕКОМЕНДУЕТСЯ) ]' : '[ ВЫКЛЮЧЕН ]'}
+                            </button>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Стиль визуализации</label>
+                            <select
+                              value={config.audioVisualizerStyle || 'bars'}
+                              onChange={e => updateConfigValue('audioVisualizerStyle', e.target.value)}
+                              className="w-full bg-black border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none"
+                            >
+                              <option value="bars">📶 Neon Bars (Частотные полосы)</option>
+                              <option value="wave">〰️ Soundwave Curve (Органическая волна)</option>
+                              <option value="retro">👾 8-Bit Blocks (Ретро эквалайзер)</option>
+                              <option value="circular">🎯 Cosmic Circle (Спектральный круг в центре)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-cyan-950/20 border border-cyan-800/20 rounded-sm text-[10px] text-cyan-400 font-sans leading-normal">
+                          ℹ️ Наш аудио-визуализатор использует гибридный аналитический движок. Если ваш аудио-хостинг поддерживает CORS, он будет выводить настоящие музыкальные частоты в реальном времени. В ином случае, движок мгновенно переключится на высокоточную математическую симуляцию, которая синхронизируется с воспроизведением!
+                        </div>
+                      </div>
+
+                      {/* --- PLAYLIST MANAGEMENT ENGINE --- */}
+                      <div className="border-t border-white/5 pt-5 mt-5">
+                        <div className="flex justify-between items-center mb-3">
+                          <h4 className="text-[11px] font-black font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 italic">
+                            <Music className="w-3.5 h-3.5" />
+                            <span>Управление плейлистом (Несколько песен)</span>
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const currentPlaylist = config.playlist || [];
+                              const newSong = {
+                                id: `song-${Date.now()}`,
+                                url: '',
+                                title: `Песня #${currentPlaylist.length + 1}`,
+                                artist: 'Исполнитель'
+                              };
+                              updateConfigValue('playlist', [...currentPlaylist, newSong]);
+                            }}
+                            className="px-2.5 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-[9px] font-bold uppercase tracking-wider rounded-sm transition cursor-pointer"
+                          >
+                            + Добавить песню
+                          </button>
+                        </div>
+
+                        {(!config.playlist || config.playlist.length === 0) ? (
+                          <div className="p-4 bg-white/[0.01] border border-white/5 rounded-sm text-center text-neutral-500 font-mono text-[10px] leading-relaxed">
+                            Плейлист пуст. Вы можете добавить несколько песен, чтобы ваш полномасштабный плеер поддерживал переключение треков! Если плейлист пуст, плеер будет играть основную песню выше.
+                          </div>
+                        ) : (
+                          <div className="space-y-3.5">
+                            {config.playlist.map((song, sIdx) => (
+                              <div key={song.id} className="p-3 bg-white/[0.02] border border-white/15 rounded-sm space-y-3 relative">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[10px] font-bold text-white uppercase tracking-wider font-mono">Трек #{sIdx + 1}</span>
+                                  <div className="flex items-center space-x-1.5">
+                                    <button
+                                      type="button"
+                                      disabled={sIdx === 0}
+                                      onClick={() => {
+                                        const list = [...(config.playlist || [])];
+                                        const temp = list[sIdx];
+                                        list[sIdx] = list[sIdx - 1];
+                                        list[sIdx - 1] = temp;
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="p-1 bg-white/5 hover:bg-white/10 disabled:opacity-25 rounded-sm text-[9px] text-neutral-400 font-bold cursor-pointer"
+                                    >
+                                      ▲
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={sIdx === (config.playlist || []).length - 1}
+                                      onClick={() => {
+                                        const list = [...(config.playlist || [])];
+                                        const temp = list[sIdx];
+                                        list[sIdx] = list[sIdx + 1];
+                                        list[sIdx + 1] = temp;
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="p-1 bg-white/5 hover:bg-white/10 disabled:opacity-25 rounded-sm text-[9px] text-neutral-400 font-bold cursor-pointer"
+                                    >
+                                      ▼
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const list = (config.playlist || []).filter(s => s.id !== song.id);
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="p-1 px-1.5 bg-red-950/40 hover:bg-red-900 border border-red-500/20 hover:border-red-500 text-red-400 rounded-sm text-[9px] uppercase font-bold cursor-pointer transition-all"
+                                    >
+                                      Удалить
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                                  <div>
+                                    <label className="block text-[8px] uppercase tracking-wider text-neutral-500 mb-1">Название песни</label>
+                                    <input
+                                      type="text"
+                                      value={song.title}
+                                      onChange={(e) => {
+                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, title: e.target.value } : s);
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1.5 px-2 text-[11px] text-white focus:outline-none"
+                                      placeholder="Название"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[8px] uppercase tracking-wider text-neutral-500 mb-1">Исполнитель</label>
+                                    <input
+                                      type="text"
+                                      value={song.artist}
+                                      onChange={(e) => {
+                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, artist: e.target.value } : s);
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1.5 px-2 text-[11px] text-white focus:outline-none"
+                                      placeholder="Исполнитель"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[8px] uppercase tracking-wider text-neutral-500 mb-1">Прямая MP3-ссылка</label>
+                                    <input
+                                      type="text"
+                                      value={song.url}
+                                      onChange={(e) => {
+                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, url: e.target.value } : s);
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1.5 px-2 text-[11px] text-white focus:outline-none"
+                                      placeholder="https://example.com/song.mp3"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2574,7 +2956,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                       </div>
 
                       <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-3 font-mono">
-                        <span className="block text-[10px] uppercase text-neutral-500 font-bold">🛠️ Операции экспорта</span>
+                        <span className="block text-[10px] uppercase text-neutral-500 font-bold">🛠️ Операции экспорта и импорта</span>
                         <div className="flex flex-col sm:flex-row gap-2.5">
                           <button
                             type="button"
@@ -2584,7 +2966,35 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             <FileJson className="w-4 h-4" />
                             <span>Экспортировать конфигурацию в JSON</span>
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={handleJSONImportClick}
+                            className="px-4 py-2.5 bg-[#00f2ff] hover:bg-[#00d0e0] text-black rounded-sm font-bold tracking-wider transition flex items-center justify-center space-x-1.5 cursor-pointer text-[10px] uppercase shadow-[0_0_15px_rgba(0,242,255,0.15)]"
+                          >
+                            <Upload className="w-4 h-4" />
+                            <span>Импортировать конфигурацию из JSON</span>
+                          </button>
+                          <input
+                            type="file"
+                            ref={jsonImportInputRef}
+                            className="hidden"
+                            accept=".json"
+                            onChange={handleJSONImport}
+                          />
                         </div>
+
+                        {jsonImportError && (
+                          <div className="p-2.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-sm text-[10px]">
+                            🛑 {jsonImportError}
+                          </div>
+                        )}
+
+                        {jsonImportSuccess && (
+                          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-sm text-[10px]">
+                            ✅ {jsonImportSuccess}
+                          </div>
+                        )}
                       </div>
 
                       <div className="p-4 bg-amber-500/10 border border-amber-500/25 rounded-sm flex gap-3.5 items-start font-sans text-neutral-300">
@@ -2596,6 +3006,265 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                           <p className="text-[11px] mt-1">
                             Привязка пользовательских доменов (например, вашего личного бренда <code className="text-[#00f2ff]">mybrand.lol</code>) в настоящее время временно ограничена в контексте облачного контейнера. Пожалуйста, используйте стандартные пути субдоменов.
                           </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 7. QR CODE SECTOR */}
+                {activeTab === 'qr' && (
+                  <div className="space-y-5 animate-fade-in">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                          <QrCode className="w-4 h-4" />
+                          <span>QR-код Генератор</span>
+                        </h3>
+                        <p className="text-[10px] text-neutral-400 mt-1 font-sans">
+                          Создайте полностью персонализированный QR-код со своей аватаркой по центру и фирменными цветами для печати или шеринга.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                      {/* Left: Controls Column */}
+                      <div className="space-y-4 font-mono text-xs">
+                        
+                        {/* URL Target Field */}
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="block text-[10px] uppercase text-neutral-400 font-bold">🔗 Адрес ссылки</span>
+                            <button
+                              type="button"
+                              onClick={() => setQrText(`${window.location.origin}/u/${username}`)}
+                              className="text-[8px] text-[#00f2ff] hover:underline uppercase font-extrabold cursor-pointer"
+                            >
+                              Сброс
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={qrText}
+                            onChange={e => setQrText(e.target.value)}
+                            placeholder="https://..."
+                            className="w-full bg-black/60 border border-white/10 focus:border-[#00f2ff] rounded-sm p-2 text-[10px] text-white outline-none"
+                          />
+                        </div>
+
+                        {/* Presets Grid */}
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-3">
+                          <span className="block text-[10px] uppercase text-neutral-400 font-bold flex items-center gap-1.5">
+                            <Palette className="w-3.5 h-3.5 text-[#00f2ff]" />
+                            <span>Цветовые шаблоны</span>
+                          </span>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { name: 'Cyberpunk', dark: '#00f2ff', light: '#050505' },
+                              { name: 'Monochrome', dark: '#000000', light: '#ffffff' },
+                              { name: 'Neon Green', dark: '#00ff66', light: '#090a0d' },
+                              { name: 'Electric Pink', dark: '#ff007f', light: '#06050a' },
+                              { name: 'Sunset Gold', dark: '#f59e0b', light: '#0f0905' },
+                              { name: 'Stellar Red', dark: '#ff3333', light: '#07070a' }
+                            ].map((preset, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setQrFgColor(preset.dark);
+                                  setQrBgColor(preset.light);
+                                }}
+                                className="p-2 bg-black/45 hover:bg-black/80 border border-white/5 hover:border-white/20 rounded-sm flex items-center space-x-2 text-left cursor-pointer transition text-[9px]"
+                              >
+                                <span className="flex space-x-0.5 flex-shrink-0">
+                                  <span className="w-3 h-3 rounded-full border border-white/10 inline-block" style={{ backgroundColor: preset.dark }} />
+                                  <span className="w-3 h-3 rounded-full border border-white/10 inline-block" style={{ backgroundColor: preset.light }} />
+                                </span>
+                                <span className="text-neutral-300 truncate">{preset.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Custom Colors Picker */}
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-3">
+                          <span className="block text-[10px] uppercase text-neutral-400 font-bold">🎨 Свои цвета</span>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="block text-[8px] text-neutral-500 uppercase font-bold">Цвет точек (QR)</label>
+                              <div className="flex items-center space-x-2 bg-black/50 border border-white/10 rounded-sm p-1">
+                                <input
+                                  type="color"
+                                  value={qrFgColor}
+                                  onChange={e => setQrFgColor(e.target.value)}
+                                  className="w-7 h-7 bg-transparent border-0 cursor-pointer outline-none"
+                                />
+                                <input
+                                  type="text"
+                                  value={qrFgColor}
+                                  onChange={e => setQrFgColor(e.target.value)}
+                                  className="bg-transparent text-[10px] font-mono text-white outline-none w-16"
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[8px] text-neutral-500 uppercase font-bold">Цвет фона</label>
+                              <div className="flex items-center space-x-2 bg-black/50 border border-white/10 rounded-sm p-1">
+                                <input
+                                  type="color"
+                                  value={qrBgColor}
+                                  onChange={e => setQrBgColor(e.target.value)}
+                                  className="w-7 h-7 bg-transparent border-0 cursor-pointer outline-none"
+                                />
+                                <input
+                                  type="text"
+                                  value={qrBgColor}
+                                  onChange={e => setQrBgColor(e.target.value)}
+                                  className="bg-transparent text-[10px] font-mono text-white outline-none w-16"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Logo overlay configurations */}
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-3">
+                          <span className="block text-[10px] uppercase text-neutral-400 font-bold">🖼️ Персонализация (Аватарка по центру)</span>
+                          
+                          <div className="flex items-center justify-between p-2.5 bg-black/40 border border-white/5 rounded-sm">
+                            <span className="text-[10px] text-neutral-300 font-medium">Разместить аватарку в центре QR</span>
+                            <button
+                              type="button"
+                              onClick={() => setQrIncludeAvatar(!qrIncludeAvatar)}
+                              className={`px-3 py-1 rounded-sm text-[8px] font-black uppercase tracking-wider border cursor-pointer transition ${
+                                qrIncludeAvatar ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-white/5 border-white/10 text-neutral-500'
+                              }`}
+                            >
+                              {qrIncludeAvatar ? 'Активно' : 'Отключено'}
+                            </button>
+                          </div>
+
+                          {qrIncludeAvatar && (
+                            <div className="space-y-2 pt-1 animate-fade-in">
+                              <div className="flex justify-between items-center text-[9px] text-neutral-400">
+                                <span>Размер логотипа в QR (Рекомендуется 15%-18%)</span>
+                                <span className="font-bold text-white">{Math.round(qrAvatarSize * 100)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0.10"
+                                max="0.25"
+                                step="0.01"
+                                value={qrAvatarSize}
+                                onChange={e => setQrAvatarSize(parseFloat(e.target.value))}
+                                className="w-full accent-[#00f2ff] h-1 bg-neutral-800 rounded-lg cursor-pointer"
+                              />
+                              <span className="block text-[8px] text-neutral-500 leading-normal font-sans">
+                                Примечание: При активации логотипа мы принудительно используем уровень коррекции H (High), чтобы сохранить сканируемость кода.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Formatting sliders */}
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-3">
+                          <span className="block text-[10px] uppercase text-neutral-400 font-bold">📏 Параметры QR-кода</span>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[8px] text-neutral-500 font-bold">
+                                <span>ВНЕШНЕЕ ПОЛЕ (MARGIN)</span>
+                                <span className="text-white">{qrMargin}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="6"
+                                step="1"
+                                value={qrMargin}
+                                onChange={e => setQrMargin(parseInt(e.target.value))}
+                                className="w-full accent-[#00f2ff] h-1 bg-neutral-800 rounded-lg cursor-pointer"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="block text-[8px] text-neutral-500 uppercase font-bold">КОРРЕКЦИЯ ОШИБОК</label>
+                              <select
+                                value={qrErrorCorrection}
+                                onChange={e => setQrErrorCorrection(e.target.value as any)}
+                                className="w-full bg-black border border-white/10 rounded-sm p-1.5 text-[9px] text-white focus:border-[#00f2ff] outline-none"
+                              >
+                                <option value="L">Level L (7% восстановление)</option>
+                                <option value="M">Level M (15% восстановление)</option>
+                                <option value="Q">Level Q (25% восстановление)</option>
+                                <option value="H">Level H (30% восстановление - Рекомед)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Right: Live Preview & Exports Column */}
+                      <div className="space-y-4 flex flex-col items-center">
+                        <div className="p-5 bg-white/5 border border-white/10 rounded-sm w-full flex flex-col items-center justify-center space-y-4">
+                          <span className="block text-[9px] uppercase tracking-widest text-[#00f2ff] font-bold font-mono">Предпросмотр</span>
+                          
+                          {/* Main Live QR Canvas Container */}
+                          <div 
+                            className="p-4 rounded-sm transition-all duration-300 shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-white/5" 
+                            style={{ backgroundColor: qrBgColor }}
+                          >
+                            <canvas 
+                              ref={qrCanvasRef} 
+                              className="max-w-full block aspect-square rounded-sm"
+                              style={{ width: '220px', height: '220px' }}
+                            />
+                          </div>
+
+                          <div className="text-center font-mono space-y-1">
+                            <span className="block text-[9px] text-neutral-400 truncate max-w-[250px]" title={qrText}>
+                              {qrText}
+                            </span>
+                            <span className="block text-[7.5px] text-neutral-600 uppercase font-bold">Сканируйте камерой телефона</span>
+                          </div>
+                        </div>
+
+                        {/* Export Action triggers */}
+                        <div className="w-full space-y-2 font-mono">
+                          <button
+                            type="button"
+                            onClick={handleDownloadPNG}
+                            className="w-full py-3 bg-[#00f2ff] hover:bg-[#00d0e0] text-black rounded-sm font-black text-[10px] uppercase tracking-widest transition flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_20px_rgba(0,242,255,0.15)]"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>Скачать PNG (Растр)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleDownloadSVG}
+                            className="w-full py-3 bg-purple-700 hover:bg-purple-800 text-white border border-purple-600/30 rounded-sm font-black text-[10px] uppercase tracking-widest transition flex items-center justify-center space-x-2 cursor-pointer"
+                          >
+                            <FileJson className="w-4 h-4" />
+                            <span>Скачать SVG (Вектор)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(qrText);
+                              setQrCopied(true);
+                              setTimeout(() => setQrCopied(false), 2000);
+                            }}
+                            className="w-full py-2.5 bg-black/45 hover:bg-black/80 border border-white/10 text-neutral-300 hover:text-white rounded-sm font-bold text-[9px] uppercase tracking-wider transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>{qrCopied ? 'Ссылка скопирована ✓' : 'Скопировать ссылку'}</span>
+                          </button>
+                        </div>
+
+                        <div className="p-3 bg-cyan-950/20 border border-cyan-800/20 rounded-sm w-full text-[9px] leading-relaxed text-cyan-400 font-sans text-center">
+                          ℹ️ Вы можете экспортировать векторный формат SVG, который идеально подходит для высококачественной печати без потери резкости!
                         </div>
                       </div>
                     </div>

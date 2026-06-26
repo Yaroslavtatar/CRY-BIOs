@@ -23,6 +23,23 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
+const ADMIN_PASSWORD_FILE = path.join(DATA_DIR, 'admin_password.txt');
+
+function getAdminPassword(): string {
+  if (fs.existsSync(ADMIN_PASSWORD_FILE)) {
+    try {
+      return fs.readFileSync(ADMIN_PASSWORD_FILE, 'utf-8').trim();
+    } catch (e) {
+      // Fallback to env or default
+    }
+  }
+  return process.env.ADMIN_PASSWORD || 'admin_secret';
+}
+
+function saveAdminPassword(newPassword: string) {
+  fs.writeFileSync(ADMIN_PASSWORD_FILE, newPassword.trim(), 'utf-8');
+}
+
 // Multer storage config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -194,6 +211,107 @@ async function startServer() {
     res.json({ url: fileUrl });
   });
 
+  // --- ADMIN PANEL API ---
+  const checkAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    let secret = req.headers['x-admin-password'] || req.query.password;
+    if (secret && typeof secret === 'string') {
+      try {
+        secret = decodeURIComponent(secret);
+      } catch (e) {
+        // Fallback
+      }
+    }
+    const adminPass = getAdminPassword();
+    if (secret !== adminPass) {
+      return res.status(401).json({ error: 'Unauthorized Admin Session. Invalid Admin Password.' });
+    }
+    next();
+  };
+
+  app.get('/api/admin/verify', checkAdminAuth, (req, res) => {
+    res.json({ success: true, status: 'Admin Authenticated' });
+  });
+
+  app.post('/api/admin/change-password', checkAdminAuth, (req, res) => {
+    const { newPassword } = req.body;
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 4) {
+      return res.status(400).json({ error: 'Пароль должен быть не менее 4 символов' });
+    }
+    saveAdminPassword(newPassword);
+    res.json({ success: true, message: 'Пароль администратора успешно изменен' });
+  });
+
+  app.get('/api/admin/users', checkAdminAuth, (req, res) => {
+    const users = db.getAllUsersWithStats();
+    res.json(users);
+  });
+
+  app.delete('/api/admin/user/:username', checkAdminAuth, (req, res) => {
+    const { username } = req.params;
+    db.deleteUser(username.toLowerCase());
+    res.json({ success: true });
+  });
+
+  app.post('/api/admin/rename-user', checkAdminAuth, (req, res) => {
+    const { oldUsername, newUsername } = req.body;
+    if (!oldUsername || !newUsername) {
+      return res.status(400).json({ error: 'oldUsername and newUsername are required' });
+    }
+    const normOld = oldUsername.toLowerCase().trim();
+    const normNew = newUsername.toLowerCase().trim();
+    if (!/^[a-zA-Z0-9_-]{3,15}$/.test(normNew)) {
+      return res.status(400).json({ error: 'New username must be 3-15 alphanumeric characters' });
+    }
+    if (db.getUser(normNew)) {
+      return res.status(400).json({ error: 'Target username already exists' });
+    }
+    db.updateUsername(normOld, normNew);
+    res.json({ success: true, newUsername: normNew });
+  });
+
+  app.post('/api/admin/change-user-password', checkAdminAuth, (req, res) => {
+    const { username, newPassword } = req.body;
+    if (!username || !newPassword) {
+      return res.status(400).json({ error: 'Username and newPassword are required' });
+    }
+    const normUsername = username.toLowerCase().trim();
+    if (newPassword.trim().length < 4) {
+      return res.status(400).json({ error: 'Пароль должен быть не менее 4 символов' });
+    }
+    const user = db.getUser(normUsername);
+    if (!user) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+    const hashedPassword = hashPassword(newPassword);
+    db.updateUserPassword(normUsername, hashedPassword);
+    res.json({ success: true, message: `Пароль пользователя @${normUsername} успешно изменен` });
+  });
+
+  app.post('/api/admin/toggle-verify/:username', checkAdminAuth, (req, res) => {
+    const username = req.params.username.toLowerCase();
+    const bio = db.getBio(username);
+    if (!bio) {
+      return res.status(404).json({ error: 'Bio not found' });
+    }
+    bio.verified = !bio.verified;
+    db.saveBio(username, bio);
+    res.json({ success: true, verified: bio.verified });
+  });
+
+  app.get('/api/admin/export-db', checkAdminAuth, (req, res) => {
+    const dump = db.exportDatabase();
+    res.json(dump);
+  });
+
+  app.post('/api/admin/import-db', checkAdminAuth, (req, res) => {
+    const { dump } = req.body;
+    if (!dump || typeof dump !== 'object') {
+      return res.status(400).json({ error: 'Invalid database dump payload' });
+    }
+    db.importDatabase(dump);
+    res.json({ success: true });
+  });
+
   // Get active Bio directories listing
   app.get('/api/all-bios', (req, res) => {
     const bios = db.getAllBios();
@@ -215,6 +333,20 @@ async function startServer() {
       return res.status(404).json({ error: 'Username lookup failed' });
     }
     res.json(bio);
+  });
+
+  // Get bio username by custom domain mapping
+  app.get('/api/bio-by-host', (req, res) => {
+    const host = (req.query.host as string || '').toLowerCase().trim();
+    if (!host) {
+      return res.status(400).json({ error: 'Missing host parameter' });
+    }
+    const bios = db.getAllBios();
+    const matched = bios.find(b => b.customDomain && b.customDomain.toLowerCase().trim() === host);
+    if (matched) {
+      return res.json({ success: true, username: matched.username });
+    }
+    res.json({ success: false });
   });
 
   // Proxy Discord Lanyard & Profile Data
@@ -739,7 +871,8 @@ async function startServer() {
       referrer,
       device,
       browser,
-      country
+      country,
+      host: req.body.host || req.get('host') || 'Unknown'
     };
 
     db.addAnalytic(username, visit);
@@ -801,6 +934,7 @@ async function startServer() {
     const deviceRaw = histogram('device');
     const browserRaw = histogram('browser');
     const countryRaw = histogram('country');
+    const hostRaw = histogram('host');
 
     const summary: AnalyticsSummary = {
       username,
@@ -810,7 +944,8 @@ async function startServer() {
       referrersHistogram: referrerRaw.map(r => ({ referrer: r.name, count: r.count })),
       devicesHistogram: deviceRaw.map(d => ({ device: d.name, count: d.count })),
       browsersHistogram: browserRaw.map(b => ({ browser: b.name, count: b.count })),
-      countriesHistogram: countryRaw.map(c => ({ country: c.name, count: c.count }))
+      countriesHistogram: countryRaw.map(c => ({ country: c.name, count: c.count })),
+      hostsHistogram: hostRaw.map(h => ({ host: h.name, count: h.count }))
     };
 
     res.json(summary);
