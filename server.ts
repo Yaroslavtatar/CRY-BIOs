@@ -11,6 +11,8 @@ import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
 import * as db from './src/db';
+import { streamFullBackup, importFullBackup } from './src/backup';
+import { isAllowedMime, isImageMime, processUploadedImage, type ImageUploadType } from './src/imageProcessing';
 
 // Establish folders
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -21,6 +23,11 @@ if (!fs.existsSync(DATA_DIR)) {
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const TMP_DIR = path.join(DATA_DIR, 'tmp');
+if (!fs.existsSync(TMP_DIR)) {
+  fs.mkdirSync(TMP_DIR, { recursive: true });
 }
 
 const ADMIN_PASSWORD_FILE = path.join(DATA_DIR, 'admin_password.txt');
@@ -50,7 +57,34 @@ const storage = multer.diskStorage({
     cb(null, `${crypto.randomUUID()}${ext}`);
   }
 });
-const upload = multer({ storage });
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (isAllowedMime(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Unsupported file type. Allowed: JPEG, PNG, WebP, GIF, video, audio.'));
+    }
+  },
+});
+
+const backupUpload = multer({
+  dest: TMP_DIR,
+  limits: { fileSize: 500 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const isZip =
+      file.mimetype === 'application/zip' ||
+      file.mimetype === 'application/x-zip-compressed' ||
+      file.originalname.toLowerCase().endsWith('.zip');
+    if (isZip) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only ZIP backup files are allowed'));
+    }
+  },
+});
 
 // Passwords are plain SHA256 hashed
 function hashPassword(password: string): string {
@@ -194,10 +228,13 @@ async function startServer() {
   // --- API ROUTING ---
 
   // Expose uploads directory
-  app.use('/uploads', express.static(UPLOADS_DIR));
+  app.use('/uploads', express.static(UPLOADS_DIR, {
+    maxAge: '30d',
+    immutable: true,
+  }));
 
   // Upload endpoint
-  app.post('/api/upload', upload.single('file'), (req, res) => {
+  app.post('/api/upload', upload.single('file'), async (req, res) => {
     const authedUser = getUsernameFromRequest(req);
     if (!authedUser) {
       return res.status(401).json({ error: 'Unauthorized Session' });
@@ -207,8 +244,29 @@ async function startServer() {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ url: fileUrl });
+    try {
+      const uploadTypeRaw = (req.body.uploadType as string) || 'bg';
+      const uploadType: ImageUploadType = ['avatar', 'bg', 'image'].includes(uploadTypeRaw)
+        ? (uploadTypeRaw as ImageUploadType)
+        : 'bg';
+
+      if (isImageMime(req.file.mimetype)) {
+        const result = await processUploadedImage(req.file.path, UPLOADS_DIR, uploadType);
+        const fileUrl = `/uploads/${result.filename}`;
+        return res.json({
+          url: fileUrl,
+          thumbUrl: result.thumbFilename ? `/uploads/thumbs/${result.thumbFilename}` : undefined,
+        });
+      }
+
+      const fileUrl = `/uploads/${req.file.filename}`;
+      res.json({ url: fileUrl });
+    } catch (err: any) {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      res.status(500).json({ error: err.message || 'Upload processing failed' });
+    }
   });
 
   // --- ADMIN PANEL API ---
@@ -299,7 +357,8 @@ async function startServer() {
   });
 
   app.get('/api/admin/export-db', checkAdminAuth, (req, res) => {
-    const dump = db.exportDatabase();
+    const includeAnalytics = req.query.includeAnalytics !== 'false';
+    const dump = db.exportDatabase({ includeAnalytics });
     res.json(dump);
   });
 
@@ -310,6 +369,39 @@ async function startServer() {
     }
     db.importDatabase(dump);
     res.json({ success: true });
+  });
+
+  app.get('/api/admin/export-full', checkAdminAuth, (req, res) => {
+    const includeAnalytics = req.query.includeAnalytics !== 'false';
+    streamFullBackup(res, {
+      includeAnalytics,
+      uploadsDir: UPLOADS_DIR,
+      dataDir: DATA_DIR,
+    }).catch((err) => {
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message || 'Export failed' });
+      }
+    });
+  });
+
+  app.post('/api/admin/import-full', checkAdminAuth, backupUpload.single('file'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No backup file uploaded' });
+    }
+
+    try {
+      const result = await importFullBackup(req.file.path, {
+        uploadsDir: UPLOADS_DIR,
+        dataDir: DATA_DIR,
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Import failed' });
+    } finally {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+    }
   });
 
   // Get active Bio directories listing
@@ -1003,7 +1095,11 @@ services:
       - NODE_ENV=production
       - GEMINI_API_KEY=""  # Optional API integration key
     volumes:
-      - ./data:/app/data
+      - cry_bios_data:/app/data
+
+volumes:
+  cry_bios_data:
+    driver: local
 EOF
 
 echo -e "\${GREEN}✅ Created docker-compose.yml successfully.\${NC}"
@@ -1020,6 +1116,20 @@ echo -e "\${BLUE}=====================================================\${NC}"
     res.setHeader('Content-Type', 'application/x-sh');
     res.setHeader('Content-Disposition', 'attachment; filename="install.sh"');
     res.send(shellScript);
+  });
+
+  // Multer / upload error handler
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum size is 5 MB for uploads, 500 MB for backups.' });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    if (err?.message?.includes('Unsupported file type') || err?.message?.includes('Only ZIP')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
   });
 
   // 404 for unhandled API routes before SPA fallback

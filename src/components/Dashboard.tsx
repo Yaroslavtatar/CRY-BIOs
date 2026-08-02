@@ -81,7 +81,8 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   
   const [copiedLink, setCopiedLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploadTarget, setUploadTarget] = useState<'avatarUrl' | 'bgValue' | 'audioUrl' | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<'avatarUrl' | 'bgValue' | 'audioUrl' | 'imageBlock' | null>(null);
+  const [uploadBlockId, setUploadBlockId] = useState<string | null>(null);
 
   // QR Code generator states
   const [qrText, setQrText] = useState('');
@@ -211,6 +212,15 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
     const formData = new FormData();
     formData.append('file', file);
 
+    const uploadTypeMap: Record<string, string> = {
+      avatarUrl: 'avatar',
+      bgValue: 'bg',
+      imageBlock: 'image',
+    };
+    if (uploadTarget in uploadTypeMap) {
+      formData.append('uploadType', uploadTypeMap[uploadTarget]);
+    }
+
     try {
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -221,7 +231,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       });
 
       if (!response.ok) {
-        if (response.status === 413) throw new Error('File too large. Maximum size is ~1MB (Server Limit).');
+        if (response.status === 413) throw new Error('File too large. Maximum size is 5 MB.');
         throw new Error('Upload failed');
       }
       
@@ -233,7 +243,11 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
         throw new Error('Server returned invalid data format: ' + text.slice(0, 30));
       }
 
-      updateConfigValue(uploadTarget, data.url);
+      if (uploadTarget === 'imageBlock' && uploadBlockId) {
+        updateBlock(uploadBlockId, { imageUrl: data.url });
+      } else if (uploadTarget !== 'imageBlock') {
+        updateConfigValue(uploadTarget, data.url);
+      }
       
       // Auto-switch types for backgrounds if necessary
       if (uploadTarget === 'bgValue') {
@@ -246,6 +260,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
       setUploadTarget(null);
+      setUploadBlockId(null);
     }
   };
 
@@ -853,17 +868,6 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
     });
   };
 
-  const handleFileLoadBase64 = (e: React.ChangeEvent<HTMLInputElement>, fieldName: 'bgValue' | 'avatarUrl') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        updateConfigValue(fieldName, event.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
 
   const handleJSONExport = () => {
     if (!config) return;
@@ -1025,7 +1029,13 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
         ref={fileInputRef} 
         className="hidden" 
         onChange={handleFileUpload}
-        accept={uploadTarget === 'audioUrl' ? 'audio/*' : 'image/*,video/*'}
+        accept={
+          uploadTarget === 'audioUrl'
+            ? 'audio/*'
+            : uploadTarget === 'imageBlock'
+              ? 'image/*'
+              : 'image/*,video/*'
+        }
       />
       {/* Header Panel */}
       <header className="border-b border-white/10 bg-[#050505] px-6 py-5 flex justify-between items-center z-20">
@@ -2803,13 +2813,26 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                               <div className="space-y-2.5">
                                 <div>
                                   <label className="block text-[9px] uppercase text-neutral-500 mb-1 font-bold">Image Source URL</label>
-                                  <input
-                                    type="text"
-                                    value={block.imageUrl || ''}
-                                    placeholder="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe"
-                                    onChange={e => updateBlock(block.id, { imageUrl: e.target.value })}
-                                    className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
-                                  />
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="text"
+                                      value={block.imageUrl || ''}
+                                      placeholder="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe"
+                                      onChange={e => updateBlock(block.id, { imageUrl: e.target.value })}
+                                      className="flex-1 bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUploadTarget('imageBlock');
+                                        setUploadBlockId(block.id);
+                                        fileInputRef.current?.click();
+                                      }}
+                                      className="px-3 py-2 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[#00f2ff] rounded-sm text-[9px] font-bold uppercase whitespace-nowrap cursor-pointer"
+                                    >
+                                      Загрузить
+                                    </button>
+                                  </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2.5">
                                   <div>
