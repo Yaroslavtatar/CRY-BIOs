@@ -52,6 +52,22 @@ const GRADIENT_PRESETS = [
   'linear-gradient(to right, #111827, #030712)'
 ];
 
+function mapGunsBackgroundEffects(effects: string): { bgType?: BackgroundType; snowEffectsEnabled?: boolean } {
+  switch (effects) {
+    case 'rain':
+      return { bgType: 'rain' };
+    case 'snow':
+      return { snowEffectsEnabled: true };
+    case 'rain_snow':
+      return { bgType: 'rain', snowEffectsEnabled: true };
+    case 'matrix':
+      return { bgType: 'matrix' };
+    case 'stars':
+    default:
+      return { bgType: 'stars' };
+  }
+}
+
 export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   // Authentication States
   const [username, setUsername] = useState(localStorage.getItem('biogun_username') || '');
@@ -81,7 +97,8 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   
   const [copiedLink, setCopiedLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploadTarget, setUploadTarget] = useState<'avatarUrl' | 'bgValue' | 'audioUrl' | 'imageBlock' | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<'avatarUrl' | 'bgValue' | 'audioUrl' | 'imageBlock' | 'playlistTrack' | 'customCursorUrl' | null>(null);
+  const [uploadSongId, setUploadSongId] = useState<string | null>(null);
   const [uploadBlockId, setUploadBlockId] = useState<string | null>(null);
 
   // QR Code generator states
@@ -231,7 +248,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       });
 
       if (!response.ok) {
-        if (response.status === 413) throw new Error('File too large. Maximum size is 5 MB.');
+        if (response.status === 413) throw new Error('File too large. Maximum size is 50 MB.');
         throw new Error('Upload failed');
       }
       
@@ -243,13 +260,23 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
         throw new Error('Server returned invalid data format: ' + text.slice(0, 30));
       }
 
-      if (uploadTarget === 'imageBlock' && uploadBlockId) {
+      const fileBaseName = file.name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ');
+
+      if (uploadTarget === 'playlistTrack' && uploadSongId) {
+        const list = (config?.playlist || []).map(s =>
+          s.id === uploadSongId
+            ? { ...s, url: data.url, title: s.title === 'Песня' || !s.title ? fileBaseName : s.title }
+            : s
+        );
+        updateConfigValue('playlist', list);
+      } else if (uploadTarget === 'imageBlock' && uploadBlockId) {
         updateBlock(uploadBlockId, { imageUrl: data.url });
-      } else if (uploadTarget !== 'imageBlock') {
+      } else if (uploadTarget === 'customCursorUrl') {
+        updateConfigValue('customCursorUrl', data.url);
+      } else if (uploadTarget && uploadTarget !== 'playlistTrack' && uploadTarget !== 'imageBlock') {
         updateConfigValue(uploadTarget, data.url);
       }
       
-      // Auto-switch types for backgrounds if necessary
       if (uploadTarget === 'bgValue') {
         const type = data.url.match(/\.(mp4|webm|ogv)$/i) ? 'video' : 'image';
         updateConfigValue('bgType', type);
@@ -260,6 +287,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
       setUploadTarget(null);
+      setUploadSongId(null);
       setUploadBlockId(null);
     }
   };
@@ -471,6 +499,10 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
     let backgroundEffects = getValueByRegex(/"background_effects"\s*:\s*"([^"]+)"/) || 'rain';
     let blurVal = parseInt(getValueByRegex(/"blur"\s*:\s*([0-9]+)/) || '2');
     let opacityVal = parseFloat(getValueByRegex(/"opacity"\s*:\s*([0-9\.]+)/) || '0.05') * 100;
+    const sparklesEnabled = getValueByRegex(/"sparkles"\s*:\s*(true|false)/) === 'true' ||
+      getValueByRegex(/"cursor_sparkles"\s*:\s*(true|false)/) === 'true';
+    let nameEffect = getValueByRegex(/"username_effect"\s*:\s*"([^"]+)"/) ||
+      getValueByRegex(/"name_effect"\s*:\s*"([^"]+)"/) || '';
 
     // Soundtrack track audio URL
     let audioUrl = getValueByRegex(/"url"\s*:\s*"([^"]+\.mp3[^"]*)"/) || '';
@@ -560,6 +592,8 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       backgroundEffects = parsedConfig.background_effects || backgroundEffects;
       if (parsedConfig.blur !== undefined) blurVal = parsedConfig.blur;
       if (parsedConfig.opacity !== undefined) opacityVal = parsedConfig.opacity * 100;
+      if (parsedConfig.username_effect) nameEffect = parsedConfig.username_effect;
+      else if (parsedConfig.name_effect) nameEffect = parsedConfig.name_effect;
       
       if (parsedConfig.audio && Array.isArray(parsedConfig.audio) && parsedConfig.audio.length > 0) {
         const sel = parsedConfig.audio.find((a: any) => a.selected) || parsedConfig.audio[0];
@@ -585,15 +619,24 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       }
     }
 
+    const bgMapping = mapGunsBackgroundEffects(backgroundEffects);
+    const resolvedSparkles = parsedConfig?.sparkles !== undefined
+      ? !!parsedConfig.sparkles
+      : parsedConfig?.cursor_sparkles !== undefined
+        ? !!parsedConfig.cursor_sparkles
+        : sparklesEnabled;
+
     return {
       displayName: displayName || 'Guns.lol Profile',
       bio: bio || 'Transferred using Open-Source copy paste engine.',
       avatarUrl: avatarUrl || '',
-      bgType,
+      bgType: bgMapping.bgType || bgType,
       bgValue: bgValue || '#0c0c0e',
       audioUrl,
       customCursorUrl: customCursor || '',
-      snowEffectsEnabled: backgroundEffects === 'rain' || backgroundEffects === 'snow' || backgroundEffects === 'rain_snow',
+      snowEffectsEnabled: bgMapping.snowEffectsEnabled ?? false,
+      sparkles: !!resolvedSparkles,
+      nameEffect: nameEffect || undefined,
       bgBlur: blurVal,
       cardOpacity: opacityVal,
       socialsList
@@ -629,7 +672,9 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
           audioTitle: parsed.displayName + ' Soundtrack',
           audioArtist: 'GunsLol Importer',
           customCursorUrl: parsed.customCursorUrl || config.customCursorUrl,
-          snowEffectsEnabled: parsed.snowEffectsEnabled || config.snowEffectsEnabled,
+          snowEffectsEnabled: parsed.snowEffectsEnabled ?? config.snowEffectsEnabled,
+          sparkles: parsed.sparkles ?? config.sparkles,
+          nameEffect: parsed.nameEffect || config.nameEffect,
           bgBlur: parsed.bgBlur !== undefined ? parsed.bgBlur : config.bgBlur,
           cardOpacity: parsed.cardOpacity !== undefined ? parsed.cardOpacity : config.cardOpacity,
           verified: true
@@ -698,7 +743,13 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
             audioTitle: parsed.displayName + ' Wave',
             audioArtist: 'Premium Imported Track',
             verified: true,
-            badges: parsed.badges
+            badges: parsed.badges,
+            customCursorUrl: parsed.customCursorUrl || config.customCursorUrl,
+            snowEffectsEnabled: parsed.snowEffectsEnabled ?? config.snowEffectsEnabled,
+            sparkles: parsed.sparkles ?? config.sparkles,
+            nameEffect: parsed.nameEffect || config.nameEffect,
+            bgBlur: parsed.bgBlur !== undefined ? parsed.bgBlur : config.bgBlur,
+            cardOpacity: parsed.cardOpacity !== undefined ? parsed.cardOpacity : config.cardOpacity,
           };
 
           if (parsed.socialsList.length > 0) {
@@ -1601,8 +1652,50 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                           >
                             {config.snowEffectsEnabled ? '[ СНЕГОПАД АКТИВЕН ]' : '[ ОТКЛЮЧЕНО ]'}
                           </button>
+                          {config.snowEffectsEnabled && (
+                            <select
+                              value={config.snowIntensity || 'medium'}
+                              onChange={e => updateConfigValue('snowIntensity', e.target.value)}
+                              className="w-full mt-2 bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none cursor-pointer"
+                            >
+                              <option value="low">Низкая интенсивность</option>
+                              <option value="medium">Средняя</option>
+                              <option value="high">Высокая</option>
+                            </select>
+                          )}
                         </div>
                       </div>
+
+                      {config.sparkles && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Стиль искр</label>
+                            <select
+                              value={config.sparkleStyle || 'stars'}
+                              onChange={e => updateConfigValue('sparkleStyle', e.target.value)}
+                              className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none cursor-pointer"
+                            >
+                              <option value="stars">Звёзды</option>
+                              <option value="dots">Точки</option>
+                              <option value="hearts">Сердечки</option>
+                              <option value="crosses">Кресты</option>
+                              <option value="neon">Неон</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Интенсивность искр</label>
+                            <select
+                              value={config.sparkleIntensity || 'medium'}
+                              onChange={e => updateConfigValue('sparkleIntensity', e.target.value)}
+                              className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none cursor-pointer"
+                            >
+                              <option value="low">Низкая</option>
+                              <option value="medium">Средняя</option>
+                              <option value="high">Высокая</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
                          <div>
@@ -1624,6 +1717,12 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             <option value="shine">Проблеск (Shine Sweep)</option>
                             <option value="glitch">Глитч (Glitch Pulse)</option>
                             <option value="typewriter">Печатная Машинка (Typewriter)</option>
+                            <option value="rainbow">Радуга (Rainbow)</option>
+                            <option value="flicker">Мерцание (Flicker)</option>
+                            <option value="bounce">Подпрыгивание (Bounce)</option>
+                            <option value="shadow_3d">3D Тень (Shadow)</option>
+                            <option value="underline_glow">Подчёркивание (Glow Underline)</option>
+                            <option value="cyber">Кибер (Cyber Glitch)</option>
                           </select>
                         </div>
                       </div>
@@ -1646,6 +1745,112 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                           onChange={e => updateConfigValue('enterText', e.target.value)}
                           className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
                         />
+                      </div>
+
+                      {/* Location */}
+                      <div className="pt-4 border-t border-white/10 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">Location строка</label>
+                          <button
+                            type="button"
+                            onClick={() => updateConfigValue('locationEnabled', !config.locationEnabled)}
+                            className={`px-3 py-1 rounded-sm border text-[9px] font-bold uppercase cursor-pointer ${
+                              config.locationEnabled ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' : 'bg-black/25 border-white/10 text-neutral-500'
+                            }`}
+                          >
+                            {config.locationEnabled ? 'ВКЛ' : 'ВЫКЛ'}
+                          </button>
+                        </div>
+                        {config.locationEnabled && (
+                          <div className="grid grid-cols-1 gap-2">
+                            <input
+                              type="text"
+                              placeholder="Moscow / Москва"
+                              value={config.locationText || ''}
+                              onChange={e => updateConfigValue('locationText', e.target.value)}
+                              className="w-full bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <select
+                                value={config.locationIcon || 'pin'}
+                                onChange={e => updateConfigValue('locationIcon', e.target.value)}
+                                className="bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none cursor-pointer"
+                              >
+                                <option value="pin">Pin</option>
+                                <option value="globe">Globe</option>
+                                <option value="map">Map</option>
+                              </select>
+                              <select
+                                value={config.locationStyle || 'pill'}
+                                onChange={e => updateConfigValue('locationStyle', e.target.value)}
+                                className="bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none cursor-pointer"
+                              >
+                                <option value="minimal">Minimal</option>
+                                <option value="pill">Pill</option>
+                                <option value="glow">Glow</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Дополнительно */}
+                      <div className="pt-4 border-t border-white/10 space-y-3">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Дополнительно</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            ['showViewsCounter', 'Счётчик просмотров'],
+                            ['showUid', 'Показать UID'],
+                            ['monochromeMode', 'Ч/Б режим'],
+                            ['parallaxEnabled', 'Parallax tilt'],
+                            ['avatarGlowEnabled', 'Свечение аватара'],
+                            ['linkHoverGlow', 'Glow ссылок'],
+                            ['clickToEnterEnabled', 'Click to Enter'],
+                          ] as const).map(([key, label]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => updateConfigValue(key, !(config as any)[key])}
+                              className={`py-2 px-2 rounded-sm border text-[8px] font-bold uppercase cursor-pointer ${
+                                (config as any)[key] ? 'bg-[#00f2ff]/10 border-[#00f2ff]/30 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                          <input
+                            type="text"
+                            placeholder="Custom page title"
+                            value={config.customPageTitle || ''}
+                            onChange={e => updateConfigValue('customPageTitle', e.target.value)}
+                            className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Custom favicon URL"
+                            value={config.customFaviconUrl || ''}
+                            onChange={e => updateConfigValue('customFaviconUrl', e.target.value)}
+                            className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none"
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Custom cursor URL"
+                              value={config.customCursorUrl || ''}
+                              onChange={e => updateConfigValue('customCursorUrl', e.target.value)}
+                              className="flex-grow bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => { setUploadTarget('customCursorUrl'); fileInputRef.current?.click(); }}
+                              className="px-3 py-2 bg-[#00f2ff]/10 border border-[#00f2ff]/30 text-[#00f2ff] text-[9px] font-bold uppercase rounded-sm cursor-pointer"
+                            >
+                              ФАЙЛ
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -1970,11 +2175,12 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                       Настройте порядок отображения элементов на вашей био-странице.
                     </p>
                     <div className="bg-white/5 border border-white/10 rounded-sm p-4 text-[10px]">
-                      {(config.layout || ['avatar', 'username', 'badges', 'discord', 'bio', 'blocks', 'player']).map((item, index, arr) => (
+                      {(config.layout || ['avatar', 'username', 'location', 'badges', 'discord', 'bio', 'blocks', 'player']).map((item, index, arr) => (
                         <div key={item} className="flex items-center justify-between bg-black/40 border border-white/5 p-2.5 mb-2 rounded-sm last:mb-0">
                           <span className="font-bold text-neutral-300 uppercase tracking-widest flex items-center gap-2">
                              {item === 'avatar' && '🖼️ Аватар'}
                              {item === 'username' && '📝 Имя пользователя'}
+                             {item === 'location' && '📍 Location'}
                              {item === 'badges' && '🎖️ Значки / Бейджи'}
                              {item === 'discord' && '👾 Discord Статус'}
                              {item === 'bio' && '💬 Описание профиля'}
@@ -2033,9 +2239,12 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             { key: 'color', label: 'Color' },
                             { key: 'gradient', label: 'Gradient' },
                             { key: 'image', label: 'Image' },
+                            { key: 'video', label: 'Video' },
                             { key: 'matrix', label: 'Matrix' },
                             { key: 'stars', label: 'Stars' },
-                            { key: 'rain', label: 'Rain' }
+                            { key: 'rain', label: 'Rain' },
+                            { key: 'particles', label: 'Particles' },
+                            { key: 'snow', label: 'Snow BG' }
                           ]).map(t => (
                             <button
                               key={t.key}
@@ -2052,11 +2261,12 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                       </div>
 
                       {/* Dynamic bgValue options inputs */}
-                      {['color', 'gradient', 'image'].includes(config.bgType) && (
+                      {['color', 'gradient', 'image', 'video'].includes(config.bgType) && (
                         <div>
                           <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">
                             {config.bgType === 'color' ? 'HTML Hex-Код цвета' :
-                             config.bgType === 'gradient' ? 'CSS Линейный градиент' : 'Ссылка на фоновую картинку'}
+                             config.bgType === 'gradient' ? 'CSS Линейный градиент' :
+                             config.bgType === 'video' ? 'URL видеофона (MP4/WebM)' : 'Ссылка на фоновую картинку'}
                           </label>
                           <div className="space-y-2">
                             <div className="flex gap-2">
@@ -2076,6 +2286,53 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                                 </button>
                               )}
                             </div>
+                          </div>
+                          {config.bgType === 'video' && (
+                            <div className="grid grid-cols-2 gap-2 mt-3">
+                              <button
+                                type="button"
+                                onClick={() => updateConfigValue('bgVideoAudioEnabled', !config.bgVideoAudioEnabled)}
+                                className={`py-2 rounded-sm border text-[9px] font-bold uppercase cursor-pointer ${
+                                  config.bgVideoAudioEnabled ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'
+                                }`}
+                              >
+                                Звук видео
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateConfigValue('bgVideoUseAsAudio', !config.bgVideoUseAsAudio)}
+                                className={`py-2 rounded-sm border text-[9px] font-bold uppercase cursor-pointer ${
+                                  config.bgVideoUseAsAudio ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'
+                                }`}
+                              >
+                                Видео = аудио
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {['matrix', 'stars', 'rain', 'particles'].includes(config.bgType) && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Цвет эффекта</label>
+                            <input
+                              type="color"
+                              value={config.bgEffectColor || config.primaryColor || '#00f2ff'}
+                              onChange={e => updateConfigValue('bgEffectColor', e.target.value)}
+                              className="w-full h-9 bg-black/50 border border-white/15 rounded-sm cursor-pointer"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Интенсивность</label>
+                            <input
+                              type="range"
+                              min="1"
+                              max="10"
+                              value={config.bgEffectIntensity || 5}
+                              onChange={e => updateConfigValue('bgEffectIntensity', parseInt(e.target.value))}
+                              className="w-full accent-[#00f2ff]"
+                            />
                           </div>
                         </div>
                       )}
@@ -2245,231 +2502,247 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                     </h3>
 
                     <div className="space-y-4 font-mono text-xs">
-                      <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Активация аудио-движка</label>
-                        <button
-                          type="button"
-                          onClick={() => updateConfigValue('audioEnabled', !config.audioEnabled)}
-                          className={`w-full py-2.5 rounded-sm border font-black text-[10px] uppercase transition tracking-widest cursor-pointer ${
-                            config.audioEnabled ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
-                          }`}
-                        >
-                          {config.audioEnabled ? '[ АВТОПЛЕЙ ГОТОВ К ИСПОЛЬЗОВАНИЮ ]' : '[ ВЫКЛЮЧЕНО ]'}
-                        </button>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Прямая MP3-ссылка на аудиофайл или ПК</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="https://example.com/sound-beat.mp3"
-                            value={config.audioUrl}
-                            onChange={e => updateConfigValue('audioUrl', e.target.value)}
-                            className="flex-grow bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
-                          />
-                          <button 
-                            type="button" 
-                            onClick={() => { setUploadTarget('audioUrl'); fileInputRef.current?.click(); }} 
-                            className="px-4 py-3 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[10px] text-[#00f2ff] font-bold uppercase tracking-wider rounded-sm flex items-center justify-center cursor-pointer transition-all"
-                          >
-                            <Upload className="w-3.5 h-3.5 mr-1" /> ФАЙЛ
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Название трека</label>
-                          <input
-                            type="text"
-                            placeholder="Название песни"
-                            value={config.audioTitle}
-                            onChange={e => updateConfigValue('audioTitle', e.target.value)}
-                            className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Исполнитель / Продюсер (Artist)</label>
-                          <input
-                            type="text"
-                            placeholder="Имя создателя"
-                            value={config.audioArtist}
-                            onChange={e => updateConfigValue('audioArtist', e.target.value)}
-                            className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="p-3.5 bg-white/5 rounded-sm border border-white/10 text-[10px] leading-relaxed font-sans text-neutral-400">
-                        📻 <strong>Важная информация об автоматическом воспроизведении:</strong> Современные интернет-браузеры блокируют нежелательное воспроизведение музыки до первого клика на странице. Наша интерактивная клик-заставка (Click to Enter) прекрасно решает эту проблему — звук зазвучит чистейшим образом сразу после входа в ваш профиль. Ссылка обязательно должна оканчиваться на `.mp3`.
-                      </div>
-
-                      {/* --- AUDIO VISUALIZER SETTINGS --- */}
-                      <div className="border-t border-white/5 pt-4 space-y-4">
-                        <h4 className="text-[11px] font-black uppercase tracking-widest text-[#00f2ff] flex items-center gap-2 italic">
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Аудио Визуализатор (Canvas)</span>
-                        </h4>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Отображение визуализатора</label>
-                            <button
-                              type="button"
-                              onClick={() => updateConfigValue('audioVisualizerEnabled', config.audioVisualizerEnabled === false ? true : false)}
-                              className={`w-full py-2.5 rounded-sm border font-black text-[10px] uppercase transition tracking-widest cursor-pointer ${
-                                config.audioVisualizerEnabled !== false ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]' : 'bg-black/20 border-white/10 text-neutral-500'
-                              }`}
-                            >
-                              {config.audioVisualizerEnabled !== false ? '[ АКТИВЕН (РЕКОМЕНДУЕТСЯ) ]' : '[ ВЫКЛЮЧЕН ]'}
-                            </button>
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Стиль визуализации</label>
-                            <select
-                              value={config.audioVisualizerStyle || 'bars'}
-                              onChange={e => updateConfigValue('audioVisualizerStyle', e.target.value)}
-                              className="w-full bg-black border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none"
-                            >
-                              <option value="bars">📶 Neon Bars (Частотные полосы)</option>
-                              <option value="wave">〰️ Soundwave Curve (Органическая волна)</option>
-                              <option value="retro">👾 8-Bit Blocks (Ретро эквалайзер)</option>
-                              <option value="circular">🎯 Cosmic Circle (Спектральный круг в центре)</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="p-3 bg-cyan-950/20 border border-cyan-800/20 rounded-sm text-[10px] text-cyan-400 font-sans leading-normal">
-                          ℹ️ Наш аудио-визуализатор использует гибридный аналитический движок. Если ваш аудио-хостинг поддерживает CORS, он будет выводить настоящие музыкальные частоты в реальном времени. В ином случае, движок мгновенно переключится на высокоточную математическую симуляцию, которая синхронизируется с воспроизведением!
-                        </div>
-                      </div>
-
-                      {/* --- PLAYLIST MANAGEMENT ENGINE --- */}
-                      <div className="border-t border-white/5 pt-5 mt-5">
-                        <div className="flex justify-between items-center mb-3">
-                          <h4 className="text-[11px] font-black font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 italic">
-                            <Music className="w-3.5 h-3.5" />
-                            <span>Управление плейлистом (Несколько песен)</span>
-                          </h4>
+                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Музыка вкл</label>
                           <button
                             type="button"
-                            onClick={() => {
-                              const currentPlaylist = config.playlist || [];
-                              const newSong = {
-                                id: `song-${Date.now()}`,
-                                url: '',
-                                title: `Песня #${currentPlaylist.length + 1}`,
-                                artist: 'Исполнитель'
-                              };
-                              updateConfigValue('playlist', [...currentPlaylist, newSong]);
-                            }}
-                            className="px-2.5 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-[9px] font-bold uppercase tracking-wider rounded-sm transition cursor-pointer"
+                            onClick={() => updateConfigValue('audioEnabled', !config.audioEnabled)}
+                            className={`w-full py-2.5 rounded-sm border font-black text-[10px] uppercase transition tracking-widest cursor-pointer ${
+                              config.audioEnabled ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
+                            }`}
                           >
-                            + Добавить песню
+                            {config.audioEnabled ? '[ ВКЛЮЧЕНО ]' : '[ ВЫКЛЮЧЕНО ]'}
                           </button>
                         </div>
+                        <div>
+                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Режим источника</label>
+                          <select
+                            value={config.audioSourceMode || 'single'}
+                            onChange={e => updateConfigValue('audioSourceMode', e.target.value)}
+                            className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none cursor-pointer"
+                          >
+                            <option value="single">1 файл</option>
+                            <option value="playlist">Плейлист</option>
+                          </select>
+                        </div>
+                      </div>
 
-                        {(!config.playlist || config.playlist.length === 0) ? (
-                          <div className="p-4 bg-white/[0.01] border border-white/5 rounded-sm text-center text-neutral-500 font-mono text-[10px] leading-relaxed">
-                            Плейлист пуст. Вы можете добавить несколько песен, чтобы ваш полномасштабный плеер поддерживал переключение треков! Если плейлист пуст, плеер будет играть основную песню выше.
+                      <div>
+                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Режим плеера</label>
+                        <select
+                          value={config.audioPlayerMode || 'minimal'}
+                          onChange={e => updateConfigValue('audioPlayerMode', e.target.value)}
+                          className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none cursor-pointer"
+                        >
+                          <option value="hidden">Без UI (hidden)</option>
+                          <option value="minimal">Minimal bar</option>
+                          <option value="inline">В layout</option>
+                          <option value="floating">Уголок</option>
+                        </select>
+                      </div>
+
+                      {(config.audioSourceMode || 'single') === 'single' ? (
+                        <div className="space-y-3 p-3 bg-white/[0.02] border border-white/10 rounded-sm">
+                          <div>
+                            <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Аудиофайл (URL или загрузка)</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="https://example.com/sound-beat.mp3"
+                                value={config.audioUrl}
+                                onChange={e => updateConfigValue('audioUrl', e.target.value)}
+                                className="flex-grow bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => { setUploadTarget('audioUrl'); fileInputRef.current?.click(); }}
+                                className="px-4 py-3 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[10px] text-[#00f2ff] font-bold uppercase tracking-wider rounded-sm flex items-center justify-center cursor-pointer transition-all"
+                              >
+                                <Upload className="w-3.5 h-3.5 mr-1" /> ФАЙЛ
+                              </button>
+                            </div>
                           </div>
-                        ) : (
-                          <div className="space-y-3.5">
-                            {config.playlist.map((song, sIdx) => (
-                              <div key={song.id} className="p-3 bg-white/[0.02] border border-white/15 rounded-sm space-y-3 relative">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[10px] font-bold text-white uppercase tracking-wider font-mono">Трек #{sIdx + 1}</span>
-                                  <div className="flex items-center space-x-1.5">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Название</label>
+                              <input
+                                type="text"
+                                value={config.audioTitle}
+                                onChange={e => updateConfigValue('audioTitle', e.target.value)}
+                                className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Исполнитель</label>
+                              <input
+                                type="text"
+                                value={config.audioArtist}
+                                onChange={e => updateConfigValue('audioArtist', e.target.value)}
+                                className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">Треки плейлиста</label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const list = config.playlist || [];
+                                updateConfigValue('playlist', [...list, {
+                                  id: `song-${Date.now()}`,
+                                  url: '',
+                                  title: 'Песня',
+                                  artist: 'Исполнитель'
+                                }]);
+                              }}
+                              className="px-2 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-400 text-[9px] font-bold uppercase rounded-sm cursor-pointer"
+                            >
+                              + Трек
+                            </button>
+                          </div>
+                          {(!config.playlist || config.playlist.length === 0) ? (
+                            <div className="p-4 bg-white/[0.01] border border-white/5 rounded-sm text-center text-neutral-500 text-[10px]">
+                              Плейлист пуст. Добавьте треки и загрузите MP3 на каждый.
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {config.playlist.map((song, sIdx) => (
+                                <div key={song.id} className="flex items-center gap-2 p-2.5 bg-black/40 border border-white/10 rounded-sm group">
+                                  <div className="w-8 h-8 rounded-sm bg-[#00f2ff]/10 border border-[#00f2ff]/20 flex items-center justify-center flex-shrink-0">
+                                    <Music className="w-3.5 h-3.5 text-[#00f2ff]" />
+                                  </div>
+                                  <div className="flex-grow min-w-0 grid grid-cols-2 gap-1.5">
+                                    <input
+                                      type="text"
+                                      value={song.title}
+                                      onChange={e => {
+                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, title: e.target.value } : s);
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="bg-black/50 border border-white/10 rounded-sm px-2 py-1 text-[10px] text-white outline-none"
+                                      placeholder="Title"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={song.artist}
+                                      onChange={e => {
+                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, artist: e.target.value } : s);
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="bg-black/50 border border-white/10 rounded-sm px-2 py-1 text-[10px] text-white outline-none"
+                                      placeholder="Artist"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={song.url}
+                                      onChange={e => {
+                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, url: e.target.value } : s);
+                                        updateConfigValue('playlist', list);
+                                      }}
+                                      className="col-span-2 bg-black/50 border border-white/10 rounded-sm px-2 py-1 text-[10px] text-neutral-400 outline-none truncate"
+                                      placeholder="URL или загрузите файл"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col gap-1 flex-shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setUploadTarget('playlistTrack'); setUploadSongId(song.id); fileInputRef.current?.click(); }}
+                                      className="px-2 py-1 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[#00f2ff] text-[8px] font-bold uppercase rounded-sm cursor-pointer"
+                                    >
+                                      ФАЙЛ
+                                    </button>
                                     <button
                                       type="button"
                                       disabled={sIdx === 0}
                                       onClick={() => {
                                         const list = [...(config.playlist || [])];
-                                        const temp = list[sIdx];
-                                        list[sIdx] = list[sIdx - 1];
-                                        list[sIdx - 1] = temp;
+                                        [list[sIdx - 1], list[sIdx]] = [list[sIdx], list[sIdx - 1]];
                                         updateConfigValue('playlist', list);
                                       }}
-                                      className="p-1 bg-white/5 hover:bg-white/10 disabled:opacity-25 rounded-sm text-[9px] text-neutral-400 font-bold cursor-pointer"
-                                    >
-                                      ▲
-                                    </button>
+                                      className="p-0.5 bg-white/5 hover:bg-white/10 disabled:opacity-25 rounded-sm text-[8px] cursor-pointer"
+                                    >▲</button>
                                     <button
                                       type="button"
                                       disabled={sIdx === (config.playlist || []).length - 1}
                                       onClick={() => {
                                         const list = [...(config.playlist || [])];
-                                        const temp = list[sIdx];
-                                        list[sIdx] = list[sIdx + 1];
-                                        list[sIdx + 1] = temp;
+                                        [list[sIdx], list[sIdx + 1]] = [list[sIdx + 1], list[sIdx]];
                                         updateConfigValue('playlist', list);
                                       }}
-                                      className="p-1 bg-white/5 hover:bg-white/10 disabled:opacity-25 rounded-sm text-[9px] text-neutral-400 font-bold cursor-pointer"
-                                    >
-                                      ▼
-                                    </button>
+                                      className="p-0.5 bg-white/5 hover:bg-white/10 disabled:opacity-25 rounded-sm text-[8px] cursor-pointer"
+                                    >▼</button>
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        const list = (config.playlist || []).filter(s => s.id !== song.id);
-                                        updateConfigValue('playlist', list);
-                                      }}
-                                      className="p-1 px-1.5 bg-red-950/40 hover:bg-red-900 border border-red-500/20 hover:border-red-500 text-red-400 rounded-sm text-[9px] uppercase font-bold cursor-pointer transition-all"
-                                    >
-                                      Удалить
-                                    </button>
+                                      onClick={() => updateConfigValue('playlist', (config.playlist || []).filter(s => s.id !== song.id))}
+                                      className="p-0.5 bg-red-950/40 border border-red-500/20 text-red-400 rounded-sm text-[8px] cursor-pointer"
+                                    >✕</button>
                                   </div>
                                 </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                                  <div>
-                                    <label className="block text-[8px] uppercase tracking-wider text-neutral-500 mb-1">Название песни</label>
-                                    <input
-                                      type="text"
-                                      value={song.title}
-                                      onChange={(e) => {
-                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, title: e.target.value } : s);
-                                        updateConfigValue('playlist', list);
-                                      }}
-                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1.5 px-2 text-[11px] text-white focus:outline-none"
-                                      placeholder="Название"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[8px] uppercase tracking-wider text-neutral-500 mb-1">Исполнитель</label>
-                                    <input
-                                      type="text"
-                                      value={song.artist}
-                                      onChange={(e) => {
-                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, artist: e.target.value } : s);
-                                        updateConfigValue('playlist', list);
-                                      }}
-                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1.5 px-2 text-[11px] text-white focus:outline-none"
-                                      placeholder="Исполнитель"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[8px] uppercase tracking-wider text-neutral-500 mb-1">Прямая MP3-ссылка</label>
-                                    <input
-                                      type="text"
-                                      value={song.url}
-                                      onChange={(e) => {
-                                        const list = (config.playlist || []).map(s => s.id === song.id ? { ...s, url: e.target.value } : s);
-                                        updateConfigValue('playlist', list);
-                                      }}
-                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1.5 px-2 text-[11px] text-white focus:outline-none"
-                                      placeholder="https://example.com/song.mp3"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => updateConfigValue('hidePlayerUntilHover', !config.hidePlayerUntilHover)}
+                          className={`flex-1 py-2 rounded-sm border text-[9px] font-bold uppercase cursor-pointer ${
+                            config.hidePlayerUntilHover ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'
+                          }`}
+                        >
+                          Плеер при hover
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateConfigValue('rememberVolume', !config.rememberVolume)}
+                          className={`flex-1 py-2 rounded-sm border text-[9px] font-bold uppercase cursor-pointer ${
+                            config.rememberVolume ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'
+                          }`}
+                        >
+                          Запомнить громкость
+                        </button>
                       </div>
+
+                      <details className="border-t border-white/5 pt-4">
+                        <summary className="text-[11px] font-black uppercase tracking-widest text-[#00f2ff] cursor-pointer flex items-center gap-2">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Аудио визуализатор
+                        </summary>
+                        <div className="mt-3 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <button
+                              type="button"
+                              onClick={() => updateConfigValue('audioVisualizerEnabled', config.audioVisualizerEnabled === false)}
+                              className={`py-2 rounded-sm border text-[10px] font-black uppercase cursor-pointer ${
+                                config.audioVisualizerEnabled !== false ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'
+                              }`}
+                            >
+                              {config.audioVisualizerEnabled !== false ? '[ АКТИВЕН ]' : '[ ВЫКЛЮЧЕН ]'}
+                            </button>
+                            <select
+                              value={config.audioVisualizerStyle || 'bars'}
+                              onChange={e => updateConfigValue('audioVisualizerStyle', e.target.value)}
+                              className="bg-black border border-white/15 rounded-sm p-2 text-xs text-white outline-none"
+                            >
+                              <option value="bars">Neon Bars</option>
+                              <option value="wave">Soundwave</option>
+                              <option value="retro">8-Bit Blocks</option>
+                              <option value="circular">Cosmic Circle</option>
+                              <option value="mirror">Mirror Bars</option>
+                              <option value="oscilloscope">Oscilloscope</option>
+                              <option value="particles">Particles</option>
+                              <option value="aurora">Aurora</option>
+                              <option value="pulse">Pulse Rings</option>
+                            </select>
+                          </div>
+                        </div>
+                      </details>
                     </div>
                   </div>
                 )}
