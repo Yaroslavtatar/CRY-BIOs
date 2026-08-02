@@ -13,6 +13,7 @@ import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/type
 import * as db from './src/db';
 import { streamFullBackup, importFullBackup } from './src/backup';
 import { isAllowedMime, isImageMime, processUploadedImage, type ImageUploadType } from './src/imageProcessing';
+import { isVideoMime, processUploadedVideo } from './src/videoProcessing';
 
 // Establish folders
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -60,7 +61,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (isAllowedMime(file.mimetype)) {
       cb(null, true);
@@ -257,6 +258,12 @@ async function startServer() {
           url: fileUrl,
           thumbUrl: result.thumbFilename ? `/uploads/thumbs/${result.thumbFilename}` : undefined,
         });
+      }
+
+      if (isVideoMime(req.file.mimetype)) {
+        const result = await processUploadedVideo(req.file.path, UPLOADS_DIR);
+        const fileUrl = `/uploads/${result.filename}`;
+        return res.json({ url: fileUrl });
       }
 
       const fileUrl = `/uploads/${req.file.filename}`;
@@ -736,6 +743,11 @@ async function startServer() {
       let backgroundEffects = getValueByRegex(/"background_effects"\s*:\s*"([^"]+)"/) || 'rain';
       let blurVal = parseInt(getValueByRegex(/"blur"\s*:\s*([0-9]+)/) || '2');
       let opacityVal = parseFloat(getValueByRegex(/"opacity"\s*:\s*([0-9\.]+)/) || '0.05') * 100;
+      const sparklesRaw = getValueByRegex(/"sparkles"\s*:\s*(true|false)/) ||
+        getValueByRegex(/"cursor_sparkles"\s*:\s*(true|false)/);
+      let sparklesEnabled = sparklesRaw === 'true';
+      let nameEffect = getValueByRegex(/"username_effect"\s*:\s*"([^"]+)"/) ||
+        getValueByRegex(/"name_effect"\s*:\s*"([^"]+)"/) || '';
 
       // Soundtrack track audio URL
       let audioUrl = getValueByRegex(/"url"\s*:\s*"([^"]+\.mp3[^"]*)"/) || '';
@@ -827,6 +839,10 @@ async function startServer() {
         backgroundEffects = parsedConfig.background_effects || backgroundEffects;
         if (parsedConfig.blur !== undefined) blurVal = parsedConfig.blur;
         if (parsedConfig.opacity !== undefined) opacityVal = parsedConfig.opacity * 100;
+        if (parsedConfig.sparkles !== undefined) sparklesEnabled = !!parsedConfig.sparkles;
+        else if (parsedConfig.cursor_sparkles !== undefined) sparklesEnabled = !!parsedConfig.cursor_sparkles;
+        if (parsedConfig.username_effect) nameEffect = parsedConfig.username_effect;
+        else if (parsedConfig.name_effect) nameEffect = parsedConfig.name_effect;
         
         if (parsedConfig.audio && Array.isArray(parsedConfig.audio) && parsedConfig.audio.length > 0) {
           const sel = parsedConfig.audio.find((a: any) => a.selected) || parsedConfig.audio[0];
@@ -852,17 +868,31 @@ async function startServer() {
         }
       }
 
+      const mapBgEffects = (effects: string) => {
+        switch (effects) {
+          case 'rain': return { bgType: 'rain', snowEffectsEnabled: false };
+          case 'snow': return { bgType: bgType as string, snowEffectsEnabled: true };
+          case 'rain_snow': return { bgType: 'rain', snowEffectsEnabled: true };
+          case 'matrix': return { bgType: 'matrix', snowEffectsEnabled: false };
+          case 'stars': return { bgType: 'stars', snowEffectsEnabled: false };
+          default: return { bgType: bgType as string, snowEffectsEnabled: false };
+        }
+      };
+      const bgMapped = mapBgEffects(backgroundEffects);
+
       res.json({
         success: true,
         data: {
           displayName,
           bio,
           avatarUrl,
-          bgType,
+          bgType: bgMapped.bgType,
           bgValue,
           audioUrl,
           customCursorUrl: customCursor || '',
-          snowEffectsEnabled: backgroundEffects === 'rain' || backgroundEffects === 'snow' || backgroundEffects === 'rain_snow',
+          snowEffectsEnabled: bgMapped.snowEffectsEnabled,
+          sparkles: sparklesEnabled,
+          nameEffect: nameEffect || undefined,
           bgBlur: blurVal,
           cardOpacity: opacityVal,
           socialsList,

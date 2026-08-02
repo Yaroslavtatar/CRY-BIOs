@@ -7,6 +7,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BioConfig, SocialLink, BlockConfig } from '../types';
 import { Volume2, VolumeX, Flame, Play, Eye, Share2, CornerDownRight, Quote, Sparkles, Music, SkipBack, Pause, SkipForward, Crown, Shield, ShieldCheck, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2 } from 'lucide-react';
+import MinimalAudioBar from './MinimalAudioBar';
+import SparkleCanvas from './SparkleCanvas';
+import BackgroundCanvas from './BackgroundCanvas';
+import LocationLine from './LocationLine';
+import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
 
 const renderBadgeIcon = (iconName: string) => {
   const iconProps = { className: "w-3 h-3 flex-shrink-0" };
@@ -46,19 +51,17 @@ interface BioPageProps {
 export default function BioPage({ username, onExit, previewConfig }: BioPageProps) {
   const [config, setConfig] = useState<BioConfig | null>(previewConfig || null);
   const [loading, setLoading] = useState(!previewConfig);
-  const [entered, setEntered] = useState(false);
+  const [entered, setEntered] = useState(!!previewConfig);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [visitorCount, setVisitorCount] = useState(137); // Seed
-  const [sparkleStars, setSparkleStars] = useState<{ x: number; y: number; id: number }[]>([]);
+  const [visitorCount, setVisitorCount] = useState(137);
+  const [parallax, setParallax] = useState({ x: 0, y: 0 });
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(211); // default 3:31 (211 sec)
   const [discordUser, setDiscordUser] = useState<any>(null);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [volume, setVolume] = useState(0.8); // 80% default volume
-  const [showPlaylistDrawer, setShowPlaylistDrawer] = useState(false);
-  
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // Audio Visualizer refs
@@ -329,6 +332,67 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         ctx.beginPath();
         ctx.arc(centerX, centerY, baseRadius - 15, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (style === 'mirror') {
+        const barWidth = (width / bufferLength) * 1.6;
+        const centerX = width / 2;
+        for (let i = 0; i < bufferLength; i++) {
+          const percent = (isPlaying ? smoothData[i] : smoothData[i] * 0.3) / 255;
+          const barHeight = percent * (height * 0.22);
+          const offset = (i - bufferLength / 2) * barWidth;
+          ctx.fillStyle = `${primaryColor}88`;
+          ctx.fillRect(centerX + offset, height - barHeight, barWidth - 1, barHeight);
+          ctx.fillRect(centerX - offset - barWidth, height - barHeight, barWidth - 1, barHeight);
+        }
+      } else if (style === 'oscilloscope') {
+        if (analyserRef.current) {
+          const timeData = new Uint8Array(analyserRef.current.frequencyBinCount);
+          analyserRef.current.getByteTimeDomainData(timeData);
+          ctx.strokeStyle = primaryColor;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          const slice = width / timeData.length;
+          for (let i = 0; i < timeData.length; i++) {
+            const v = timeData[i] / 128.0;
+            const y = (height * 0.85) + (v - 1) * (height * 0.1);
+            if (i === 0) ctx.moveTo(0, y);
+            else ctx.lineTo(i * slice, y);
+          }
+          ctx.stroke();
+        }
+      } else if (style === 'aurora') {
+        for (let w = 0; w < 3; w++) {
+          ctx.strokeStyle = `${primaryColor}${['33', '55', '77'][w]}`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let x = 0; x < width; x += 4) {
+            const i = Math.floor((x / width) * bufferLength);
+            const y = height * 0.7 + Math.sin(x * 0.01 + localTime * 2 + w) * (smoothData[i] / 255) * 80;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+      } else if (style === 'pulse') {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const bass = smoothData.slice(0, 8).reduce((a, b) => a + b, 0) / 8 / 255;
+        for (let r = 1; r <= 4; r++) {
+          ctx.strokeStyle = `${primaryColor}${Math.floor((0.4 - r * 0.08) * 255).toString(16).padStart(2, '0')}`;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, 80 * r + bass * 60, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (style === 'particles') {
+        for (let i = 0; i < bufferLength; i += 2) {
+          const percent = smoothData[i] / 255;
+          if (percent < 0.2) continue;
+          const x = (i / bufferLength) * width;
+          const y = height - percent * height * 0.4;
+          ctx.fillStyle = primaryColor;
+          ctx.beginPath();
+          ctx.arc(x, y, 2 + percent * 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       animId = requestAnimationFrame(draw);
@@ -407,19 +471,21 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
   // Helper to compile final song list
   const getPlaylist = () => {
-    const list: any[] = [];
-    if (config?.playlist && config.playlist.length > 0) {
-      return config.playlist;
+    if (config?.audioSourceMode === 'playlist' && config?.playlist && config.playlist.length > 0) {
+      return config.playlist.filter((s) => s.url);
     }
     if (config?.audioUrl) {
-      list.push({
+      return [{
         id: 'main',
         url: config.audioUrl,
         title: config.audioTitle || 'Soundtrack',
-        artist: config.audioArtist || 'CRY BIOS Player'
-      });
+        artist: config.audioArtist || 'CRY BIOS Player',
+      }];
     }
-    return list;
+    if (config?.playlist && config.playlist.length > 0) {
+      return config.playlist.filter((s) => s.url);
+    }
+    return [];
   };
 
   const songs = getPlaylist();
@@ -435,9 +501,10 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
     setCurrentSongIndex((prev) => (prev - 1 + songs.length) % songs.length);
   };
 
-  // Audio setup and autoplay cycle with Playlist Support
+  // Audio setup — skip separate audio when video provides sound
   useEffect(() => {
-    if (!config || !config.audioEnabled || !currentSong || !currentSong.url) {
+    const useVideoAudio = config?.bgVideoUseAsAudio && config?.bgType === 'video' && config?.bgValue;
+    if (!config || !config.audioEnabled || useVideoAudio || !currentSong || !currentSong.url) {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -492,7 +559,76 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       audio.removeEventListener('ended', handleEnded);
       audioRef.current = null;
     };
-  }, [currentSong?.url, config?.audioEnabled, entered, currentSongIndex]);
+  }, [currentSong?.url, config?.audioEnabled, config?.bgVideoUseAsAudio, config?.bgType, config?.bgValue, entered, currentSongIndex]);
+
+  // Video background audio after enter
+  useEffect(() => {
+    const video = bgVideoRef.current;
+    if (!video || config?.bgType !== 'video') return;
+    if (entered && (config.bgVideoAudioEnabled || config.bgVideoUseAsAudio)) {
+      video.muted = isMuted;
+      video.volume = volume;
+      if (!isMuted) {
+        video.play().then(() => setIsPlaying(true)).catch(() => {});
+      }
+    } else {
+      video.muted = true;
+    }
+  }, [entered, isMuted, volume, config?.bgType, config?.bgVideoAudioEnabled, config?.bgVideoUseAsAudio]);
+
+  // Remember volume in localStorage
+  useEffect(() => {
+    if (config?.rememberVolume) {
+      const saved = localStorage.getItem(`cry_bios_vol_${username}`);
+      if (saved) setVolume(parseFloat(saved));
+    }
+  }, [config?.rememberVolume, username]);
+
+  useEffect(() => {
+    if (config?.rememberVolume) {
+      localStorage.setItem(`cry_bios_vol_${username}`, String(volume));
+    }
+  }, [volume, config?.rememberVolume, username]);
+
+  // OG meta tags
+  useEffect(() => {
+    if (!config) return;
+    const title = config.customPageTitle || `${config.displayName || config.username} | CRY BIOS`;
+    document.title = title;
+    const setMeta = (prop: string, content: string) => {
+      let el = document.querySelector(`meta[property="${prop}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('property', prop);
+        document.head.appendChild(el);
+      }
+      el.content = content;
+    };
+    setMeta('og:title', title);
+    setMeta('og:description', config.bio || '');
+    if (config.avatarUrl) setMeta('og:image', config.avatarUrl.startsWith('http') ? config.avatarUrl : `${window.location.origin}${config.avatarUrl}`);
+    if (config.customFaviconUrl) {
+      let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = config.customFaviconUrl;
+    }
+  }, [config]);
+
+  // Parallax tilt
+  useEffect(() => {
+    if (!config?.parallaxEnabled || !entered) return;
+    const onMove = (e: MouseEvent) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * 12;
+      const y = (e.clientY / window.innerHeight - 0.5) * 12;
+      setParallax({ x, y });
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, [config?.parallaxEnabled, entered]);
 
   // Handle live volume adjustments
   useEffect(() => {
@@ -517,6 +653,15 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
   // Play/Pause control helper
   const handlePlayPause = () => {
+    if (config?.bgVideoUseAsAudio && bgVideoRef.current) {
+      if (isPlaying) {
+        bgVideoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        bgVideoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      }
+      return;
+    }
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
@@ -525,182 +670,6 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
-
-  // Sparkles mouse trail trigger
-  useEffect(() => {
-    if (!config || !config.sparkles || !entered) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (Math.random() > 0.15) return; // limit count
-      const star = {
-        x: e.clientX,
-        y: e.clientY,
-        id: Math.random()
-      };
-      setSparkleStars(prev => [...prev.slice(-30), star]); // keep last 30
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
-  }, [config?.sparkles, entered]);
-
-  // Canvas visualizer background runner
-  useEffect(() => {
-    if (!entered || !config || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animId: number;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
-
-    const handleResize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-    window.addEventListener('resize', handleResize);
-
-    // Matrix Background Setup
-    const columns = Math.floor(width / 18);
-    const matrixDrops = Array(columns).fill(1);
-    const matrixChars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ☣☠☣⚒⚙';
-
-    // Stars Twinkle Background Setup
-    const stars: { x: number; y: number; size: number; speed: number; alpha: number }[] = [];
-    for (let i = 0; i < 90; i++) {
-      stars.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        size: Math.random() * 1.5 + 0.5,
-        speed: Math.random() * 0.3 + 0.05,
-        alpha: Math.random()
-      });
-    }
-
-    // Stellar rain lightning droplets
-    const rainDrops: { x: number; y: number; length: number; speed: number }[] = [];
-    for (let i = 0; i < 60; i++) {
-      rainDrops.push({
-        x: Math.random() * width,
-        y: Math.random() * -height,
-        length: Math.random() * 18 + 5,
-        speed: Math.random() * 8 + 4
-      });
-    }
-
-    // New: Snow storm particles fallback
-    const snowFalls: { x: number; y: number; radius: number; speedY: number; speedX: number; opacity: number }[] = [];
-    for (let i = 0; i < 80; i++) {
-      snowFalls.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        radius: Math.random() * 2 + 1,
-        speedY: Math.random() * 1.2 + 0.4,
-        speedX: Math.random() * 1 - 0.5,
-        opacity: Math.random() * 0.6 + 0.4
-      });
-    }
-
-    const draw = () => {
-      ctx.clearRect(0, 0, width, height);
-
-      // 1. Matrix Draw cycle
-      if (config.bgType === 'matrix') {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = config.primaryColor || '#00ffcc';
-        ctx.font = '13px monospace';
-
-        for (let i = 0; i < matrixDrops.length; i++) {
-          const text = matrixChars[Math.floor(Math.random() * matrixChars.length)];
-          ctx.fillText(text, i * 18, matrixDrops[i] * 18);
-
-          if (matrixDrops[i] * 18 > height && Math.random() > 0.96) {
-            matrixDrops[i] = 0;
-          }
-          matrixDrops[i]++;
-        }
-      } 
-      
-      // 2. Twinkle Stars Draw cycle
-      else if (config.bgType === 'stars') {
-        ctx.fillStyle = config.bgValue || '#0a0910';
-        ctx.fillRect(0, 0, width, height);
-
-        stars.forEach(s => {
-          s.alpha += s.speed * 0.05;
-          if (s.alpha > 1 || s.alpha < 0) s.speed = -s.speed;
-          
-          ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0.1, Math.min(1, s.alpha))})`;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Drift slowly leftwards
-          s.x -= 0.15;
-          if (s.x < 0) s.x = width;
-        });
-      } 
-      
-      // 3. Falling Digital rain drops
-      else if (config.bgType === 'rain') {
-        ctx.fillStyle = 'rgba(10, 8, 15, 0.45)';
-        ctx.fillRect(0, 0, width, height);
-        ctx.strokeStyle = config.primaryColor || '#a855f7';
-        ctx.lineWidth = 1;
-
-        rainDrops.forEach(r => {
-          ctx.beginPath();
-          ctx.moveTo(r.x, r.y);
-          ctx.lineTo(r.x, r.y + r.length);
-          ctx.stroke();
-
-          r.y += r.speed;
-          if (r.y > height) {
-            r.y = -20;
-            r.x = Math.random() * width;
-          }
-        });
-      }
-
-      // 4. Fallback Gentle Snow system
-      else if (config.bgType === 'snow' || config.snowEffectsEnabled) {
-        ctx.fillStyle = 'rgba(10, 8, 15, 0.45)';
-        ctx.fillRect(0, 0, width, height);
-
-        snowFalls.forEach(sf => {
-          ctx.fillStyle = `rgba(255, 255, 255, ${sf.opacity})`;
-          ctx.beginPath();
-          ctx.arc(sf.x, sf.y, sf.radius, 0, Math.PI * 2);
-          ctx.fill();
-
-          sf.y += sf.speedY;
-          sf.x += sf.speedX;
-
-          if (sf.y > height) {
-            sf.y = -5;
-            sf.x = Math.random() * width;
-          }
-          if (sf.x > width || sf.x < 0) {
-            sf.x = Math.random() * width;
-          }
-        });
-      }
-
-      animId = requestAnimationFrame(draw);
-    };
-
-    draw();
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [entered, config?.bgType, config?.primaryColor, config?.snowEffectsEnabled]);
 
   // Background visual styling resolver
   const resolveBackgroundCSS = (): React.CSSProperties => {
@@ -880,6 +849,43 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
   const handleEntryClick = () => {
     setEntered(true);
+    if (bgVideoRef.current && (config?.bgVideoAudioEnabled || config?.bgVideoUseAsAudio)) {
+      bgVideoRef.current.muted = isMuted;
+      bgVideoRef.current.play().catch(() => {});
+    }
+  };
+
+  const hasAudio = config?.audioEnabled && (
+    songs.length > 0 ||
+    (config.bgVideoUseAsAudio && config.bgType === 'video' && config.bgValue)
+  );
+
+  const playerMode = config?.audioPlayerMode || 'minimal';
+
+  const renderAudioBar = (variant: 'minimal' | 'inline' | 'floating') => {
+    if (!hasAudio || playerMode === 'hidden' || playerMode !== variant) return null;
+    return (
+      <MinimalAudioBar
+        currentSong={currentSong || { id: 'v', url: '', title: config?.audioTitle || 'Soundtrack', artist: config?.audioArtist || '' }}
+        isPlaying={isPlaying}
+        isMuted={isMuted}
+        audioCurrentTime={audioCurrentTime}
+        audioDuration={audioDuration}
+        songsCount={songs.length}
+        primaryColor={config?.primaryColor}
+        variant={variant}
+        hideUntilHover={config?.hidePlayerUntilHover}
+        onPlayPause={handlePlayPause}
+        onPrev={handlePrevSong}
+        onNext={handleNextSong}
+        onSeek={(pct) => {
+          if (audioRef.current && audioDuration) {
+            audioRef.current.currentTime = pct * audioDuration;
+          }
+        }}
+        formatTime={formatTime}
+      />
+    );
   };
 
   if (loading) {
@@ -892,150 +898,6 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       </div>
     );
   }
-
-  const renderCRYBIOSPlayer = () => {
-    if (!config || !currentSong) return null;
-    return (
-      <div key="player" className="w-[98%] max-w-[400px] bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 p-4 mb-4 flex flex-col space-y-3.5 shadow-[0_0_25px_rgba(0,f2,ff,0.15)] transition-all relative overflow-hidden">
-        {/* Glowing Accent line */}
-        <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#00f2ff]/60 to-transparent"></div>
-
-        <div className="flex justify-between items-center px-1">
-           <div className="flex items-center space-x-3 overflow-hidden">
-             <div className={`w-[38px] h-[38px] flex items-center justify-center bg-[#00f2ff]/10 border border-[#00f2ff]/20 rounded-xl backdrop-blur-md shadow-inner flex-shrink-0 ${isPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '8s' }}>
-               <Music className="w-[18px] h-[18px] text-[#00f2ff] drop-shadow-[0_0_8px_#00f2ff]" />
-             </div>
-             <div className="flex flex-col text-left overflow-hidden">
-               <span className="text-[13px] font-bold text-white drop-shadow-md truncate max-w-[170px]">{currentSong.title || 'Soundtrack'}</span>
-               <span className="text-[10px] text-[#00f2ff] drop-shadow-md truncate max-w-[170px] uppercase tracking-wider font-semibold mt-0.5">{currentSong.artist || 'CRY BIOS'}</span>
-             </div>
-           </div>
-           
-           {/* Control buttons */}
-           <div className="flex items-center space-x-2 text-white/80 p-1.5 bg-white/5 rounded-xl border border-white/5 shadow-inner">
-             <button 
-               type="button"
-               onClick={handlePrevSong} 
-               disabled={songs.length <= 1}
-               className="hover:text-[#00f2ff] disabled:opacity-20 disabled:hover:text-white/80 transition-all cursor-pointer p-1.5"
-               title="Предыдущая песня"
-             >
-               <SkipBack className="w-[14px] h-[14px] fill-current" />
-             </button>
-             <button 
-               type="button"
-               onClick={handlePlayPause} 
-               className="hover:text-[#00f2ff] hover:scale-110 active:scale-95 transition-all cursor-pointer p-1.5 text-white"
-               title={isPlaying ? "Пауза" : "Играть"}
-             >
-               {isPlaying ? <Pause className="w-[18px] h-[18px] fill-current" /> : <Play className="w-[18px] h-[18px] fill-current" />}
-             </button>
-             <button 
-               type="button"
-               onClick={handleNextSong} 
-               disabled={songs.length <= 1}
-               className="hover:text-[#00f2ff] disabled:opacity-20 disabled:hover:text-white/80 transition-all cursor-pointer p-1.5"
-               title="Следующая песня"
-             >
-               <SkipForward className="w-[14px] h-[14px] fill-current" />
-             </button>
-           </div>
-        </div>
-
-        {/* Progress Bar with seeking */}
-        <div className="flex items-center space-x-3 text-[10px] text-white/50 drop-shadow-md font-mono">
-          <span className="w-8 text-right">{formatTime(audioCurrentTime)}</span>
-          <div 
-            onClick={(e) => {
-              if (!audioRef.current || !audioDuration) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              const clickX = e.clientX - rect.left;
-              const widthPercent = clickX / rect.width;
-              audioRef.current.currentTime = widthPercent * audioDuration;
-            }}
-            className="flex-1 h-[5px] bg-white/10 rounded-full cursor-pointer relative group overflow-hidden"
-          >
-            <div className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-[#00f2ff] to-[#00aaff] shadow-[0_0_8px_#00f2ff] rounded-full transition-all" style={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}></div>
-          </div>
-          <span className="w-8 text-left">{formatTime(audioDuration)}</span>
-        </div>
-
-        {/* Volume and Playlist Toggle section */}
-        <div className="flex items-center justify-between border-t border-white/5 pt-3 mt-1 px-1">
-          {/* Slick Volume Control with hover sliding */}
-          <div className="flex items-center space-x-2 text-neutral-400 group/volume">
-            <button type="button" onClick={toggleMute} className="hover:text-white transition cursor-pointer">
-              {isMuted || volume === 0 ? (
-                <VolumeX className="w-4 h-4 text-red-400" />
-              ) : (
-                <Volume2 className="w-4 h-4 text-cyan-400" />
-              )}
-            </button>
-            <input 
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={volume}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                setVolume(val);
-                if (val > 0 && isMuted) {
-                  setIsMuted(false);
-                  if (audioRef.current) audioRef.current.muted = false;
-                }
-              }}
-              className="w-20 sm:w-24 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#00f2ff] focus:outline-none transition-all hover:bg-white/20"
-              title={`Громкость: ${Math.round(volume * 100)}%`}
-            />
-            <span className="text-[9px] font-mono text-neutral-500 w-6 text-left">{Math.round(volume * 100)}%</span>
-          </div>
-
-          {/* Playlist Drawer Toggle */}
-          {songs.length > 1 && (
-            <button 
-              type="button"
-              onClick={() => setShowPlaylistDrawer(!showPlaylistDrawer)}
-              className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-sm border transition-all cursor-pointer flex items-center gap-1 ${
-                showPlaylistDrawer 
-                  ? 'bg-[#00f2ff]/20 border-[#00f2ff]/40 text-[#00f2ff] shadow-[0_0_8px_rgba(0,f2,ff,0.2)]' 
-                  : 'bg-white/5 border-white/10 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200'
-              }`}
-            >
-              Плейлист ({songs.length})
-            </button>
-          )}
-        </div>
-
-        {/* Playlist Drawer List */}
-        {showPlaylistDrawer && songs.length > 1 && (
-          <div className="border-t border-white/5 pt-3 mt-1 flex flex-col space-y-1.5 max-h-[140px] overflow-y-auto custom-scrollbar">
-            {songs.map((song, idx) => (
-              <div 
-                key={song.id}
-                onClick={() => {
-                  setCurrentSongIndex(idx);
-                }}
-                className={`flex justify-between items-center px-2.5 py-2 rounded-sm cursor-pointer transition-all text-left ${
-                  idx === currentSongIndex 
-                    ? 'bg-[#00f2ff]/10 border border-[#00f2ff]/20 text-[#00f2ff]' 
-                    : 'bg-black/20 hover:bg-white/5 border border-transparent text-neutral-400 hover:text-white'
-                }`}
-              >
-                <div className="flex flex-col overflow-hidden pr-2">
-                  <span className="text-[11px] font-semibold truncate leading-tight">{song.title || `Песня #${idx + 1}`}</span>
-                  <span className="text-[9px] text-neutral-500 truncate mt-0.5">{song.artist || 'Исполнитель'}</span>
-                </div>
-                {idx === currentSongIndex && isPlaying && (
-                  <span className="text-[10px] text-[#00f2ff] font-mono animate-pulse">PLAYING</span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   if (!config) {
     return (
@@ -1060,31 +922,41 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
   return (
     <div
-      className="min-h-screen relative text-white flex items-center justify-center p-4 overflow-x-hidden"
+      className={`min-h-screen relative text-white flex items-center justify-center p-4 overflow-x-hidden ${config.monochromeMode ? 'grayscale' : ''}`}
       style={resolveBackgroundCSS()}
     >
-      {/* Background Video loop of Guns.lol premium spec */}
       {config.bgType === 'video' && config.bgValue && (
         <video
+          ref={bgVideoRef}
           autoPlay
-          muted
+          muted={!entered || !(config.bgVideoAudioEnabled || config.bgVideoUseAsAudio) || isMuted}
           loop
           playsInline
           preload="metadata"
           className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none"
           src={config.bgValue}
+          onTimeUpdate={(e) => {
+            if (config.bgVideoUseAsAudio) {
+              setAudioCurrentTime(e.currentTarget.currentTime);
+              if (e.currentTarget.duration) setAudioDuration(e.currentTarget.duration);
+            }
+          }}
         />
       )}
 
-      {/* Background canvas for animation streams with support for fallback snow effects */}
-      {entered && (['matrix', 'stars', 'rain', 'snow'].includes(config.bgType) || config.snowEffectsEnabled) && (
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-0" />
-      )}
+      {entered && <BackgroundCanvas config={config} entered={entered} />}
 
-      {/* Audio Visualizer Canvas Overlay */}
       {entered && config.audioEnabled && (config.audioVisualizerEnabled !== false) && (
         <canvas ref={visualizerCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-[1]" />
       )}
+
+      <SparkleCanvas
+        enabled={!!config.sparkles}
+        entered={entered}
+        style={config.sparkleStyle}
+        color={config.sparkleColor || config.primaryColor}
+        intensity={config.sparkleIntensity}
+      />
 
       {/* Direct styling override for custom guns.lol cursors */}
       {config.customCursorUrl && (
@@ -1113,17 +985,6 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
       {/* Inject custom visual CSS rules safely inside raw style block */}
       {config.customCSS && <style>{config.customCSS}</style>}
-
-      {/* Sparks cursor elements */}
-      {config.sparkles && sparkleStars.map(star => (
-        <div
-          key={star.id}
-          className="absolute pointer-events-none z-[999] text-[10px] select-none text-white font-serif duration-700 animate-ping"
-          style={{ left: star.x - 3, top: star.y - 3, color: config.primaryColor }}
-        >
-          ✦
-        </div>
-      ))}
 
       {/* Signature Pre-entrance overlay (Click to enter) */}
       <AnimatePresence>
@@ -1187,128 +1048,20 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         </div>
       )}
 
-      {/* Floating Interactive Music Player and Volume Controller in the Corner */}
-      {config?.audioEnabled && config?.audioUrl && entered && (
-        <div 
-          className="fixed bottom-4 left-4 z-50 flex items-center bg-black/75 backdrop-blur-md border border-white/10 rounded-full p-2 text-white shadow-[0_10px_35px_rgba(0,0,0,0.8)] transition-all duration-500 ease-out max-w-[42px] hover:max-w-[420px] overflow-hidden group"
-          style={{ boxShadow: `0 0 20px rgba(0, 242, 255, 0.15)` }}
-        >
-          {/* Main spinning disc trigger / status indicator */}
-          <button
-            type="button"
-            onClick={handlePlayPause}
-            className={`w-[26px] h-[26px] flex items-center justify-center bg-[#00f2ff]/10 border border-[#00f2ff]/20 rounded-full text-[#00f2ff] flex-shrink-0 cursor-pointer shadow-inner relative hover:bg-[#00f2ff]/20 transition-colors ${
-              isPlaying ? 'animate-spin' : ''
-            }`}
-            style={{ animationDuration: '6s' }}
-            title={isPlaying ? 'Пауза' : 'Воспроизвести'}
-          >
-            <Music className="w-3.5 h-3.5 drop-shadow-[0_0_5px_#00f2ff]" />
-            {/* Pulsing glow if playing */}
-            {isPlaying && (
-              <span className="absolute inset-0 rounded-full border border-[#00f2ff] animate-ping opacity-45"></span>
-            )}
-          </button>
+      {entered && renderAudioBar('minimal')}
+      {entered && renderAudioBar('floating')}
 
-          {/* Expanded panel on hover */}
-          <div className="flex items-center space-x-3.5 ml-3 opacity-0 group-hover:opacity-100 transition-all duration-300 delay-75 pointer-events-none group-hover:pointer-events-auto whitespace-nowrap">
-            {/* Song details */}
-            <div className="flex flex-col text-left">
-              <span className="text-[11px] font-black text-white max-w-[100px] truncate leading-tight">
-                {currentSong?.title || 'Soundtrack'}
-              </span>
-              <span className="text-[8px] text-[#00f2ff] max-w-[100px] truncate uppercase tracking-widest font-mono mt-0.5">
-                {currentSong?.artist || 'CRY BIOS'}
-              </span>
-            </div>
-
-            {/* Micro Controls */}
-            <div className="flex items-center space-x-2.5 bg-white/5 border border-white/5 rounded-full px-2.5 py-1">
-              <button 
-                type="button"
-                onClick={handlePrevSong}
-                disabled={songs.length <= 1}
-                className="hover:text-[#00f2ff] disabled:opacity-25 disabled:hover:text-white transition cursor-pointer p-0.5"
-                title="Предыдущий трек"
-              >
-                <SkipBack className="w-3 h-3 fill-current" />
-              </button>
-              
-              <button 
-                type="button"
-                onClick={handlePlayPause}
-                className="hover:text-[#00f2ff] hover:scale-110 active:scale-95 transition cursor-pointer p-0.5"
-                title={isPlaying ? 'Пауза' : 'Играть'}
-              >
-                {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current text-[#00f2ff]" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-              </button>
-
-              <button 
-                type="button"
-                onClick={handleNextSong}
-                disabled={songs.length <= 1}
-                className="hover:text-[#00f2ff] disabled:opacity-25 disabled:hover:text-white transition cursor-pointer p-0.5"
-                title="Следующий трек"
-              >
-                <SkipForward className="w-3 h-3 fill-current" />
-              </button>
-            </div>
-
-            {/* Sliding Volume Slider - Slides out horizontally on hover of the volume icon! */}
-            <div className="flex items-center space-x-1 bg-white/5 border border-white/5 rounded-full px-2 py-1 overflow-hidden transition-all duration-300 max-w-[28px] hover:max-w-[140px] group/volume">
-              <button 
-                type="button"
-                onClick={toggleMute}
-                className="text-neutral-400 hover:text-white transition cursor-pointer flex-shrink-0"
-                title={isMuted ? 'Включить звук' : 'Выключить звук'}
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="w-3.5 h-3.5 text-red-400" />
-                ) : (
-                  <Volume2 className="w-3.5 h-3.5 text-[#00f2ff]" />
-                )}
-              </button>
-
-              <div className="w-0 group-hover/volume:w-20 overflow-hidden transition-all duration-300 ease-out flex items-center">
-                <input 
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={volume}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    setVolume(val);
-                    if (val > 0 && isMuted) {
-                      setIsMuted(false);
-                      if (audioRef.current) audioRef.current.muted = false;
-                    }
-                  }}
-                  className="w-16 h-1 bg-white/15 rounded-lg appearance-none cursor-pointer accent-[#00f2ff] focus:outline-none ml-2 flex-shrink-0"
-                  title={`Громкость: ${Math.round(volume * 100)}%`}
-                />
-                <span className="text-[8px] font-mono text-neutral-400 w-6 text-right ml-1 flex-shrink-0">
-                  {Math.round(volume * 100)}%
-                </span>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* Core Profile container without heavy card borders */}
       {entered && (
         <motion.div
           initial={{ opacity: 0, y: 35, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
+          animate={{ opacity: 1, y: 0, scale: 1, rotateX: parallax.y * 0.4, rotateY: parallax.x * 0.4 }}
           transition={{ duration: 0.7, type: 'spring', stiffness: 45 }}
+          style={{ transformPerspective: 800 }}
           className={`w-full max-w-lg p-6 relative z-10 flex flex-col items-center space-y-6 transition-all duration-300 ${
             previewConfig ? 'mt-14' : ''
           }`}
         >
-          {/* Core Layout Builder Loop */}
-          {(config.layout || ['avatar', 'username', 'badges', 'discord', 'bio', 'blocks', 'player']).map((section) => {
+          {(config.layout || ['avatar', 'username', 'location', 'badges', 'discord', 'bio', 'blocks', 'player']).map((section) => {
             if (section === 'avatar') {
               return (
                 <div key="avatar" className="relative flex flex-col items-center mb-4">
@@ -1319,7 +1072,11 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                     loading="eager"
                     decoding="async"
                     className="w-[100px] h-[100px] rounded-full object-cover relative z-10 transition duration-300"
-                    style={verifiedBadge ? { border: `2px solid ${config.glowColor || '#00f2ff'}`, boxShadow: `0 0 20px ${config.glowColor || '#00f2ff'}66` } : { boxShadow: '0 0 15px rgba(0,0,0,0.5)' }}
+                    style={{
+                      ...(verifiedBadge || config.avatarGlowEnabled
+                        ? { border: `2px solid ${config.glowColor || '#00f2ff'}`, boxShadow: `0 0 24px ${config.glowColor || '#00f2ff'}88` }
+                        : { boxShadow: '0 0 15px rgba(0,0,0,0.5)' }),
+                    }}
                   />
                 </div>
               );
@@ -1329,20 +1086,10 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
               return (
                 <div key="username" className="flex flex-col items-center mb-4">
                   <div className="group relative flex items-center justify-center gap-1.5">
-                    <h1 className={`text-[39.5px] leading-none font-semibold pb-1 ${
-                      !config.nameEffect || config.nameEffect === 'none' ? 'text-white drop-shadow-md' :
-                      config.nameEffect === 'glow' ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]' :
-                      config.nameEffect === 'neon' ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] animate-pulse' :
-                      config.nameEffect === 'neon_red' ? 'text-red-400 drop-shadow-[0_0_15px_rgba(248,113,113,0.8)]' :
-                      config.nameEffect === 'neon_blue' ? 'text-blue-400 drop-shadow-[0_0_15px_rgba(96,165,250,0.8)]' :
-                      config.nameEffect === 'stroke' ? 'text-transparent [-webkit-text-stroke:1.5px_white]' :
-                      config.nameEffect === 'gradient' ? 'text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600' :
-                      config.nameEffect === 'gradient_fire' ? 'text-transparent bg-clip-text bg-gradient-to-r from-orange-500 via-red-500 to-yellow-500' :
-                      config.nameEffect === 'gradient_ocean' ? 'text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-blue-500 to-cyan-400' :
-                      config.nameEffect === 'shine' ? 'text-transparent bg-clip-text bg-gradient-to-r from-white via-neutral-500 to-white animate-shine bg-[length:200%_auto]' :
-                      config.nameEffect === 'glitch' ? 'text-white drop-shadow-md animate-pulse animate-glitch relative' :
-                      config.nameEffect === 'typewriter' ? 'text-white drop-shadow-md overflow-hidden whitespace-nowrap border-r-[3px] border-white max-w-fit pr-1 animate-typing' : 'text-white drop-shadow-md'
-                    }`}>
+                    <h1
+                      className={`text-[39.5px] leading-none font-semibold pb-1 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
+                      style={getNameEffectStyle(config.nameEffect, config.displayName || config.username)}
+                    >
                       {config.displayName || config.username}
                     </h1>
                     {verifiedBadge && (
@@ -1351,6 +1098,14 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                       </div>
                     )}
                   </div>
+                </div>
+              );
+            }
+
+            if (section === 'location') {
+              return (
+                <div key="location">
+                  <LocationLine config={config} />
                 </div>
               );
             }
@@ -1648,48 +1403,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
               );
             }
 
-            if (section === 'player') { // custom player
-              if (config.audioEnabled && currentSong) {
-                return renderCRYBIOSPlayer();
-              }
-            }
-            if (false) {
-                return (
-                  <div key="player" className="w-[98%] max-w-[400px] bg-black/30 backdrop-blur-md rounded-2xl border border-white/5 p-4 mb-4 flex flex-col space-y-3 shadow-[0_0_20px_rgba(0,0,0,0.5)] transition-all">
-                    <div className="flex justify-between items-center px-1">
-                       <div className="flex items-center space-x-3">
-                         <div className="w-[36px] h-[36px] flex items-center justify-center bg-[#00f2ff]/10 border border-[#00f2ff]/20 rounded-xl backdrop-blur-md shadow-inner">
-                           <Music className="w-[16px] h-[16px] text-[#00f2ff]" />
-                         </div>
-                         <div className="flex flex-col text-left overflow-hidden">
-                           <span className="text-[13px] font-semibold text-white drop-shadow-md truncate max-w-[150px]">{config.audioTitle || 'Soundtrack'}</span>
-                           <span className="text-[10px] text-white/50 drop-shadow-md truncate max-w-[150px] uppercase tracking-wide mt-0.5">{config.audioArtist || 'CRY BIOS Player'}</span>
-                         </div>
-                       </div>
-                       <div className="flex items-center space-x-3 text-white/80 p-2 bg-white/5 rounded-full border border-white/5">
-                         <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = 0; }} className="hover:text-white transition cursor-pointer p-1"><SkipBack className="w-[12px] h-[12px] fill-current" /></button>
-                         <button onClick={toggleMute} className="hover:text-white transition cursor-pointer p-1 text-white">{isMuted ? <Play className="w-[16px] h-[16px] fill-current" /> : <Pause className="w-[16px] h-[16px] fill-current" />}</button>
-                         <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = 0; }} className="hover:text-white transition cursor-pointer p-1"><SkipForward className="w-[12px] h-[12px] fill-current" /></button>
-                       </div>
-                    </div>
-                    <div className="flex items-center space-x-3 text-[10px] text-white/50 drop-shadow-md font-mono mt-1">
-                      <span className="w-8 text-right">{formatTime(audioCurrentTime)}</span>
-                      <div 
-                        onClick={(e) => {
-                          if (!audioRef.current || !audioDuration) return;
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const clickX = e.clientX - rect.left;
-                          const widthPercent = clickX / rect.width;
-                          audioRef.current.currentTime = widthPercent * audioDuration;
-                        }}
-                        className="flex-1 h-[4px] bg-white/10 rounded-full cursor-pointer relative group overflow-hidden"
-                      >
-                        <div className="absolute left-0 top-0 bottom-0 bg-[#00f2ff] shadow-[0_0_10px_#00f2ff] rounded-full transition-all" style={{ width: `${(audioCurrentTime / (audioDuration || 1)) * 100}%` }}></div>
-                      </div>
-                      <span className="w-8 text-left">{formatTime(audioDuration)}</span>
-                    </div>
-                  </div>
-                );
+            if (section === 'player') {
+              return <React.Fragment key="player">{renderAudioBar('inline')}</React.Fragment>;
             }
             return null;
           })}

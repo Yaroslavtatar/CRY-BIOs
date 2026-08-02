@@ -18,51 +18,58 @@ export interface SocialLink {
   glow?: boolean;
 }
 
-export type BackgroundType = 'color' | 'gradient' | 'image' | 'video' | 'matrix' | 'stars' | 'rain' | 'particles';
+export type BackgroundType = 'color' | 'gradient' | 'image' | 'video' | 'matrix' | 'stars' | 'rain' | 'particles' | 'snow';
+
+export type AudioPlayerMode = 'hidden' | 'minimal' | 'inline' | 'floating';
+export type AudioSourceMode = 'single' | 'playlist';
+export type AudioVisualizerStyle = 'bars' | 'wave' | 'retro' | 'circular' | 'mirror' | 'oscilloscope' | 'particles' | 'aurora' | 'pulse';
+export type NameEffect =
+  | 'none' | 'glow' | 'stroke' | 'gradient' | 'glitch' | 'neon' | 'shine'
+  | 'neon_red' | 'neon_blue' | 'gradient_fire' | 'gradient_ocean' | 'typewriter'
+  | 'rainbow' | 'flicker' | 'bounce' | 'shadow_3d' | 'underline_glow' | 'cyber';
+export type SparkleStyle = 'stars' | 'dots' | 'hearts' | 'crosses' | 'neon';
+export type LocationIcon = 'pin' | 'globe' | 'map';
+export type LocationStyle = 'minimal' | 'pill' | 'glow';
 
 export interface BlockConfig {
   id: string;
   type: 'socials' | 'html' | 'status_api' | 'views_counter' | 'textbox' | 'quote' | 'image' | 'embed';
   title: string;
   enabled: boolean;
-  
-  // Specific configurations depending on type
+
   socialsList?: SocialLink[];
   htmlContent?: string;
   statusProvider?: 'discord' | 'custom';
   statusCustomText?: string;
-  statusUrl?: string; // e.g., lanyard discord ID
+  statusUrl?: string;
   textboxContent?: string;
   textboxStyle?: 'glow' | 'marquee' | 'standard';
   quoteText?: string;
   quoteAuthor?: string;
 
-  // Image block configurations
   imageUrl?: string;
   imageAlt?: string;
   imageLink?: string;
-  imageHeight?: number; // in px
+  imageHeight?: number;
   imageFit?: 'cover' | 'contain' | 'fill';
 
-  // Embed block configurations
   embedType?: 'youtube' | 'spotify' | 'soundcloud' | 'custom_iframe';
   embedUrl?: string;
 
-  // Custom block-level styling overrides
-  bgColor?: string; // hex or rgba or transparent
-  textColor?: string; // hex
-  borderColor?: string; // hex
+  bgColor?: string;
+  textColor?: string;
+  borderColor?: string;
   borderRadius?: 'none' | 'sm' | 'md' | 'lg' | 'full';
   textAlign?: 'left' | 'center' | 'right';
   fontSize?: 'xs' | 'sm' | 'base' | 'lg';
   glow?: boolean;
-  glowColor?: string; // hex
+  glowColor?: string;
 }
 
 export interface UserBadge {
   id: string;
   type: 'verified' | 'premium' | 'developer' | 'vip' | 'staff' | 'booster' | 'member' | 'custom';
-  icon: string; // crown, shield, shieldCheck, gem, award, star, heart, zap, code, flame, skull, gamepad
+  icon: string;
   label: string;
   description?: string;
   enabled: boolean;
@@ -74,57 +81,81 @@ export interface UserBadge {
 }
 
 export interface BioConfig {
-  username: string; // url slug
+  username: string;
   displayName: string;
   bio: string;
   avatarUrl: string;
   verified: boolean;
   customBadge: string;
   sparkles: boolean;
-  badges?: UserBadge[]; // List of custom transparent badges with ordering
+  badges?: UserBadge[];
 
-  
-  // Custom interactive connections and stats
   discordConnected?: boolean;
   discordUsername?: string;
   googleConnected?: boolean;
   googleEmail?: string;
   aliasSlug?: string;
   uid?: number;
-  
-  // Font & Styling
+
   fontFamily: 'Inter' | 'Space Grotesk' | 'JetBrains Mono' | 'Outfit' | 'Playfair Display';
-  primaryColor: string; // hex
-  textColor: string; // hex
-  glowColor: string; // hex
+  primaryColor: string;
+  textColor: string;
+  glowColor: string;
   customCSS?: string;
-  cardOpacity?: number; // 0 to 100
-  badgeOpacity?: number; // 0 to 100
-  
-  // Background
+  cardOpacity?: number;
+  badgeOpacity?: number;
+
   bgType: BackgroundType;
-  bgValue: string; // hex color, gradient string, URL for image/video
-  bgBlur: number; // 0 to 20
-  bgDim: number; // 0 to 100 for dim factor overlay %
-  
-  // Audio
+  bgValue: string;
+  bgBlur: number;
+  bgDim: number;
+  bgEffectColor?: string;
+  bgEffectIntensity?: number;
+
   audioUrl: string;
   audioTitle: string;
   audioArtist: string;
   audioEnabled: boolean;
+  audioPlayerMode?: AudioPlayerMode;
+  audioSourceMode?: AudioSourceMode;
   audioVisualizerEnabled?: boolean;
-  audioVisualizerStyle?: 'bars' | 'wave' | 'retro' | 'circular';
+  audioVisualizerStyle?: AudioVisualizerStyle;
   playlist?: SongConfig[];
+  hidePlayerUntilHover?: boolean;
+  rememberVolume?: boolean;
+
+  bgVideoAudioEnabled?: boolean;
+  bgVideoUseAsAudio?: boolean;
+
+  locationEnabled?: boolean;
+  locationText?: string;
+  locationIcon?: LocationIcon;
+  locationStyle?: LocationStyle;
+
+  sparkleStyle?: SparkleStyle;
+  sparkleColor?: string;
+  sparkleIntensity?: 'low' | 'medium' | 'high';
+
+  snowEffectsEnabled?: boolean;
+  snowIntensity?: 'low' | 'medium' | 'high';
+
+  showViewsCounter?: boolean;
+  showUid?: boolean;
+  monochromeMode?: boolean;
+  parallaxEnabled?: boolean;
+  avatarGlowEnabled?: boolean;
+  linkHoverGlow?: boolean;
+  customPageTitle?: string;
+  customFaviconUrl?: string;
+
   customDomain?: string;
-  enterText: string; // Click-to-enter splash screen text, e.g. "enter"
+  enterText: string;
   clickToEnterEnabled?: boolean;
   customCursorUrl?: string;
-  snowEffectsEnabled?: boolean;
-  nameEffect?: 'none' | 'glow' | 'stroke' | 'gradient' | 'glitch' | 'neon' | 'shine' | 'neon_red' | 'neon_blue' | 'gradient_fire' | 'gradient_ocean' | 'typewriter';
+  nameEffect?: NameEffect;
   discordId?: string;
   layout?: string[];
-  
-  // Blocks
+
   blocks: BlockConfig[];
 }
 
