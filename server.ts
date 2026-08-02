@@ -8,12 +8,18 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
+import bcrypt from 'bcrypt';
+import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
 import * as db from './src/db';
-import { streamFullBackup, importFullBackup } from './src/backup';
+import { streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup, importUserBackup } from './src/backup';
 import { isAllowedMime, isImageMime, processUploadedImage, type ImageUploadType } from './src/imageProcessing';
 import { isVideoMime, processUploadedVideo } from './src/videoProcessing';
+import { rehostImportMedia } from './src/rehostMedia';
+import { cleanupAllOrphans, deleteUnusedBetweenConfigs } from './src/uploadCleanup';
+import { getStorageStats, runHealthChecks, isUsingDefaultAdminPassword } from './src/storageStats';
+import { startScheduledBackups } from './src/scheduledBackup';
 
 // Establish folders
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -41,7 +47,7 @@ function getAdminPassword(): string {
       // Fallback to env or default
     }
   }
-  return process.env.ADMIN_PASSWORD || 'admin_secret';
+  return process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
 }
 
 function saveAdminPassword(newPassword: string) {
@@ -87,9 +93,27 @@ const backupUpload = multer({
   },
 });
 
-// Passwords are plain SHA256 hashed
+const BCRYPT_ROUNDS = 10;
+const DEFAULT_ADMIN_PASSWORD = 'admin_secret';
+
+function isLegacySha256Hash(hash: string): boolean {
+  return /^[a-f0-9]{64}$/i.test(hash);
+}
+
 function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
+  return bcrypt.hashSync(password, BCRYPT_ROUNDS);
+}
+
+function verifyPassword(password: string, storedHash: string): { valid: boolean; needsRehash: boolean } {
+  if (storedHash.startsWith('$2')) {
+    return { valid: bcrypt.compareSync(password, storedHash), needsRehash: false };
+  }
+  if (isLegacySha256Hash(storedHash)) {
+    const legacy = crypto.createHash('sha256').update(password).digest('hex');
+    const valid = legacy === storedHash;
+    return { valid, needsRehash: valid };
+  }
+  return { valid: false, needsRehash: false };
 }
 
 // Seed a handsome default profile for demonstration if needed
@@ -226,6 +250,34 @@ async function startServer() {
     return user ? user.username : null;
   };
 
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many auth attempts. Try again later.' },
+  });
+
+  const uploadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many uploads. Try again later.' },
+  });
+
+  const adminLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many admin requests. Try again later.' },
+  });
+
+  app.get('/api/health', (_req, res) => {
+    res.json(runHealthChecks(DATA_DIR));
+  });
+
   // --- API ROUTING ---
 
   // Expose uploads directory
@@ -235,7 +287,7 @@ async function startServer() {
   }));
 
   // Upload endpoint
-  app.post('/api/upload', upload.single('file'), async (req, res) => {
+  app.post('/api/upload', uploadLimiter, upload.single('file'), async (req, res) => {
     const authedUser = getUsernameFromRequest(req);
     if (!authedUser) {
       return res.status(401).json({ error: 'Unauthorized Session' });
@@ -277,6 +329,8 @@ async function startServer() {
   });
 
   // --- ADMIN PANEL API ---
+  app.use('/api/admin', adminLimiter);
+
   const checkAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     let secret = req.headers['x-admin-password'] || req.query.password;
     if (secret && typeof secret === 'string') {
@@ -295,6 +349,66 @@ async function startServer() {
 
   app.get('/api/admin/verify', checkAdminAuth, (req, res) => {
     res.json({ success: true, status: 'Admin Authenticated' });
+  });
+
+  app.get('/api/admin/status', checkAdminAuth, (_req, res) => {
+    res.json({
+      usingDefaultPassword: isUsingDefaultAdminPassword(DATA_DIR),
+    });
+  });
+
+  app.get('/api/admin/storage-stats', checkAdminAuth, (_req, res) => {
+    res.json(getStorageStats(DATA_DIR));
+  });
+
+  app.post('/api/admin/cleanup-orphans', checkAdminAuth, (_req, res) => {
+    try {
+      const allConfigs = db.getAllBios();
+      const result = cleanupAllOrphans(UPLOADS_DIR, allConfigs);
+      res.json({ success: true, ...result, bytesFreedMb: Math.round((result.bytesFreed / (1024 * 1024)) * 100) / 100 });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Cleanup failed' });
+    }
+  });
+
+  app.post('/api/admin/preview-backup', checkAdminAuth, backupUpload.single('file'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No backup file uploaded' });
+    }
+    try {
+      const preview = await previewBackupZip(req.file.path);
+      res.json({ success: true, preview });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Preview failed' });
+    } finally {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+    }
+  });
+
+  app.get('/api/admin/export-user/:username', checkAdminAuth, (req, res) => {
+    streamUserBackup(res, req.params.username.toLowerCase(), { uploadsDir: UPLOADS_DIR });
+  });
+
+  app.post('/api/admin/import-user/:username', checkAdminAuth, backupUpload.single('file'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No backup file uploaded' });
+    }
+    const overwrite = req.body?.overwrite === 'true' || req.body?.overwrite === true;
+    try {
+      const result = await importUserBackup(req.file.path, req.params.username.toLowerCase(), {
+        uploadsDir: UPLOADS_DIR,
+        overwrite,
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Import failed' });
+    } finally {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+    }
   });
 
   app.post('/api/admin/change-password', checkAdminAuth, (req, res) => {
@@ -498,7 +612,7 @@ async function startServer() {
   });
 
   // Register or Login endpoint
-  app.post('/api/auth/login-register', (req, res) => {
+  app.post('/api/auth/login-register', authLimiter, (req, res) => {
     const { username, password } = req.body;
     if (!username || !password || username.trim() === '' || password.trim() === '') {
       return res.status(400).json({ error: 'Username and password credentials required' });
@@ -509,13 +623,14 @@ async function startServer() {
       return res.status(400).json({ error: 'Username must be 3-15 chars, alphanumeric letters, underscores or dashes' });
     }
 
-    const passHash = hashPassword(password);
     const existingUser = db.getUser(normUsername);
 
     if (existingUser) {
-      // Login flow
-      if (existingUser.password_hash === passHash) {
-        // Regenerate token for security
+      const { valid, needsRehash } = verifyPassword(password, existingUser.password_hash);
+      if (valid) {
+        if (needsRehash) {
+          db.updateUserPassword(normUsername, hashPassword(password));
+        }
         const sessionToken = crypto.randomUUID();
         db.updateUserToken(normUsername, sessionToken);
         return res.json({ token: sessionToken, username: normUsername, isNew: false });
@@ -525,7 +640,7 @@ async function startServer() {
     } else {
       // Sign-Up flow
       const sessionToken = crypto.randomUUID();
-      db.createUser(normUsername, passHash, sessionToken);
+      db.createUser(normUsername, hashPassword(password), sessionToken);
       
       // Default bio landing page
       const defaultBio: BioConfig = {
@@ -880,24 +995,28 @@ async function startServer() {
       };
       const bgMapped = mapBgEffects(backgroundEffects);
 
+      let responseData = {
+        displayName,
+        bio,
+        avatarUrl,
+        bgType: bgMapped.bgType,
+        bgValue,
+        audioUrl,
+        customCursorUrl: customCursor || '',
+        snowEffectsEnabled: bgMapped.snowEffectsEnabled,
+        sparkles: sparklesEnabled,
+        nameEffect: nameEffect || undefined,
+        bgBlur: blurVal,
+        cardOpacity: opacityVal,
+        socialsList,
+        badges,
+      };
+
+      responseData = await rehostImportMedia(responseData, UPLOADS_DIR, TMP_DIR) as typeof responseData;
+
       res.json({
         success: true,
-        data: {
-          displayName,
-          bio,
-          avatarUrl,
-          bgType: bgMapped.bgType,
-          bgValue,
-          audioUrl,
-          customCursorUrl: customCursor || '',
-          snowEffectsEnabled: bgMapped.snowEffectsEnabled,
-          sparkles: sparklesEnabled,
-          nameEffect: nameEffect || undefined,
-          bgBlur: blurVal,
-          cardOpacity: opacityVal,
-          socialsList,
-          badges
-        }
+        data: responseData,
       });
     } catch (error: any) {
       console.error(error);
@@ -922,8 +1041,14 @@ async function startServer() {
     // Force strict username preservation
     payload.username = username;
 
-    // Save
+    const oldConfig = db.getBio(username);
     db.saveBio(username, payload);
+
+    const allConfigs = db.getAllBios();
+    if (oldConfig) {
+      deleteUnusedBetweenConfigs(oldConfig, payload, allConfigs, UPLOADS_DIR);
+    }
+
     res.json({ message: 'Profile saved successfully', config: payload });
   });
 
@@ -1191,6 +1316,18 @@ echo -e "\${BLUE}=====================================================\${NC}"
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Open-Source CRY BIOS Server started on http://0.0.0.0:${PORT}`);
     console.log(`Persisted database synchronized successfully.`);
+
+    if (isUsingDefaultAdminPassword(DATA_DIR)) {
+      console.warn('[security] WARNING: Using default admin password. Set ADMIN_PASSWORD env or change via admin panel.');
+    }
+
+    if (process.env.DISABLE_SCHEDULED_BACKUP !== 'true') {
+      startScheduledBackups({
+        dataDir: DATA_DIR,
+        uploadsDir: UPLOADS_DIR,
+        includeAnalytics: true,
+      });
+    }
   });
 }
 

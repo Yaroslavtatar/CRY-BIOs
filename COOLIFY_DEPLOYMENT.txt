@@ -58,6 +58,18 @@ CRY BIOS использует SQLite в качестве базы данных �
 * GEMINI_API_KEY=your_optional_gemini_key_here
   (Опционально. Если вы планируете запускать ИИ-помощника для автокомпиляции текстов био)
 
+* ADMIN_PASSWORD=your_secure_admin_password
+  (ОБЯЗАТЕЛЬНО на проде! Без этого используется дефолтный admin_secret)
+
+* BACKUP_RETAIN=5
+  (Сколько автоматических ZIP-бэкапов хранить в /app/data/backups/)
+
+* BACKUP_CRON_HOURS=24
+  (Интервал автобэкапа в часах; DISABLE_SCHEDULED_BACKUP=true отключает)
+
+* Health check в Coolify: GET /api/health (interval 30s)
+  Dockerfile содержит HEALTHCHECK — контейнер помечается unhealthy при падении SQLite или data volume
+
 ----------------------------------------------------------------------------------------
 4. НАСТРОЙКА ДОМЕНА И СУБДОМЕНОВ (bio.cryteam.ru)
 ----------------------------------------------------------------------------------------
