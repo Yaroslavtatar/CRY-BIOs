@@ -11,6 +11,9 @@ if (!fs.existsSync(DATA_DIR)) {
 
 export const db = new Database(path.join(DATA_DIR, 'biogun.db'));
 
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
+
 // Initialize tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -144,6 +147,7 @@ export function getAllUsersWithStats() {
     return {
       username: u.username,
       displayName: bio?.displayName || u.username,
+      avatarUrl: bio?.avatarUrl || '',
       verified: bio?.verified || false,
       visitsCount
     };

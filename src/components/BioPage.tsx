@@ -688,13 +688,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       style.backgroundImage = config.bgValue;
     }
 
-    // If an image URL is supplied
-    if (config.bgType === 'image' && config.bgValue) {
-      style.backgroundImage = `url(${config.bgValue})`;
-      style.backgroundSize = 'cover';
-      style.backgroundPosition = 'center';
-      style.backgroundRepeat = 'no-repeat';
-    }
+    // If an image URL is supplied — rendered as lazy <img> layer, not CSS background
+    // (see JSX below)
 
     return style;
   };
@@ -941,6 +936,16 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
               if (e.currentTarget.duration) setAudioDuration(e.currentTarget.duration);
             }
           }}
+        />
+      )}
+
+      {config.bgType === 'image' && config.bgValue && (
+        <img
+          src={config.bgValue}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none"
         />
       )}
 

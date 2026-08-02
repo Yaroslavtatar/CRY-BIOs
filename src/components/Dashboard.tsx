@@ -8,6 +8,7 @@ import { BioConfig, BlockConfig, SocialLink, AnalyticsSummary, BackgroundType, U
 import AnalyticsView from './AnalyticsView';
 import BioPage from './BioPage';
 import QRCode from 'qrcode';
+import { getThumbUrl } from '../utils/media';
 import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy } from 'lucide-react';
 
 const renderDashboardBadgeIcon = (iconName: string) => {
@@ -1274,9 +1275,10 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                         
                         <div className="flex items-center space-x-3">
                           <img
-                            src={config.avatarUrl}
+                            src={getThumbUrl(config.avatarUrl)}
                             alt="avatar"
                             referrerPolicy="no-referrer"
+                            loading="lazy"
                             className="w-11 h-11 object-cover rounded-sm border border-white/15"
                           />
                           <div>

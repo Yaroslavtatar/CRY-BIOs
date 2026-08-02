@@ -1,11 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Users, Trash2, Edit2, Download, Upload, LogOut, ArrowLeft, Search, Check, AlertTriangle, RefreshCw, Key, FileJson, CheckCircle2 } from 'lucide-react';
+import { Shield, Users, Trash2, Edit2, Download, Upload, LogOut, ArrowLeft, Search, Check, AlertTriangle, RefreshCw, Key, FileJson, CheckCircle2, HardDrive, Database } from 'lucide-react';
+import { getThumbUrl } from '../utils/media';
 
 interface AdminUser {
   username: string;
   displayName: string;
+  avatarUrl?: string;
   verified: boolean;
   visitsCount: number;
+}
+
+interface StorageStats {
+  uploadsMb: number;
+  uploadsFiles: number;
+  dbMb: number;
+  userCount: number;
+  lastBackupAt: string | null;
+}
+
+interface BackupPreview {
+  version?: number;
+  exportedAt?: string;
+  userCount?: number;
+  uploadCount?: number;
+  includeAnalytics?: boolean;
 }
 
 interface AdminPanelProps {
@@ -14,10 +32,16 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ onExit }: AdminPanelProps) {
   // Authentication states
-  const [adminPassword, setAdminPassword] = useState(localStorage.getItem('admin_password') || '');
+  const [adminPassword, setAdminPassword] = useState(sessionStorage.getItem('admin_password') || '');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [usingDefaultPassword, setUsingDefaultPassword] = useState(false);
+  const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(null);
+  const [pendingBackupFile, setPendingBackupFile] = useState<File | null>(null);
+  const [userImportTarget, setUserImportTarget] = useState<string | null>(null);
 
   // Users and Database states
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -43,6 +67,7 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
   // File upload refs for database import
   const dbImportInputRef = useRef<HTMLInputElement | null>(null);
   const fullBackupImportInputRef = useRef<HTMLInputElement | null>(null);
+  const userImportInputRef = useRef<HTMLInputElement | null>(null);
 
   // Backup options
   const [includeAnalytics, setIncludeAnalytics] = useState(true);
@@ -71,14 +96,106 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       if (!res.ok) {
         throw new Error('Неверный пароль администратора');
       }
-      localStorage.setItem('admin_password', passwordToVerify);
+      sessionStorage.setItem('admin_password', passwordToVerify);
       setIsAuthenticated(true);
       fetchUsers(passwordToVerify);
+      fetchAdminStatus(passwordToVerify);
+      fetchStorageStats(passwordToVerify);
     } catch (err: any) {
       setAuthError(err.message || 'Ошибка авторизации');
       setIsAuthenticated(false);
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  const fetchStorageStats = async (pass = adminPassword) => {
+    try {
+      const res = await fetch('/api/admin/storage-stats', {
+        headers: { 'x-admin-password': encodeURIComponent(pass) },
+      });
+      if (res.ok) setStorageStats(await res.json());
+    } catch { /* ignore */ }
+  };
+
+  const fetchAdminStatus = async (pass = adminPassword) => {
+    try {
+      const res = await fetch('/api/admin/status', {
+        headers: { 'x-admin-password': encodeURIComponent(pass) },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsingDefaultPassword(!!data.usingDefaultPassword);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleCleanupOrphans = async () => {
+    if (!window.confirm('Удалить все файлы в uploads/, не используемые ни одним профилем?')) return;
+    setCleanupLoading(true);
+    setErrorMessage('');
+    try {
+      const res = await fetch('/api/admin/cleanup-orphans', {
+        method: 'POST',
+        headers: { 'x-admin-password': encodeURIComponent(adminPassword) },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Cleanup failed');
+      setSuccessMessage(`Очищено ${data.deleted} файлов (${data.bytesFreedMb} MB)`);
+      fetchStorageStats();
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    } finally {
+      setCleanupLoading(false);
+    }
+  };
+
+  const handleExportUser = async (username: string) => {
+    try {
+      const res = await fetch(`/api/admin/export-user/${username}`, {
+        headers: { 'x-admin-password': encodeURIComponent(adminPassword) },
+      });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cry_bios_user_${username}_${Date.now()}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setSuccessMessage(`Пользователь @${username} экспортирован`);
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleUserImportClick = (username: string) => {
+    setUserImportTarget(username);
+    userImportInputRef.current?.click();
+  };
+
+  const handleUserImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userImportTarget) return;
+    const overwrite = window.confirm(`Импортировать бэкап для @${userImportTarget}? Перезаписать если существует?`);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('overwrite', String(overwrite));
+      const res = await fetch(`/api/admin/import-user/${userImportTarget}`, {
+        method: 'POST',
+        headers: { 'x-admin-password': encodeURIComponent(adminPassword) },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Import failed');
+      setSuccessMessage(`Пользователь @${userImportTarget} импортирован`);
+      fetchUsers();
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    } finally {
+      setUserImportTarget(null);
+      if (userImportInputRef.current) userImportInputRef.current.value = '';
     }
   };
 
@@ -107,10 +224,11 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_password');
+    sessionStorage.removeItem('admin_password');
     setAdminPassword('');
     setIsAuthenticated(false);
     setUsers([]);
+    setStorageStats(null);
   };
 
   // Actions
@@ -268,14 +386,6 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const confirmOver = window.confirm(
-      'ВНИМАНИЕ! Импорт полного бэкапа перезапишет всех пользователей, био-страницы, аналитику и медиафайлы. Продолжить?'
-    );
-    if (!confirmOver) {
-      if (fullBackupImportInputRef.current) fullBackupImportInputRef.current.value = '';
-      return;
-    }
-
     setBackupLoading('import');
     setErrorMessage('');
     setSuccessMessage('');
@@ -284,11 +394,39 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       const formData = new FormData();
       formData.append('file', file);
 
+      const previewRes = await fetch('/api/admin/preview-backup', {
+        method: 'POST',
+        headers: { 'x-admin-password': encodeURIComponent(adminPassword) },
+        body: formData,
+      });
+
+      if (!previewRes.ok) {
+        const data = await previewRes.json();
+        throw new Error(data.error || 'Не удалось прочитать бэкап');
+      }
+
+      const { preview } = await previewRes.json();
+      setBackupPreview(preview);
+      setPendingBackupFile(file);
+      setBackupLoading(null);
+    } catch (err: any) {
+      setErrorMessage('Ошибка предпросмотра: ' + (err.message || 'некорректный формат'));
+      setBackupLoading(null);
+      if (fullBackupImportInputRef.current) fullBackupImportInputRef.current.value = '';
+    }
+  };
+
+  const confirmFullBackupImport = async () => {
+    if (!pendingBackupFile) return;
+
+    setBackupLoading('import');
+    try {
+      const formData = new FormData();
+      formData.append('file', pendingBackupFile);
+
       const res = await fetch('/api/admin/import-full', {
         method: 'POST',
-        headers: {
-          'x-admin-password': encodeURIComponent(adminPassword)
-        },
+        headers: { 'x-admin-password': encodeURIComponent(adminPassword) },
         body: formData,
       });
 
@@ -301,7 +439,10 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       setSuccessMessage(
         `Полный бэкап восстановлен! Пользователей: ${data.userCount}, файлов: ${data.uploadCount}`
       );
+      setBackupPreview(null);
+      setPendingBackupFile(null);
       fetchUsers();
+      fetchStorageStats();
     } catch (err: any) {
       setErrorMessage('Ошибка импорта бэкапа: ' + (err.message || 'некорректный формат'));
     } finally {
@@ -631,6 +772,13 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                   accept=".zip,application/zip"
                   onChange={handleFullBackupImport}
                 />
+                <input
+                  type="file"
+                  ref={userImportInputRef}
+                  className="hidden"
+                  accept=".zip,application/zip"
+                  onChange={handleUserImport}
+                />
               </div>
 
               <div className="bg-[#0b0b0b] border border-white/10 rounded-sm p-4 flex flex-col justify-between space-y-3">
@@ -702,7 +850,41 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                 <div className="text-2xl font-black text-white italic">{users.length}</div>
                 <div className="text-[9px] text-neutral-400 uppercase tracking-widest font-black">Всего зарегистрировано</div>
               </div>
+
+              {storageStats && (
+                <>
+                  <div className="bg-[#0b0b0b] border border-white/10 rounded-sm p-4 flex flex-col justify-center items-center text-center space-y-1 font-mono">
+                    <HardDrive className="w-5 h-5 text-emerald-400 mb-1" />
+                    <div className="text-xl font-black text-white">{storageStats.uploadsMb} MB</div>
+                    <div className="text-[9px] text-neutral-400 uppercase">{storageStats.uploadsFiles} файлов</div>
+                  </div>
+                  <div className="bg-[#0b0b0b] border border-white/10 rounded-sm p-4 flex flex-col justify-center items-center text-center space-y-1 font-mono">
+                    <Database className="w-5 h-5 text-purple-400 mb-1" />
+                    <div className="text-xl font-black text-white">{storageStats.dbMb} MB</div>
+                    <div className="text-[9px] text-neutral-400 uppercase">SQLite БД</div>
+                  </div>
+                  <div className="bg-[#0b0b0b] border border-white/10 rounded-sm p-4 flex flex-col justify-between space-y-2 font-mono col-span-2">
+                    <div className="text-[9px] text-neutral-400 uppercase">
+                      Последний бэкап: {storageStats.lastBackupAt ? new Date(storageStats.lastBackupAt).toLocaleString('ru-RU') : 'нет'}
+                    </div>
+                    <button
+                      onClick={handleCleanupOrphans}
+                      disabled={cleanupLoading}
+                      className="w-full py-2 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/30 text-amber-400 rounded-sm text-[10px] font-bold uppercase cursor-pointer disabled:opacity-50"
+                    >
+                      {cleanupLoading ? 'Очистка...' : 'Очистить неиспользуемые файлы'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
+
+            {usingDefaultPassword && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-sm text-xs font-mono flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>Используется дефолтный пароль администратора. Задайте ADMIN_PASSWORD через env или смените пароль ниже.</span>
+              </div>
+            )}
 
             {/* Notifications */}
             {successMessage && (
@@ -766,7 +948,17 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                         filteredUsers.map((user) => (
                           <tr key={user.username} className="hover:bg-white/[0.02] transition">
                             <td className="py-3.5 px-4 font-bold text-[#00f2ff]">
-                              @{user.username}
+                              <div className="flex items-center gap-2">
+                                {user.avatarUrl && (
+                                  <img
+                                    src={getThumbUrl(user.avatarUrl)}
+                                    alt=""
+                                    loading="lazy"
+                                    className="w-6 h-6 rounded-full object-cover border border-white/10"
+                                  />
+                                )}
+                                @{user.username}
+                              </div>
                             </td>
                             <td className="py-3.5 px-4 text-neutral-300 max-w-[180px] truncate">
                               {user.displayName}
@@ -790,6 +982,20 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                             </td>
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end space-x-2">
+                                <button
+                                  onClick={() => handleExportUser(user.username)}
+                                  className="p-1.5 bg-white/5 border border-white/5 hover:border-emerald-500/30 hover:text-emerald-400 rounded-sm transition cursor-pointer text-neutral-400"
+                                  title="Экспорт пользователя"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleUserImportClick(user.username)}
+                                  className="p-1.5 bg-white/5 border border-white/5 hover:border-emerald-500/30 hover:text-emerald-400 rounded-sm transition cursor-pointer text-neutral-400"
+                                  title="Импорт пользователя"
+                                >
+                                  <Upload className="w-3.5 h-3.5" />
+                                </button>
                                 <button
                                   onClick={() => {
                                     setChangingPasswordUser(user);
@@ -829,6 +1035,39 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
             </div>
 
             {/* Dialogs / Modals */}
+            {backupPreview && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-[#0b0b0b] border border-white/10 rounded-sm max-w-md w-full p-6 space-y-4 font-mono">
+                  <h3 className="text-sm font-black uppercase text-white">Предпросмотр бэкапа</h3>
+                  <div className="text-[11px] text-neutral-400 space-y-1">
+                    <p>Версия: {backupPreview.version ?? '?'}</p>
+                    <p>Пользователей: {backupPreview.userCount ?? '?'}</p>
+                    <p>Файлов: {backupPreview.uploadCount ?? '?'}</p>
+                    <p>Дата: {backupPreview.exportedAt ? new Date(backupPreview.exportedAt).toLocaleString('ru-RU') : '?'}</p>
+                    <p>Аналитика: {backupPreview.includeAnalytics ? 'включена' : 'выключена'}</p>
+                  </div>
+                  <p className="text-[10px] text-amber-400">Импорт перезапишет всю БД и uploads/. Продолжить?</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setBackupPreview(null); setPendingBackupFile(null); setBackupLoading(null); }}
+                      className="flex-1 py-2 bg-white/5 border border-white/10 text-neutral-400 rounded-sm text-[10px] font-bold uppercase cursor-pointer"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmFullBackupImport}
+                      disabled={backupLoading === 'import'}
+                      className="flex-1 py-2 bg-red-950/50 border border-red-500/30 text-red-400 rounded-sm text-[10px] font-bold uppercase cursor-pointer disabled:opacity-50"
+                    >
+                      {backupLoading === 'import' ? 'Импорт...' : 'Импортировать'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Rename Modal */}
             {editingUser && (
               <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
