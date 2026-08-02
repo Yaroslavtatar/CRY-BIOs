@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Shield, Sparkles, Code2, Play, Terminal, Download, Copy, Check, ArrowRight, Activity, Users, Globe2, HelpCircle } from 'lucide-react';
+import { getThumbUrl } from '../utils/media';
 
 interface ActiveProfile {
   username: string;
@@ -244,9 +245,11 @@ services:
               >
                 <div className="flex items-center space-x-4">
                   <img
-                    src={profile.avatarUrl}
+                    src={getThumbUrl(profile.avatarUrl)}
                     alt={profile.username}
                     referrerPolicy="no-referrer"
+                    loading="lazy"
+                    decoding="async"
                     className="w-12 h-12 rounded-sm object-cover border border-white/10 group-hover:border-[#00f2ff]/60 transition"
                   />
                   <div>

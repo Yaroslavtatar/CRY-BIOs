@@ -42,6 +42,11 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
 
   // File upload refs for database import
   const dbImportInputRef = useRef<HTMLInputElement | null>(null);
+  const fullBackupImportInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Backup options
+  const [includeAnalytics, setIncludeAnalytics] = useState(true);
+  const [backupLoading, setBackupLoading] = useState<'export' | 'import' | null>(null);
 
   // Attempt login with stored password on mount
   useEffect(() => {
@@ -199,7 +204,8 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const res = await fetch('/api/admin/export-db', {
+      const query = includeAnalytics ? '' : '?includeAnalytics=false';
+      const res = await fetch(`/api/admin/export-db${query}`, {
         headers: {
           'x-admin-password': encodeURIComponent(adminPassword)
         }
@@ -214,9 +220,93 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       a.download = `cry_bios_database_backup_${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      setSuccessMessage('Полный экспорт базы данных успешно выполнен!');
+      setSuccessMessage('JSON-экспорт базы данных успешно выполнен!');
     } catch (err: any) {
       setErrorMessage(err.message || 'Ошибка экспорта базы данных');
+    }
+  };
+
+  const handleFullBackupExport = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setBackupLoading('export');
+    try {
+      const query = includeAnalytics ? '' : '?includeAnalytics=false';
+      const res = await fetch(`/api/admin/export-full${query}`, {
+        headers: {
+          'x-admin-password': encodeURIComponent(adminPassword)
+        }
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Ошибка экспорта полного бэкапа');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cry_bios_full_backup_${Date.now()}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setSuccessMessage('Полный ZIP-бэкап (БД + медиафайлы) успешно скачан!');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Ошибка экспорта полного бэкапа');
+    } finally {
+      setBackupLoading(null);
+    }
+  };
+
+  const handleFullBackupImportClick = () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    if (fullBackupImportInputRef.current) {
+      fullBackupImportInputRef.current.click();
+    }
+  };
+
+  const handleFullBackupImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const confirmOver = window.confirm(
+      'ВНИМАНИЕ! Импорт полного бэкапа перезапишет всех пользователей, био-страницы, аналитику и медиафайлы. Продолжить?'
+    );
+    if (!confirmOver) {
+      if (fullBackupImportInputRef.current) fullBackupImportInputRef.current.value = '';
+      return;
+    }
+
+    setBackupLoading('import');
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/admin/import-full', {
+        method: 'POST',
+        headers: {
+          'x-admin-password': encodeURIComponent(adminPassword)
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Не удалось импортировать бэкап');
+      }
+
+      const data = await res.json();
+      setSuccessMessage(
+        `Полный бэкап восстановлен! Пользователей: ${data.userCount}, файлов: ${data.uploadCount}`
+      );
+      fetchUsers();
+    } catch (err: any) {
+      setErrorMessage('Ошибка импорта бэкапа: ' + (err.message || 'некорректный формат'));
+    } finally {
+      setBackupLoading(null);
+      if (fullBackupImportInputRef.current) fullBackupImportInputRef.current.value = '';
     }
   };
 
@@ -458,8 +548,91 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
         ) : (
           /* Admin Dashboard */
           <div className="space-y-6 animate-fade-in">
+            {/* Coolify / deployment warning */}
+            <div className="bg-amber-950/30 border border-amber-500/30 rounded-sm p-4 flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h3 className="text-xs font-black font-mono text-amber-400 uppercase tracking-wider">Coolify / Docker</h3>
+                <p className="text-[10px] text-neutral-300 font-sans leading-relaxed">
+                  При пересоздании контейнера данные внутри него удаляются. Перед каждым деплоем скачайте{' '}
+                  <strong className="text-white">полный ZIP-бэкап</strong>. Убедитесь, что в Coolify смонтирован том{' '}
+                  <code className="text-amber-300">cry_bios_data:/app/data</code> во вкладке Storages.
+                </p>
+              </div>
+            </div>
+
+            {/* Backup options */}
+            <label className="flex items-center gap-2 text-[10px] text-neutral-400 font-mono cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={includeAnalytics}
+                onChange={(e) => setIncludeAnalytics(e.target.checked)}
+                className="accent-[#00f2ff]"
+              />
+              Включить аналитику в бэкап (снимите для быстрого экспорта перед деплоем)
+            </label>
+
+            {(backupLoading === 'export' || backupLoading === 'import') && (
+              <div className="bg-[#0b0b0b] border border-[#00f2ff]/30 rounded-sm p-3">
+                <div className="flex items-center gap-2 text-[10px] text-[#00f2ff] font-mono uppercase">
+                  <span className="w-3 h-3 border border-t-[#00f2ff] border-transparent animate-spin rounded-full" />
+                  {backupLoading === 'export' ? 'Формирование ZIP-бэкапа...' : 'Восстановление из ZIP-бэкапа...'}
+                </div>
+                <div className="mt-2 h-1 bg-white/5 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#00f2ff]/60 animate-pulse w-full" />
+                </div>
+              </div>
+            )}
+
             {/* Database backup & restore section */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+              <div className="bg-[#0b0b0b] border border-[#00f2ff]/30 rounded-sm p-4 flex flex-col justify-between space-y-3 sm:col-span-1 lg:col-span-1 xl:col-span-2">
+                <div>
+                  <h3 className="text-xs font-black font-mono text-[#00f2ff] uppercase tracking-wider flex items-center gap-1.5">
+                    <Download className="w-4 h-4 text-[#00f2ff]" />
+                    <span>Полный бэкап (ZIP)</span>
+                  </h3>
+                  <p className="text-[10px] text-neutral-400 mt-1 font-sans">
+                    БД + все медиафайлы (аватарки, фоны, аудио) в одном архиве. Рекомендуется перед деплоем.
+                  </p>
+                </div>
+                <button
+                  onClick={handleFullBackupExport}
+                  disabled={backupLoading !== null}
+                  className="w-full py-2 bg-[#00f2ff]/20 hover:bg-[#00f2ff]/30 border border-[#00f2ff]/40 text-[#00f2ff] rounded-sm font-bold font-mono tracking-wider transition flex items-center justify-center space-x-1.5 cursor-pointer text-[10px] uppercase disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Скачать ZIP</span>
+                </button>
+              </div>
+
+              <div className="bg-[#0b0b0b] border border-[#00f2ff]/30 rounded-sm p-4 flex flex-col justify-between space-y-3 sm:col-span-1 lg:col-span-1 xl:col-span-2">
+                <div>
+                  <h3 className="text-xs font-black font-mono text-[#00f2ff] uppercase tracking-wider flex items-center gap-1.5">
+                    <Upload className="w-4 h-4 text-[#00f2ff]" />
+                    <span>Восстановить (ZIP)</span>
+                  </h3>
+                  <p className="text-[10px] text-neutral-400 mt-1 font-sans">
+                    Загрузить полный ZIP-бэкап после пересоздания контейнера. Текущие данные будут стерты!
+                  </p>
+                </div>
+                <button
+                  onClick={handleFullBackupImportClick}
+                  disabled={backupLoading !== null}
+                  className="w-full py-2 bg-emerald-600/85 hover:bg-emerald-700 text-white rounded-sm font-bold font-mono tracking-wider transition flex items-center justify-center space-x-1.5 cursor-pointer text-[10px] uppercase disabled:opacity-50"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Загрузить ZIP</span>
+                </button>
+                <input
+                  type="file"
+                  ref={fullBackupImportInputRef}
+                  className="hidden"
+                  accept=".zip,application/zip"
+                  onChange={handleFullBackupImport}
+                />
+              </div>
+
               <div className="bg-[#0b0b0b] border border-white/10 rounded-sm p-4 flex flex-col justify-between space-y-3">
                 <div>
                   <h3 className="text-xs font-black font-mono text-[#00f2ff] uppercase tracking-wider flex items-center gap-1.5">
@@ -467,7 +640,7 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                     <span>Экспорт базы данных</span>
                   </h3>
                   <p className="text-[10px] text-neutral-400 mt-1 font-sans">
-                    Скачать полную копию всей СУБД SQLite (пользователи, био, аналитика) в один JSON-файл.
+                    Лёгкий JSON-дамп без медиафайлов. Для отладки и быстрого просмотра данных.
                   </p>
                 </div>
                 <button
@@ -486,7 +659,7 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                     <span>Импорт базы данных</span>
                   </h3>
                   <p className="text-[10px] text-neutral-400 mt-1 font-sans">
-                    Загрузить ранее скачанный бэкап JSON. Текущие данные будут стерты!
+                    JSON-дамп без медиафайлов. Картинки после импорта будут недоступны!
                   </p>
                 </div>
                 <button

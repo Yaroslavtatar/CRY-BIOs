@@ -184,10 +184,13 @@ export function updateUserPassword(username: string, passwordHash: string) {
   db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(passwordHash, username);
 }
 
-export function exportDatabase() {
+export function exportDatabase(options?: { includeAnalytics?: boolean }) {
   const users = db.prepare('SELECT * FROM users').all();
   const bios = db.prepare('SELECT * FROM bios').all();
-  const analytics = db.prepare('SELECT * FROM analytics').all();
+  const includeAnalytics = options?.includeAnalytics !== false;
+  const analytics = includeAnalytics
+    ? db.prepare('SELECT * FROM analytics').all()
+    : [];
   return { users, bios, analytics };
 }
 
@@ -209,9 +212,9 @@ export function importDatabase(dump: { users?: any[], bios?: any[], analytics?: 
     }
     if (dump.analytics) {
       db.prepare('DELETE FROM analytics').run();
-      const insertAnalytic = db.prepare('INSERT INTO analytics (username, timestamp, referrer, device, browser, country) VALUES (?, ?, ?, ?, ?, ?)');
+      const insertAnalytic = db.prepare('INSERT INTO analytics (username, timestamp, referrer, device, browser, country, host) VALUES (?, ?, ?, ?, ?, ?, ?)');
       for (const a of dump.analytics) {
-        insertAnalytic.run(a.username, a.timestamp, a.referrer, a.device, a.browser, a.country);
+        insertAnalytic.run(a.username, a.timestamp, a.referrer, a.device, a.browser, a.country, a.host || '');
       }
     }
   });

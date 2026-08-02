@@ -1070,6 +1070,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
           muted
           loop
           playsInline
+          preload="metadata"
           className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none"
           src={config.bgValue}
         />
@@ -1173,7 +1174,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
             </button>
             <div className="w-[1px] h-4 bg-white/10" />
             <div className="flex items-center space-x-2">
-              <img src={config.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'} className="w-7 h-7 rounded-full object-cover border border-white/10" />
+              <img src={config.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'} className="w-7 h-7 rounded-full object-cover border border-white/10" loading="lazy" decoding="async" alt="" />
               <div className="flex flex-col text-[10px] leading-tight">
                 <span className="text-neutral-400 font-bold font-mono uppercase tracking-wider text-[8px]">ПРЕДПРОСМОТР ШАБЛОНА</span>
                 <span className="text-white font-extrabold font-mono text-[9px]">{config.displayName || config.username || 'samurai'}</span>
@@ -1315,6 +1316,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                     src={config.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
                     alt={config.displayName}
                     referrerPolicy="no-referrer"
+                    loading="eager"
+                    decoding="async"
                     className="w-[100px] h-[100px] rounded-full object-cover relative z-10 transition duration-300"
                     style={verifiedBadge ? { border: `2px solid ${config.glowColor || '#00f2ff'}`, boxShadow: `0 0 20px ${config.glowColor || '#00f2ff'}66` } : { boxShadow: '0 0 15px rgba(0,0,0,0.5)' }}
                   />
@@ -1381,6 +1384,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                           <img 
                             src={`https://cdn.discordapp.com/avatars/${discordUser.discord_user.id}/${discordUser.discord_user.avatar}.png`}
                             className="w-12 h-12 rounded-full border border-white/10"
+                            loading="lazy"
+                            decoding="async"
                             onError={(e) => { e.currentTarget.src = 'https://cdn.discordapp.com/embed/avatars/0.png' }}
                             alt="Discord avatar"
                           />
@@ -1567,6 +1572,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                             src={block.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80'}
                             alt={block.imageAlt || 'Изображение'}
                             referrerPolicy="no-referrer"
+                            loading="lazy"
+                            decoding="async"
                             style={{
                               height: block.imageHeight ? `${block.imageHeight}px` : '200px',
                               objectFit: block.imageFit || 'cover',
