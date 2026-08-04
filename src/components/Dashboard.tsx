@@ -9,6 +9,7 @@ import AnalyticsView from './AnalyticsView';
 import BioPage from './BioPage';
 import QRCode from 'qrcode';
 import { getThumbUrl } from '../utils/media';
+import { parseGunsLolHtml, applyGunsImportToConfig, getImportPreviewSummary } from '../gunsImportMap';
 import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy } from 'lucide-react';
 
 const renderDashboardBadgeIcon = (iconName: string) => {
@@ -53,21 +54,11 @@ const GRADIENT_PRESETS = [
   'linear-gradient(to right, #111827, #030712)'
 ];
 
-function mapGunsBackgroundEffects(effects: string): { bgType?: BackgroundType; snowEffectsEnabled?: boolean } {
-  switch (effects) {
-    case 'rain':
-      return { bgType: 'rain' };
-    case 'snow':
-      return { snowEffectsEnabled: true };
-    case 'rain_snow':
-      return { bgType: 'rain', snowEffectsEnabled: true };
-    case 'matrix':
-      return { bgType: 'matrix' };
-    case 'stars':
-    default:
-      return { bgType: 'stars' };
-  }
-}
+const PROFILE_PRESETS: Partial<BioConfig>[] = [
+  { layoutMode: 'default', primaryColor: '#00f2ff', glowColor: '#00f2ff', bgType: 'stars', bgValue: '#0a0910', nameEffect: 'glow' },
+  { layoutMode: 'compact', primaryColor: '#a855f7', glowColor: '#a855f7', bgType: 'aurora', bgValue: '#0c0a0f', mobileOptimized: true },
+  { layoutMode: 'sleek', primaryColor: '#00ffcc', glowColor: '#00ffcc', bgType: 'matrix', bgValue: '#050505', profileGradientEnabled: true, profileGradientCss: 'linear-gradient(135deg, #00ffcc, #8b5cf6)' },
+];
 
 export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   // Authentication States
@@ -80,7 +71,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
 
   // Profile configuration states
   const [config, setConfig] = useState<BioConfig | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'layout' | 'background' | 'visuals' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'layout' | 'background' | 'visuals' | 'glow' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr'>('overview');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
 
@@ -344,6 +335,8 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
   const [importMethod, setImportMethod] = useState<'api' | 'html'>('api');
+  const [importPreview, setImportPreview] = useState('');
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
 
   // Checks and loads active sessions
   useEffect(() => {
@@ -398,252 +391,6 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       .catch(err => console.error("Analytics fetch error", err));
   };
 
-  // Parses guns.lol profile HTML client-side for 100% reliable bypass of scrapes
-  const parseGunsLolHtml = (htmlContent: string) => {
-    // 1. Try to search Next.js hydration embedded JSON segment
-    let parsedConfig: any = null;
-
-    // Search for configuration block in script tags or self.__next_f hydration blocks
-    const configBlockRegex = /"config"\s*:\s*(\{.+?\})(?:,\s*"premium"|"success"|\}\s*\}\s*\]|,\s*"verified")/g;
-    let blockMatch;
-    while ((blockMatch = configBlockRegex.exec(htmlContent)) !== null) {
-      try {
-        let jsonStr = blockMatch[1];
-        if (jsonStr.includes('\\"')) {
-          jsonStr = jsonStr.replace(/\\"/g, '"');
-        }
-        const attempt = JSON.parse(jsonStr);
-        if (attempt && (attempt.avatar || attempt.bg_color || attempt.socials || attempt.display_name)) {
-          parsedConfig = attempt;
-          break;
-        }
-      } catch (e) {
-        // seek next match
-      }
-    }
-
-    if (!parsedConfig) {
-      const dataRegex = /\{"data"\s*:\s*(\{.+?\})(?:\s*\}\s*\])/g;
-      let dataMatch;
-      while ((dataMatch = dataRegex.exec(htmlContent)) !== null) {
-        try {
-          let cleanText = dataMatch[0];
-          cleanText = cleanText.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-          const parsedData = JSON.parse(cleanText);
-          if (parsedData && parsedData.data && parsedData.data.config) {
-            parsedConfig = parsedData.data.config;
-            break;
-          }
-        } catch (e) {
-          // continue
-        }
-      }
-    }
-
-    // 2. Permissive backup regex scanners for keyvalues
-    const getValueByRegex = (regex: RegExp, def = '') => {
-      const m = htmlContent.match(regex);
-      return m ? m[1].replace(/\\"/g, '"').replace(/\\u([0-9a-fA-F]{4})/g, (_, c) => String.fromCharCode(parseInt(c, 16))) : def;
-    };
-
-    // Displays
-    let displayName = getValueByRegex(/"display_name"\s*:\s*"([^"]+)"/) || 
-                      getValueByRegex(/<title>([^<]+)<\/title>/).replace(/\s*\|.*?$/, '').replace(/\s*guns\.lol\s*$/, '').replace('@', '').trim();
-
-    // Bio Text description
-    let bio = getValueByRegex(/"description"\s*:\s*"([^"]*)"/) || '';
-    if (!bio) {
-      const metaDesc = htmlContent.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i) || 
-                       htmlContent.match(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i);
-      if (metaDesc && metaDesc[1]) {
-        bio = metaDesc[1].trim();
-      }
-    }
-
-    // Image Avatar URL 
-    let avatarUrl = getValueByRegex(/"avatar"\s*:\s*"([^"]+)"/) ||
-                     getValueByRegex(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/);
-
-    if (!avatarUrl) {
-      const imgMatch = htmlContent.match(/<img[^>]+src=["'](https:\/\/images\.guns\.lol\/[^"']+)["']/i) ||
-                        htmlContent.match(/<img[^>]+src=["'](https:\/\/r2\.guns\.lol\/[^"']+)["']/i);
-      if (imgMatch) avatarUrl = imgMatch[1];
-    }
-
-    // Video / Image 배경 
-    let bgValue = getValueByRegex(/"url"\s*:\s*"([^"]+\.(?:mp4|webm|gif|png|jpg|jpeg)[^"]*)"/) || 
-                  getValueByRegex(/(https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*)/i);
-    let bgType: 'video' | 'image' | 'stars' | 'rain' | 'color' = 'stars';
-    
-    if (bgValue && (bgValue.endsWith('.mp4') || bgValue.includes('.mp4') || bgValue.includes('/7a64a911-d951-49b6-bfe9-d7c07a9d8c1a'))) {
-      bgType = 'video';
-    } else if (bgValue && (bgValue.endsWith('.gif') || bgValue.includes('.gif') || bgValue.includes('r2.guns.lol'))) {
-      bgType = 'image';
-    }
-
-    // Default template fallbacks as parsed from direct HTML
-    if (!bgValue) {
-      const iframeMatches = htmlContent.match(/background-image\s*:\s*url\(([^)]+)\)/);
-      if (iframeMatches) {
-        bgType = 'image';
-        bgValue = iframeMatches[1].replace(/['"]/g, '');
-      }
-    }
-
-    // Extracted custom items
-    let customCursor = getValueByRegex(/"custom_cursor"\s*:\s*"([^"]+)"/) ||
-                       getValueByRegex(/cursor\s*:\s*url\(([^)]+)\)/);
-    if (customCursor) {
-      customCursor = customCursor.replace(/['"]/g, '').split(' ')[0];
-    }
-
-    let backgroundEffects = getValueByRegex(/"background_effects"\s*:\s*"([^"]+)"/) || 'rain';
-    let blurVal = parseInt(getValueByRegex(/"blur"\s*:\s*([0-9]+)/) || '2');
-    let opacityVal = parseFloat(getValueByRegex(/"opacity"\s*:\s*([0-9\.]+)/) || '0.05') * 100;
-    const sparklesEnabled = getValueByRegex(/"sparkles"\s*:\s*(true|false)/) === 'true' ||
-      getValueByRegex(/"cursor_sparkles"\s*:\s*(true|false)/) === 'true';
-    let nameEffect = getValueByRegex(/"username_effect"\s*:\s*"([^"]+)"/) ||
-      getValueByRegex(/"name_effect"\s*:\s*"([^"]+)"/) || '';
-
-    // Soundtrack track audio URL
-    let audioUrl = getValueByRegex(/"url"\s*:\s*"([^"]+\.mp3[^"]*)"/) || '';
-    if (!audioUrl) {
-      const audioMatch = htmlContent.match(/"audio"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]+)"/);
-      if (audioMatch) audioUrl = audioMatch[1];
-    }
-    if (!audioUrl) {
-      const rawMp3Match = htmlContent.match(/(https?:\/\/[^\s"'<>]+\.mp3[^\s"'<>]*)/i);
-      if (rawMp3Match) audioUrl = rawMp3Match[0];
-    }
-
-    // Social Links
-    let socialsList: any[] = [];
-    const socialsBlockMatch = htmlContent.match(/"socials"\s*:\s*\[([\s\S]+?)\]/);
-    if (socialsBlockMatch) {
-      const rawSocials = socialsBlockMatch[1];
-      const itemRegex = /\{\s*"social"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*"([^"]+)"/g;
-      let m;
-      while ((m = itemRegex.exec(rawSocials)) !== null) {
-        const platform = m[1].toLowerCase();
-        let val = m[2];
-        if (val) {
-          let url = val;
-          if (!url.startsWith('http')) {
-            if (platform === 'discord') url = `https://discord.com/users/${val}`;
-            else if (platform === 'telegram') url = `https://t.me/${val}`;
-            else if (platform === 'github') url = `https://github.com/${val}`;
-            else url = `https://${val}`;
-          }
-          socialsList.push({
-            id: `soc-${Math.random().toString(36).substr(2, 5)}`,
-            platform: platform === 'custom_url' ? 'website' : platform as any,
-            url,
-            label: platform
-          });
-        }
-      }
-    }
-
-    if (socialsList.length === 0) {
-      const anchors = htmlContent.match(/href="([^"]+)"/g);
-      if (anchors) {
-        const platforms = {
-          discord: ['discord.gg', 'discord.com'],
-          telegram: ['t.me', 'telegram.me'],
-          github: ['github.com'],
-          youtube: ['youtube.com', 'youtu.be'],
-          instagram: ['instagram.com'],
-          tiktok: ['tiktok.com'],
-          twitter: ['twitter.com', 'x.com']
-        };
-        anchors.forEach((anc) => {
-          const href = anc.replace('href="', '').replace('"', '');
-          Object.entries(platforms).forEach(([platform, urls]) => {
-            if (urls.some(u => href.includes(u))) {
-              if (!socialsList.some(s => s.platform === platform)) {
-                socialsList.push({
-                  id: `soc-${Math.random().toString(36).substr(2, 5)}`,
-                  platform,
-                  url: href,
-                  label: `${platform} Link`
-                });
-              }
-            }
-          });
-        });
-      }
-    }
-
-    // Apply JSON configurations over any backup parsed elements if Next.js hydrated block found
-    if (parsedConfig) {
-      displayName = parsedConfig.display_name || displayName;
-      bio = parsedConfig.description || bio;
-      avatarUrl = parsedConfig.avatar || avatarUrl;
-      
-      if (parsedConfig.url) {
-        bgValue = parsedConfig.url;
-        if (bgValue.endsWith('.mp4') || bgValue.includes('.mp4') || bgValue.includes('7a64a911')) {
-          bgType = 'video';
-        } else {
-          bgType = 'image';
-        }
-      }
-      
-      customCursor = parsedConfig.custom_cursor || customCursor;
-      backgroundEffects = parsedConfig.background_effects || backgroundEffects;
-      if (parsedConfig.blur !== undefined) blurVal = parsedConfig.blur;
-      if (parsedConfig.opacity !== undefined) opacityVal = parsedConfig.opacity * 100;
-      if (parsedConfig.username_effect) nameEffect = parsedConfig.username_effect;
-      else if (parsedConfig.name_effect) nameEffect = parsedConfig.name_effect;
-      
-      if (parsedConfig.audio && Array.isArray(parsedConfig.audio) && parsedConfig.audio.length > 0) {
-        const sel = parsedConfig.audio.find((a: any) => a.selected) || parsedConfig.audio[0];
-        audioUrl = sel.url || audioUrl;
-      }
-
-      if (parsedConfig.socials && Array.isArray(parsedConfig.socials)) {
-        socialsList = parsedConfig.socials.map((s: any) => {
-          let url = s.value;
-          const platform = s.social === 'custom_url' ? 'website' : s.social;
-          if (!url.startsWith('http')) {
-            if (platform === 'discord') url = `https://discord.com/users/${url}`;
-            else if (platform === 'telegram') url = `https://t.me/${url}`;
-            else if (platform === 'github') url = `https://github.com/${url}`;
-          }
-          return {
-            id: s.id || `soc-${Math.random().toString(36).substr(2, 5)}`,
-            platform,
-            url,
-            label: s.social
-          };
-        });
-      }
-    }
-
-    const bgMapping = mapGunsBackgroundEffects(backgroundEffects);
-    const resolvedSparkles = parsedConfig?.sparkles !== undefined
-      ? !!parsedConfig.sparkles
-      : parsedConfig?.cursor_sparkles !== undefined
-        ? !!parsedConfig.cursor_sparkles
-        : sparklesEnabled;
-
-    return {
-      displayName: displayName || 'Guns.lol Profile',
-      bio: bio || 'Transferred using Open-Source copy paste engine.',
-      avatarUrl: avatarUrl || '',
-      bgType: bgMapping.bgType || bgType,
-      bgValue: bgValue || '#0c0c0e',
-      audioUrl,
-      customCursorUrl: customCursor || '',
-      snowEffectsEnabled: bgMapping.snowEffectsEnabled ?? false,
-      sparkles: !!resolvedSparkles,
-      nameEffect: nameEffect || undefined,
-      bgBlur: blurVal,
-      cardOpacity: opacityVal,
-      socialsList
-    };
-  };
-
   // Handler to migrate/import configurations of user
   const handleImportFromGunsLol = (e: React.FormEvent) => {
     e.preventDefault();
@@ -660,49 +407,9 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       try {
         setImportLoading(true);
         const parsed = parseGunsLolHtml(pastedHtml);
-
-        const updatedConfig = {
-          ...config,
-          displayName: parsed.displayName,
-          bio: parsed.bio,
-          avatarUrl: parsed.avatarUrl || config.avatarUrl,
-          bgType: parsed.bgType as any,
-          bgValue: parsed.bgValue,
-          audioUrl: parsed.audioUrl || config.audioUrl,
-          audioEnabled: !!parsed.audioUrl,
-          audioTitle: parsed.displayName + ' Soundtrack',
-          audioArtist: 'GunsLol Importer',
-          customCursorUrl: parsed.customCursorUrl || config.customCursorUrl,
-          snowEffectsEnabled: parsed.snowEffectsEnabled ?? config.snowEffectsEnabled,
-          sparkles: parsed.sparkles ?? config.sparkles,
-          nameEffect: parsed.nameEffect || config.nameEffect,
-          bgBlur: parsed.bgBlur !== undefined ? parsed.bgBlur : config.bgBlur,
-          cardOpacity: parsed.cardOpacity !== undefined ? parsed.cardOpacity : config.cardOpacity,
-          verified: true
-        };
-
-        if (parsed.socialsList.length > 0) {
-          const blocksCopy = [...config.blocks];
-          const existingSocialsIndex = blocksCopy.findIndex(b => b.type === 'socials');
-          if (existingSocialsIndex !== -1) {
-            blocksCopy[existingSocialsIndex] = {
-              ...blocksCopy[existingSocialsIndex],
-              socialsList: parsed.socialsList
-            };
-          } else {
-            blocksCopy.push({
-              id: 'imported-socs',
-              type: 'socials',
-              title: 'My Social networks',
-              enabled: true,
-              socialsList: parsed.socialsList
-            });
-          }
-          updatedConfig.blocks = blocksCopy;
-        }
-
-        setConfig(updatedConfig);
-        setImportSuccess('Профиль из HTML успешно скопирован! Все поля заполнены. Обязательно нажмите «Сохранить» в правом нижнем углу панели!');
+        setImportPreview(getImportPreviewSummary(parsed));
+        setConfig(applyGunsImportToConfig(config, parsed));
+        setImportSuccess(`Профиль из HTML скопирован! ${getImportPreviewSummary(parsed)}. Нажмите «Сохранить».`);
         setPastedHtml('');
       } catch (err: any) {
         setImportError(`Ошибка импорта: ${err.message}`);
@@ -732,49 +439,9 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
         })
         .then(resData => {
           const parsed = resData.data;
-          const updatedConfig = {
-            ...config,
-            displayName: parsed.displayName,
-            bio: parsed.bio,
-            avatarUrl: parsed.avatarUrl || config.avatarUrl,
-            bgType: parsed.bgType,
-            bgValue: parsed.bgValue,
-            audioUrl: parsed.audioUrl || config.audioUrl,
-            audioEnabled: !!parsed.audioUrl,
-            audioTitle: parsed.displayName + ' Wave',
-            audioArtist: 'Premium Imported Track',
-            verified: true,
-            badges: parsed.badges,
-            customCursorUrl: parsed.customCursorUrl || config.customCursorUrl,
-            snowEffectsEnabled: parsed.snowEffectsEnabled ?? config.snowEffectsEnabled,
-            sparkles: parsed.sparkles ?? config.sparkles,
-            nameEffect: parsed.nameEffect || config.nameEffect,
-            bgBlur: parsed.bgBlur !== undefined ? parsed.bgBlur : config.bgBlur,
-            cardOpacity: parsed.cardOpacity !== undefined ? parsed.cardOpacity : config.cardOpacity,
-          };
-
-          if (parsed.socialsList.length > 0) {
-            const blocksCopy = [...config.blocks];
-            const existingSocialsIndex = blocksCopy.findIndex(b => b.type === 'socials');
-            if (existingSocialsIndex !== -1) {
-              blocksCopy[existingSocialsIndex] = {
-                ...blocksCopy[existingSocialsIndex],
-                socialsList: parsed.socialsList
-              };
-            } else {
-              blocksCopy.push({
-                id: 'imported-socs',
-                type: 'socials',
-                title: 'My Links networks',
-                enabled: true,
-                socialsList: parsed.socialsList
-              });
-            }
-            updatedConfig.blocks = blocksCopy;
-          }
-
-          setConfig(updatedConfig);
-          setImportSuccess('Профиль с guns.lol успешно перенесен! Спец-значки и бейджи добавлены. Обязательно нажмите «Сохранить» в правом нижнем углу панели!');
+          setImportPreview(resData.data.preview || getImportPreviewSummary(parsed));
+          setConfig(applyGunsImportToConfig(config, parsed));
+          setImportSuccess(`Профиль с guns.lol перенесён! ${resData.data.preview || ''} Нажмите «Сохранить».`);
           setImportGunsUsername('');
         })
         .catch(err => {
@@ -1211,7 +878,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
               
               {/* Navigation Tabs Options */}
               <div className="p-4 border-b border-white/10 bg-[#0c0c0c] grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
-                {(['overview', 'profile', 'layout', 'background', 'visuals', 'audio', 'blocks', 'analytics', 'selfhost', 'qr'] as const).map(tab => {
+                {(['overview', 'profile', 'layout', 'background', 'visuals', 'glow', 'audio', 'blocks', 'analytics', 'selfhost', 'qr'] as const).map(tab => {
                   let tabName = '';
                   switch (tab) {
                     case 'overview': tabName = 'Обзор'; break;
@@ -1219,6 +886,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                     case 'layout': tabName = 'Макет'; break;
                     case 'background': tabName = 'Фон'; break;
                     case 'visuals': tabName = 'Эффекты'; break;
+                    case 'glow': tabName = 'Glow'; break;
                     case 'audio': tabName = 'Аудио'; break;
                     case 'blocks': tabName = 'Блоки'; break;
                     case 'analytics': tabName = 'Статистика'; break;
@@ -1453,6 +1121,11 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-sm leading-normal text-[10px] flex items-start space-x-2">
                               <span>✅</span>
                               <span className="font-sans">{importSuccess}</span>
+                            </div>
+                          )}
+                          {importPreview && (
+                            <div className="p-3 bg-cyan-500/5 border border-cyan-500/20 text-cyan-300 rounded-sm text-[10px] font-mono">
+                              Preview: {importPreview}
                             </div>
                           )}
                         </div>
@@ -1718,6 +1391,8 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             <option value="gradient_ocean">Океанский Градиент (Ocean)</option>
                             <option value="shine">Проблеск (Shine Sweep)</option>
                             <option value="glitch">Глитч (Glitch Pulse)</option>
+                            <option value="shuffle">Shuffle (Перемешивание)</option>
+                            <option value="fuzzy">Fuzzy (Размытие)</option>
                             <option value="typewriter">Печатная Машинка (Typewriter)</option>
                             <option value="rainbow">Радуга (Rainbow)</option>
                             <option value="flicker">Мерцание (Flicker)</option>
@@ -1790,6 +1465,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                                 <option value="minimal">Minimal</option>
                                 <option value="pill">Pill</option>
                                 <option value="glow">Glow</option>
+                                <option value="geo_pulse">Geo Pulse</option>
                               </select>
                             </div>
                           </div>
@@ -2173,6 +1849,28 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                       <Layout className="w-4 h-4" />
                       <span>Конструктор (Порядок блоков)</span>
                     </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Layout Mode</label>
+                        <select value={config.layoutMode || 'default'} onChange={e => updateConfigValue('layoutMode', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white">
+                          <option value="default">Default</option>
+                          <option value="compact">Compact (mobile)</option>
+                          <option value="sleek">Sleek (guns.lol)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Verified Badge</label>
+                        <select value={config.verifiedBadgeStyle || 'inline'} onChange={e => updateConfigValue('verifiedBadgeStyle', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white">
+                          <option value="inline">Inline check</option>
+                          <option value="chip">Chip</option>
+                          <option value="ring">Avatar ring</option>
+                          <option value="none">Hidden</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => updateConfigValue('mobileOptimized', config.mobileOptimized === false ? true : false)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.mobileOptimized !== false ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
+                      Mobile Optimized: {config.mobileOptimized !== false ? 'ON' : 'OFF'}
+                    </button>
                     <p className="text-[10px] text-neutral-400 font-sans leading-normal">
                       Настройте порядок отображения элементов на вашей био-странице.
                     </p>
@@ -2246,7 +1944,10 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             { key: 'stars', label: 'Stars' },
                             { key: 'rain', label: 'Rain' },
                             { key: 'particles', label: 'Particles' },
-                            { key: 'snow', label: 'Snow BG' }
+                            { key: 'snow', label: 'Snow BG' },
+                            { key: 'aurora', label: 'Aurora' },
+                            { key: 'plasma', label: 'Plasma' },
+                            { key: 'dither', label: 'Dither' }
                           ]).map(t => (
                             <button
                               key={t.key}
@@ -2495,6 +2196,67 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                   </div>
                 )}
 
+                {/* GLOW SETTINGS SECTOR */}
+                {activeTab === 'glow' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                      <Sparkles className="w-4 h-4" />
+                      <span>Glow Settings (guns.lol parity)</span>
+                    </h3>
+                    <div className="space-y-4 font-mono text-xs">
+                      <button type="button" onClick={() => updateConfigValue('glowEnabled', !config.glowEnabled)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.glowEnabled ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
+                        Global Glow: {config.glowEnabled ? 'ON' : 'OFF'}
+                      </button>
+                      <div>
+                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Intensity</label>
+                        <select value={config.glowIntensity || 'medium'} onChange={e => updateConfigValue('glowIntensity', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white">
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Glow Targets</label>
+                        <div className="flex flex-wrap gap-2">
+                          {(['avatar', 'username', 'location', 'badges', 'links', 'card'] as const).map(t => (
+                            <button key={t} type="button" onClick={() => {
+                              const cur = config.glowTargets || ['avatar', 'username', 'badges', 'links'];
+                              updateConfigValue('glowTargets', cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t]);
+                            }} className={`px-2 py-1 rounded-sm border text-[9px] uppercase ${(config.glowTargets || ['avatar', 'username', 'badges', 'links']).includes(t) ? 'bg-[#00f2ff] text-black' : 'bg-black/40 border-white/10 text-neutral-400'}`}>
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => updateConfigValue('profileGradientEnabled', !config.profileGradientEnabled)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.profileGradientEnabled ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
+                        Profile Gradient: {config.profileGradientEnabled ? 'ON' : 'OFF'}
+                      </button>
+                      {config.profileGradientEnabled && (
+                        <input type="text" value={config.profileGradientCss || ''} onChange={e => updateConfigValue('profileGradientCss', e.target.value)} placeholder="linear-gradient(...)" className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white" />
+                      )}
+                      <button type="button" onClick={() => updateConfigValue('swapBoxColors', !config.swapBoxColors)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.swapBoxColors ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
+                        Swap Box Colors: {config.swapBoxColors ? 'ON' : 'OFF'}
+                      </button>
+                      <div className="border-t border-white/10 pt-3 space-y-2">
+                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black">Profile Presets</h4>
+                        <div className="grid grid-cols-1 gap-2">
+                          {PROFILE_PRESETS.map((preset, i) => (
+                            <button key={i} type="button" onClick={() => setConfig({ ...config, ...preset })} className="py-2 px-3 bg-black/40 border border-white/10 hover:border-[#00f2ff]/40 rounded-sm text-[10px] text-left text-neutral-300">
+                              Preset {i + 1}: {preset.layoutMode} / {preset.bgType}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="border-t border-white/10 pt-3 space-y-2">
+                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black">OG Meta Tags</h4>
+                        <input type="text" placeholder="og:title" value={config.ogTitle || ''} onChange={e => updateConfigValue('ogTitle', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white mb-2" />
+                        <input type="text" placeholder="og:description" value={config.ogDescription || ''} onChange={e => updateConfigValue('ogDescription', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white mb-2" />
+                        <input type="text" placeholder="og:image URL" value={config.ogImage || ''} onChange={e => updateConfigValue('ogImage', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* 3. AUDIO SECTOR */}
                 {activeTab === 'audio' && (
                   <div className="space-y-4">
@@ -2528,6 +2290,13 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             <option value="playlist">Плейлист</option>
                           </select>
                         </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Volume Control Visible</label>
+                        <button type="button" onClick={() => updateConfigValue('volumeControlVisible', !config.volumeControlVisible)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.volumeControlVisible ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
+                          {config.volumeControlVisible ? 'Показан' : 'Скрыт'}
+                        </button>
                       </div>
 
                       <div>
@@ -3602,20 +3371,24 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                     <span>Режим Предпросмотра (В реальном времени)</span>
                   </span>
                 </div>
-                <div className="flex space-x-1">
-                  <span className="w-2.5 h-2.5 rounded-full bg-white/10" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-white/10" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-white/10" />
+                <div className="flex gap-1 bg-black/40 p-1 rounded-sm border border-white/10">
+                  <button type="button" onClick={() => setPreviewMode('desktop')} className={`px-2 py-1 text-[9px] uppercase font-bold rounded-sm ${previewMode === 'desktop' ? 'bg-[#00f2ff] text-black' : 'text-neutral-500'}`}>Desktop</button>
+                  <button type="button" onClick={() => setPreviewMode('mobile')} className={`px-2 py-1 text-[9px] uppercase font-bold rounded-sm ${previewMode === 'mobile' ? 'bg-[#00f2ff] text-black' : 'text-neutral-500'}`}>Mobile</button>
                 </div>
               </div>
 
               {/* Bio Page renderer in sandbox state preview config mode */}
-              <div className="flex-grow overflow-y-auto relative bg-[#040407]">
+              <div className={`flex-grow overflow-y-auto relative bg-[#040407] flex justify-center ${previewMode === 'mobile' ? 'p-4' : ''}`}>
+                <div
+                  className={previewMode === 'mobile' ? 'w-[390px] h-[844px] max-h-full border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl scale-[0.85] origin-top' : 'w-full h-full'}
+                  style={previewMode === 'mobile' ? { maxHeight: '844px' } : undefined}
+                >
                 <BioPage
                   username={username}
                   onExit={() => {}}
-                  previewConfig={config}
+                  previewConfig={{ ...config, mobileOptimized: previewMode === 'mobile' ? true : config.mobileOptimized }}
                 />
+                </div>
               </div>
             </div>
           </>

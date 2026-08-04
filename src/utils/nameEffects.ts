@@ -24,8 +24,12 @@ export function getNameEffectClasses(effect: NameEffect | undefined, displayName
       return 'text-transparent bg-clip-text bg-gradient-to-r from-white via-neutral-500 to-white animate-shine bg-[length:200%_auto]';
     case 'glitch':
       return 'text-white animate-glitch relative';
+    case 'shuffle':
+      return 'text-white animate-shuffle inline-block';
+    case 'fuzzy':
+      return 'text-white animate-fuzzy inline-block';
     case 'typewriter':
-      return `text-white overflow-hidden whitespace-nowrap border-r-[3px] border-white max-w-fit pr-1 animate-typing name-typewriter-${len}`;
+      return `text-white overflow-hidden whitespace-nowrap border-r-[3px] border-white max-w-fit pr-1 name-typewriter-${len}`;
     case 'rainbow':
       return 'text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-yellow-400 to-blue-400 animate-rainbow bg-[length:200%_auto]';
     case 'flicker':
@@ -44,9 +48,13 @@ export function getNameEffectClasses(effect: NameEffect | undefined, displayName
 }
 
 export function getNameEffectStyle(effect: NameEffect | undefined, displayName: string): CSSProperties | undefined {
+  const len = Math.max(displayName.length, 1);
   if (effect === 'typewriter') {
     return {
-      animation: `typing 2.5s steps(${Math.max(displayName.length, 1)}) forwards, blink 0.75s step-end infinite`,
+      animation: `typing 2.5s steps(${len}) forwards, blink 0.75s step-end infinite`,
+      width: 0,
+      overflow: 'hidden',
+      whiteSpace: 'nowrap',
     };
   }
   return undefined;

@@ -18,7 +18,13 @@ export interface SocialLink {
   glow?: boolean;
 }
 
-export type BackgroundType = 'color' | 'gradient' | 'image' | 'video' | 'matrix' | 'stars' | 'rain' | 'particles' | 'snow';
+export type BackgroundType = 'color' | 'gradient' | 'image' | 'video' | 'matrix' | 'stars' | 'rain' | 'particles' | 'snow' | 'aurora' | 'plasma' | 'dither';
+export type LayoutMode = 'default' | 'compact' | 'sleek';
+export type GlowIntensity = 'low' | 'medium' | 'high';
+export type GlowTarget = 'avatar' | 'username' | 'location' | 'badges' | 'links' | 'card';
+export type VerifiedBadgeStyle = 'inline' | 'chip' | 'ring' | 'none';
+export type BadgeStyle = 'icon' | 'pill' | 'text' | 'image';
+export type BadgeSize = 'sm' | 'md' | 'lg';
 
 export type AudioPlayerMode = 'hidden' | 'minimal' | 'inline' | 'floating';
 export type AudioSourceMode = 'single' | 'playlist';
@@ -26,10 +32,11 @@ export type AudioVisualizerStyle = 'bars' | 'wave' | 'retro' | 'circular' | 'mir
 export type NameEffect =
   | 'none' | 'glow' | 'stroke' | 'gradient' | 'glitch' | 'neon' | 'shine'
   | 'neon_red' | 'neon_blue' | 'gradient_fire' | 'gradient_ocean' | 'typewriter'
-  | 'rainbow' | 'flicker' | 'bounce' | 'shadow_3d' | 'underline_glow' | 'cyber';
+  | 'rainbow' | 'flicker' | 'bounce' | 'shadow_3d' | 'underline_glow' | 'cyber'
+  | 'shuffle' | 'fuzzy';
 export type SparkleStyle = 'stars' | 'dots' | 'hearts' | 'crosses' | 'neon';
 export type LocationIcon = 'pin' | 'globe' | 'map';
-export type LocationStyle = 'minimal' | 'pill' | 'glow';
+export type LocationStyle = 'minimal' | 'pill' | 'glow' | 'geo_pulse';
 
 export interface BlockConfig {
   id: string;
@@ -78,6 +85,10 @@ export interface UserBadge {
   textColor?: string;
   bgColor?: string;
   borderColor?: string;
+  badgeStyle?: BadgeStyle;
+  imageUrl?: string;
+  showLabel?: boolean;
+  size?: BadgeSize;
 }
 
 export interface BioConfig {
@@ -123,6 +134,22 @@ export interface BioConfig {
   playlist?: SongConfig[];
   hidePlayerUntilHover?: boolean;
   rememberVolume?: boolean;
+  volumeControlVisible?: boolean;
+
+  layoutMode?: LayoutMode;
+  mobileOptimized?: boolean;
+  verifiedBadgeStyle?: VerifiedBadgeStyle;
+  glowEnabled?: boolean;
+  glowIntensity?: GlowIntensity;
+  glowTargets?: GlowTarget[];
+  profileGradientEnabled?: boolean;
+  profileGradientCss?: string;
+  swapBoxColors?: boolean;
+  monochromeIcons?: boolean;
+  memberSince?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
 
   bgVideoAudioEnabled?: boolean;
   bgVideoUseAsAudio?: boolean;

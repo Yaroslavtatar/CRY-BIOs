@@ -1,5 +1,5 @@
 import React from 'react';
-import { Music, SkipBack, Pause, Play, SkipForward } from 'lucide-react';
+import { Music, SkipBack, Pause, Play, SkipForward, Volume2, VolumeX } from 'lucide-react';
 import { SongConfig } from '../types';
 
 interface MinimalAudioBarProps {
@@ -12,6 +12,10 @@ interface MinimalAudioBarProps {
   primaryColor?: string;
   variant?: 'minimal' | 'inline' | 'floating';
   hideUntilHover?: boolean;
+  showVolume?: boolean;
+  volume?: number;
+  onToggleMute?: () => void;
+  onVolumeChange?: (v: number) => void;
   onPlayPause: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -22,12 +26,17 @@ interface MinimalAudioBarProps {
 export default function MinimalAudioBar({
   currentSong,
   isPlaying,
+  isMuted,
   audioCurrentTime,
   audioDuration,
   songsCount,
   primaryColor = '#00f2ff',
   variant = 'minimal',
   hideUntilHover = false,
+  showVolume = false,
+  volume = 0.8,
+  onToggleMute,
+  onVolumeChange,
   onPlayPause,
   onPrev,
   onNext,
@@ -40,13 +49,13 @@ export default function MinimalAudioBar({
 
   const positionClass =
     variant === 'floating'
-      ? 'fixed bottom-4 left-4 z-50'
+      ? 'fixed bottom-4 left-4 z-50 max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))]'
       : variant === 'minimal'
-        ? 'fixed bottom-6 left-1/2 -translate-x-1/2 z-50'
+        ? 'fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:w-[calc(100%-2rem)]'
         : 'relative w-full z-10 mb-4';
 
   const hoverClass = hideUntilHover
-    ? 'opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300'
+    ? 'max-sm:opacity-100 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300'
     : '';
 
   return (
@@ -96,6 +105,11 @@ export default function MinimalAudioBar({
         </div>
 
         <div className="flex items-center gap-1 text-white/80 flex-shrink-0">
+          {showVolume && onToggleMute && (
+            <button type="button" onClick={onToggleMute} className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center hover:text-white transition cursor-pointer" title="Громкость">
+              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+          )}
           <button
             type="button"
             onClick={onPrev}
@@ -125,6 +139,18 @@ export default function MinimalAudioBar({
           </button>
         </div>
       </div>
+      {showVolume && onVolumeChange && (
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={isMuted ? 0 : volume}
+          onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+          className="w-full mt-2 h-1 accent-[var(--accent)]"
+          style={{ ['--accent' as string]: primaryColor }}
+        />
+      )}
     </div>
   );
 }

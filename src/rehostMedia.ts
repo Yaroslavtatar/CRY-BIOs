@@ -156,28 +156,42 @@ export async function rehostImportMedia(
     bgValue?: string;
     audioUrl?: string;
     customCursorUrl?: string;
+    playlist?: { id: string; url: string; title: string; artist: string }[];
   },
   uploadsDir: string,
-  tmpDir: string
+  tmpDir: string,
+  onProgress?: (current: number, total: number, label: string) => void
 ): Promise<typeof data> {
   const result = { ...data };
+  const tasks: { key: string; url: string; type: RehostMediaType }[] = [];
 
-  if (data.avatarUrl) {
-    result.avatarUrl = (await rehostRemoteUrl(data.avatarUrl, uploadsDir, tmpDir, 'avatar')) || data.avatarUrl;
+  if (data.avatarUrl) tasks.push({ key: 'avatarUrl', url: data.avatarUrl, type: 'avatar' });
+  if (data.bgValue && data.bgType === 'video') tasks.push({ key: 'bgValue', url: data.bgValue, type: 'video' });
+  else if (data.bgValue && (data.bgType === 'image' || /\.(gif|png|jpg|jpeg|webp)/i.test(data.bgValue))) {
+    tasks.push({ key: 'bgValue', url: data.bgValue, type: 'bg' });
+  }
+  if (data.audioUrl) tasks.push({ key: 'audioUrl', url: data.audioUrl, type: 'audio' });
+  if (data.customCursorUrl) tasks.push({ key: 'customCursorUrl', url: data.customCursorUrl, type: 'cursor' });
+
+  if (data.playlist?.length) {
+    data.playlist.forEach((track, i) => {
+      if (track.url) tasks.push({ key: `playlist-${i}`, url: track.url, type: 'audio' });
+    });
   }
 
-  if (data.bgValue && data.bgType === 'video') {
-    result.bgValue = (await rehostRemoteUrl(data.bgValue, uploadsDir, tmpDir, 'video')) || data.bgValue;
-  } else if (data.bgValue && (data.bgType === 'image' || /\.(gif|png|jpg|jpeg|webp)/i.test(data.bgValue))) {
-    result.bgValue = (await rehostRemoteUrl(data.bgValue, uploadsDir, tmpDir, 'bg')) || data.bgValue;
-  }
+  let done = 0;
+  const total = tasks.length;
 
-  if (data.audioUrl) {
-    result.audioUrl = (await rehostRemoteUrl(data.audioUrl, uploadsDir, tmpDir, 'audio')) || data.audioUrl;
-  }
-
-  if (data.customCursorUrl) {
-    result.customCursorUrl = (await rehostRemoteUrl(data.customCursorUrl, uploadsDir, tmpDir, 'cursor')) || data.customCursorUrl;
+  for (const task of tasks) {
+    onProgress?.(done + 1, total, task.key);
+    const rehosted = await rehostRemoteUrl(task.url, uploadsDir, tmpDir, task.type);
+    if (task.key.startsWith('playlist-')) {
+      const idx = parseInt(task.key.split('-')[1], 10);
+      if (result.playlist?.[idx] && rehosted) result.playlist[idx].url = rehosted;
+    } else {
+      (result as any)[task.key] = rehosted || task.url;
+    }
+    done++;
   }
 
   return result;

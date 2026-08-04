@@ -38,6 +38,21 @@ export default function LocationLine({ config }: LocationLineProps) {
     );
   }
 
+  if (style === 'geo_pulse') {
+    return (
+      <div className={`${base} flex-col items-center text-neutral-200`}>
+        <div className="flex items-center gap-1.5">
+          <Icon className="w-3.5 h-3.5 animate-geo-pulse" style={{ color }} />
+          <span style={{ textShadow: `0 0 8px ${color}66` }}>{config.locationText}</span>
+        </div>
+        <span
+          className="h-[2px] w-16 mt-1 rounded-full animate-pulse"
+          style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`${base} text-neutral-300 px-3 py-1 rounded-full border backdrop-blur-sm`}

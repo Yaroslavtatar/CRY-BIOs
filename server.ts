@@ -17,6 +17,7 @@ import { streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup,
 import { isAllowedMime, isImageMime, processUploadedImage, type ImageUploadType } from './src/imageProcessing';
 import { isVideoMime, processUploadedVideo } from './src/videoProcessing';
 import { rehostImportMedia } from './src/rehostMedia';
+import { parseGunsLolHtml } from './src/gunsImportMap';
 import { cleanupAllOrphans, deleteUnusedBetweenConfigs } from './src/uploadCleanup';
 import { getStorageStats, runHealthChecks, isUsingDefaultAdminPassword } from './src/storageStats';
 import { startScheduledBackups } from './src/scheduledBackup';
@@ -754,262 +755,11 @@ async function startServer() {
       }
 
       const html = await response.text();
-      // 1. Try to search Next.js hydration embedded JSON segment
-      let parsedConfig: any = null;
-
-      // Search for configuration block in script tags or self.__next_f hydration blocks
-      const configBlockRegex = /"config"\s*:\s*(\{.+?\})(?:,\s*"premium"|"success"|\}\s*\}\s*\]|,\s*"verified")/g;
-      let blockMatch;
-      while ((blockMatch = configBlockRegex.exec(html)) !== null) {
-        try {
-          let jsonStr = blockMatch[1];
-          if (jsonStr.includes('\\"')) {
-            jsonStr = jsonStr.replace(/\\"/g, '"');
-          }
-          const attempt = JSON.parse(jsonStr);
-          if (attempt && (attempt.avatar || attempt.bg_color || attempt.socials || attempt.display_name)) {
-            parsedConfig = attempt;
-            break;
-          }
-        } catch (e) {
-          // seek next match
-        }
-      }
-
-      if (!parsedConfig) {
-        const dataRegex = /\{"data"\s*:\s*(\{.+?\})(?:\s*\}\s*\])/g;
-        let dataMatch;
-        while ((dataMatch = dataRegex.exec(html)) !== null) {
-          try {
-            let cleanText = dataMatch[0];
-            cleanText = cleanText.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-            const parsedData = JSON.parse(cleanText);
-            if (parsedData && parsedData.data && parsedData.data.config) {
-              parsedConfig = parsedData.data.config;
-              break;
-            }
-          } catch (e) {
-            // continue
-          }
-        }
-      }
-
-      // 2. Permissive backup regex scanners for keyvalues
-      const getValueByRegex = (regex: RegExp, def = '') => {
-        const m = html.match(regex);
-        return m ? m[1].replace(/\\"/g, '"').replace(/\\u([0-9a-fA-F]{4})/g, (_, c) => String.fromCharCode(parseInt(c, 16))) : def;
-      };
-
-      // Displays name
-      let displayName = getValueByRegex(/"display_name"\s*:\s*"([^"]+)"/) || 
-                        getValueByRegex(/<title>([^<]+)<\/title>/).replace(/\s*\|.*?$/, '').replace(/\s*guns\.lol\s*$/, '').replace('@', '').trim();
-
-      if (!displayName || displayName === cleanUsername) {
-        displayName = cleanUsername;
-      }
-
-      // Bio Text description
-      let bio = getValueByRegex(/"description"\s*:\s*"([^"]*)"/) || '';
-      if (!bio) {
-        const metaDesc = html.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i) || 
-                         html.match(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i);
-        if (metaDesc && metaDesc[1]) {
-          bio = metaDesc[1].trim();
-        }
-      }
-
-      // Image Avatar URL 
-      let avatarUrl = getValueByRegex(/"avatar"\s*:\s*"([^"]+)"/) ||
-                       getValueByRegex(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/);
-
-      if (!avatarUrl) {
-        const imgMatch = html.match(/<img[^>]+src=["'](https:\/\/images\.guns\.lol\/[^"']+)["']/i) ||
-                          html.match(/<img[^>]+src=["'](https:\/\/r2\.guns\.lol\/[^"']+)["']/i);
-        if (imgMatch) avatarUrl = imgMatch[1];
-      }
-
-      // Video / Image 배경 
-      let bgValue = getValueByRegex(/"url"\s*:\s*"([^"]+\.(?:mp4|webm|gif|png|jpg|jpeg)[^"]*)"/) || 
-                    getValueByRegex(/(https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*)/i);
-      let bgType = 'stars';
-      
-      if (bgValue && (bgValue.endsWith('.mp4') || bgValue.includes('.mp4') || bgValue.includes('/7a64a911-d951-49b6-bfe9-d7c07a9d8c1a'))) {
-        bgType = 'video';
-      } else if (bgValue && (bgValue.endsWith('.gif') || bgValue.includes('.gif') || bgValue.includes('r2.guns.lol'))) {
-        bgType = 'image';
-      }
-
-      // Default template fallbacks as parsed from direct HTML
-      if (!bgValue) {
-        const iframeMatches = html.match(/background-image\s*:\s*url\(([^)]+)\)/);
-        if (iframeMatches) {
-          bgType = 'image';
-          bgValue = iframeMatches[1].replace(/['"]/g, '');
-        }
-      }
-
-      // Extracted custom items
-      let customCursor = getValueByRegex(/"custom_cursor"\s*:\s*"([^"]+)"/) ||
-                         getValueByRegex(/cursor\s*:\s*url\(([^)]+)\)/);
-      if (customCursor) {
-        customCursor = customCursor.replace(/['"]/g, '').split(' ')[0];
-      }
-
-      let backgroundEffects = getValueByRegex(/"background_effects"\s*:\s*"([^"]+)"/) || 'rain';
-      let blurVal = parseInt(getValueByRegex(/"blur"\s*:\s*([0-9]+)/) || '2');
-      let opacityVal = parseFloat(getValueByRegex(/"opacity"\s*:\s*([0-9\.]+)/) || '0.05') * 100;
-      const sparklesRaw = getValueByRegex(/"sparkles"\s*:\s*(true|false)/) ||
-        getValueByRegex(/"cursor_sparkles"\s*:\s*(true|false)/);
-      let sparklesEnabled = sparklesRaw === 'true';
-      let nameEffect = getValueByRegex(/"username_effect"\s*:\s*"([^"]+)"/) ||
-        getValueByRegex(/"name_effect"\s*:\s*"([^"]+)"/) || '';
-
-      // Soundtrack track audio URL
-      let audioUrl = getValueByRegex(/"url"\s*:\s*"([^"]+\.mp3[^"]*)"/) || '';
-      if (!audioUrl) {
-        const audioMatch = html.match(/"audio"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]+)"/);
-        if (audioMatch) audioUrl = audioMatch[1];
-      }
-      if (!audioUrl) {
-        const rawMp3Match = html.match(/(https?:\/\/[^\s"'<>]+\.mp3[^\s"'<>]*)/i);
-        if (rawMp3Match) audioUrl = rawMp3Match[0];
-      }
-
-      // Set premium beautiful transparent badges list for the user
-      const badges = [
-        { id: 'b-v', type: 'verified', icon: 'shieldcheck', label: 'Verified', description: 'Официально верифицированный профиль платформы', enabled: true, glow: true, glowColor: '#00f2ff' },
-        { id: 'b-p', type: 'premium', icon: 'gem', label: 'Premium', description: 'Премиум-подписка CRY BIOS Pro', enabled: true, glow: true, glowColor: '#a855f7' },
-        { id: 'b-cr', type: 'custom', icon: 'crown', label: 'CRYTEAM Elite', description: 'Elite Cryteam Crew', enabled: true, glow: true, glowColor: '#00ffcc', bgColor: 'rgba(0,250,200,0.1)', borderColor: '#00ffcc' }
-      ];
-
-      // Social Links matching
-      let socialsList: any[] = [];
-      const socialsBlockMatch = html.match(/"socials"\s*:\s*\[([\s\S]+?)\]/);
-      if (socialsBlockMatch) {
-        const rawSocials = socialsBlockMatch[1];
-        const itemRegex = /\{\s*"social"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*"([^"]+)"/g;
-        let m;
-        while ((m = itemRegex.exec(rawSocials)) !== null) {
-          const platform = m[1].toLowerCase();
-          let val = m[2];
-          if (val) {
-            let url = val;
-            if (!url.startsWith('http')) {
-              if (platform === 'discord') url = `https://discord.com/users/${val}`;
-              else if (platform === 'telegram') url = `https://t.me/${val}`;
-              else if (platform === 'github') url = `https://github.com/${val}`;
-              else url = `https://${val}`;
-            }
-            socialsList.push({
-              id: `soc-${Math.random().toString(36).substr(2, 5)}`,
-              platform: platform === 'custom_url' ? 'website' : platform as any,
-              url,
-              label: platform
-            });
-          }
-        }
-      }
-
-      if (socialsList.length === 0) {
-        const platformPatterns = {
-          discord: /(?:discord\.gg|discord\.com\/invite|discordapp\.com\/users)\/[a-zA-Z0-9_\-\.]+/gi,
-          telegram: /(?:t\.me|telegram\.me)\/[a-zA-Z0-9_\-]+/gi,
-          github: /(?:github\.com)\/[a-zA-Z0-9_\-]+/gi,
-          youtube: /(?:youtube\.com)\/(?:user\/|channel\/|c\/|@)?[a-zA-Z0-9_\-]+/gi,
-          instagram: /(?:instagram\.com)\/[a-zA-Z0-9_\-\.]+/gi,
-          tiktok: /(?:tiktok\.com)\/@[a-zA-Z0-9_\-\.]+/gi,
-          twitter: /(?:twitter\.com|x\.com)\/[a-zA-Z0-9_\-]+/gi,
-        };
-
-        Object.entries(platformPatterns).forEach(([platform, regex]) => {
-          const matches = html.match(regex);
-          if (matches && matches[0]) {
-            const url = matches[0].startsWith('http') ? matches[0] : `https://${matches[0]}`;
-            socialsList.push({
-              id: `soc-${Math.random().toString(36).substr(2, 5)}`,
-              platform,
-              url,
-              label: `${platform} Link`
-            });
-          }
-        });
-      }
-
-      // Apply JSON configurations over any backup parsed elements if Next.js hydrated block found
-      if (parsedConfig) {
-        displayName = parsedConfig.display_name || displayName;
-        bio = parsedConfig.description || bio;
-        avatarUrl = parsedConfig.avatar || avatarUrl;
-        
-        if (parsedConfig.url) {
-          bgValue = parsedConfig.url;
-          if (bgValue.endsWith('.mp4') || bgValue.includes('.mp4') || bgValue.includes('7a64a911')) {
-            bgType = 'video';
-          } else {
-            bgType = 'image';
-          }
-        }
-        
-        customCursor = parsedConfig.custom_cursor || customCursor;
-        backgroundEffects = parsedConfig.background_effects || backgroundEffects;
-        if (parsedConfig.blur !== undefined) blurVal = parsedConfig.blur;
-        if (parsedConfig.opacity !== undefined) opacityVal = parsedConfig.opacity * 100;
-        if (parsedConfig.sparkles !== undefined) sparklesEnabled = !!parsedConfig.sparkles;
-        else if (parsedConfig.cursor_sparkles !== undefined) sparklesEnabled = !!parsedConfig.cursor_sparkles;
-        if (parsedConfig.username_effect) nameEffect = parsedConfig.username_effect;
-        else if (parsedConfig.name_effect) nameEffect = parsedConfig.name_effect;
-        
-        if (parsedConfig.audio && Array.isArray(parsedConfig.audio) && parsedConfig.audio.length > 0) {
-          const sel = parsedConfig.audio.find((a: any) => a.selected) || parsedConfig.audio[0];
-          audioUrl = sel.url || audioUrl;
-        }
-
-        if (parsedConfig.socials && Array.isArray(parsedConfig.socials)) {
-          socialsList = parsedConfig.socials.map((s: any) => {
-            let url = s.value;
-            const platform = s.social === 'custom_url' ? 'website' : s.social;
-            if (!url.startsWith('http')) {
-              if (platform === 'discord') url = `https://discord.com/users/${url}`;
-              else if (platform === 'telegram') url = `https://t.me/${url}`;
-              else if (platform === 'github') url = `https://github.com/${url}`;
-            }
-            return {
-              id: s.id || `soc-${Math.random().toString(36).substr(2, 5)}`,
-              platform,
-              url,
-              label: s.social
-            };
-          });
-        }
-      }
-
-      const mapBgEffects = (effects: string) => {
-        switch (effects) {
-          case 'rain': return { bgType: 'rain', snowEffectsEnabled: false };
-          case 'snow': return { bgType: bgType as string, snowEffectsEnabled: true };
-          case 'rain_snow': return { bgType: 'rain', snowEffectsEnabled: true };
-          case 'matrix': return { bgType: 'matrix', snowEffectsEnabled: false };
-          case 'stars': return { bgType: 'stars', snowEffectsEnabled: false };
-          default: return { bgType: bgType as string, snowEffectsEnabled: false };
-        }
-      };
-      const bgMapped = mapBgEffects(backgroundEffects);
+      const parsed = parseGunsLolHtml(html, cleanUsername);
 
       let responseData = {
-        displayName,
-        bio,
-        avatarUrl,
-        bgType: bgMapped.bgType,
-        bgValue,
-        audioUrl,
-        customCursorUrl: customCursor || '',
-        snowEffectsEnabled: bgMapped.snowEffectsEnabled,
-        sparkles: sparklesEnabled,
-        nameEffect: nameEffect || undefined,
-        bgBlur: blurVal,
-        cardOpacity: opacityVal,
-        socialsList,
-        badges,
+        ...parsed,
+        preview: `${parsed.playlist.length} tracks, effect: ${parsed.nameEffect || 'none'}, location: ${parsed.locationText || 'none'}`,
       };
 
       responseData = await rehostImportMedia(responseData, UPLOADS_DIR, TMP_DIR) as typeof responseData;
@@ -1096,21 +846,23 @@ async function startServer() {
       device = 'Tablet';
     }
 
-    // Language / Country detection fallback
+    const cfCountry = req.get('CF-IPCountry');
     const langHeader = req.get('Accept-Language') || '';
-    let country = 'Intl';
-    if (langHeader.startsWith('ru')) country = 'RU';
-    else if (langHeader.startsWith('en-US') || langHeader.includes('en-US')) country = 'US';
-    else if (langHeader.startsWith('en-GB') || langHeader.includes('en-GB')) country = 'GB';
-    else if (langHeader.startsWith('de') || langHeader.includes('de')) country = 'DE';
-    else if (langHeader.startsWith('fr') || langHeader.includes('fr')) country = 'FR';
-    else if (langHeader.startsWith('es') || langHeader.includes('es')) country = 'ES';
-    else if (langHeader.startsWith('it') || langHeader.includes('it')) country = 'IT';
-    else if (langHeader.includes('kz')) country = 'KZ';
-    else if (langHeader.includes('by')) country = 'BY';
-    else if (langHeader.includes('ua')) country = 'UA';
-    else if (langHeader.split(',')[0]) {
-      country = langHeader.split(',')[0].substring(0, 2).toUpperCase();
+    let country = cfCountry && cfCountry !== 'XX' ? cfCountry : 'Intl';
+    if (country === 'Intl') {
+      if (langHeader.startsWith('ru')) country = 'RU';
+      else if (langHeader.startsWith('en-US') || langHeader.includes('en-US')) country = 'US';
+      else if (langHeader.startsWith('en-GB') || langHeader.includes('en-GB')) country = 'GB';
+      else if (langHeader.startsWith('de') || langHeader.includes('de')) country = 'DE';
+      else if (langHeader.startsWith('fr') || langHeader.includes('fr')) country = 'FR';
+      else if (langHeader.startsWith('es') || langHeader.includes('es')) country = 'ES';
+      else if (langHeader.startsWith('it') || langHeader.includes('it')) country = 'IT';
+      else if (langHeader.includes('kz')) country = 'KZ';
+      else if (langHeader.includes('by')) country = 'BY';
+      else if (langHeader.includes('ua')) country = 'UA';
+      else if (langHeader.split(',')[0]) {
+        country = langHeader.split(',')[0].substring(0, 2).toUpperCase();
+      }
     }
 
     const visit: VisitRecord = {

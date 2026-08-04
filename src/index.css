@@ -63,6 +63,65 @@
 .animate-bounce-subtle { animation: bounce-subtle 2s ease-in-out infinite; }
 .animate-cyber { animation: cyber 3s steps(4) infinite; }
 
+@keyframes shuffle {
+  0%, 100% { letter-spacing: 0; transform: translateX(0); }
+  25% { letter-spacing: 0.15em; transform: translateX(-2px); }
+  50% { letter-spacing: -0.05em; transform: translateX(2px); }
+  75% { letter-spacing: 0.1em; transform: translateX(-1px); }
+}
+
+@keyframes fuzzy {
+  0%, 100% { filter: blur(0); transform: skew(0deg); }
+  20% { filter: blur(0.8px); transform: skew(-2deg); }
+  40% { filter: blur(0.3px); transform: skew(1deg); }
+  60% { filter: blur(1px); transform: skew(-1deg); }
+  80% { filter: blur(0.5px); transform: skew(2deg); }
+}
+
+@keyframes geo-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.08); }
+}
+
+.animate-shuffle { animation: shuffle 2.5s ease-in-out infinite; }
+.animate-fuzzy { animation: fuzzy 1.8s ease-in-out infinite; }
+.animate-geo-pulse { animation: geo-pulse 2s ease-in-out infinite; }
+
+.name-typewriter-1 { --typing-steps: 1; }
+.name-typewriter-2 { --typing-steps: 2; }
+.name-typewriter-3 { --typing-steps: 3; }
+.name-typewriter-4 { --typing-steps: 4; }
+.name-typewriter-5 { --typing-steps: 5; }
+.name-typewriter-6 { --typing-steps: 6; }
+.name-typewriter-7 { --typing-steps: 7; }
+.name-typewriter-8 { --typing-steps: 8; }
+.name-typewriter-9 { --typing-steps: 9; }
+.name-typewriter-10 { --typing-steps: 10; }
+.name-typewriter-11 { --typing-steps: 11; }
+.name-typewriter-12 { --typing-steps: 12; }
+.name-typewriter-13 { --typing-steps: 13; }
+.name-typewriter-14 { --typing-steps: 14; }
+.name-typewriter-15 { --typing-steps: 15; }
+.name-typewriter-16 { --typing-steps: 16; }
+.name-typewriter-17 { --typing-steps: 17; }
+.name-typewriter-18 { --typing-steps: 18; }
+.name-typewriter-19 { --typing-steps: 19; }
+.name-typewriter-20 { --typing-steps: 20; }
+
+.mobile-bio-layout {
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+@media (max-width: 640px) {
+  .mobile-bio-layout canvas {
+    -webkit-touch-callout: none;
+  }
+}
+
+.glow-target-avatar { box-shadow: var(--glow-spread, 16px) var(--glow-color, #00f2ff); }
+.glow-target-username { text-shadow: 0 0 var(--glow-spread, 16px) var(--glow-color, #00f2ff); }
+
 @keyframes blink {
   from, to { border-color: transparent; }
   50% { border-color: white; }
