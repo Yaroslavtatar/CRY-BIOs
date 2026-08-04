@@ -11,6 +11,10 @@ import MinimalAudioBar from './MinimalAudioBar';
 import SparkleCanvas from './SparkleCanvas';
 import BackgroundCanvas from './BackgroundCanvas';
 import LocationLine from './LocationLine';
+import MobileBioLayout, { useMobileBio } from './MobileBioLayout';
+import VerifiedBadge, { VerifiedAvatarRing } from './VerifiedBadge';
+import BadgeRow from './BadgeRow';
+import GlowLayer, { getGlowStyle, ProfileGradientWrapper } from './GlowLayer';
 import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
 
 const renderBadgeIcon = (iconName: string) => {
@@ -61,6 +65,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   const [discordUser, setDiscordUser] = useState<any>(null);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [volume, setVolume] = useState(0.8); // 80% default volume
+  const mobile = useMobileBio(config);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
@@ -593,7 +598,9 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   // OG meta tags
   useEffect(() => {
     if (!config) return;
-    const title = config.customPageTitle || `${config.displayName || config.username} | CRY BIOS`;
+    const title = config.ogTitle || config.customPageTitle || `${config.displayName || config.username} | CRY BIOS`;
+    const description = config.ogDescription || config.bio || '';
+    const image = config.ogImage || config.avatarUrl;
     document.title = title;
     const setMeta = (prop: string, content: string) => {
       let el = document.querySelector(`meta[property="${prop}"]`) as HTMLMetaElement | null;
@@ -605,8 +612,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       el.content = content;
     };
     setMeta('og:title', title);
-    setMeta('og:description', config.bio || '');
-    if (config.avatarUrl) setMeta('og:image', config.avatarUrl.startsWith('http') ? config.avatarUrl : `${window.location.origin}${config.avatarUrl}`);
+    setMeta('og:description', description);
+    if (image) setMeta('og:image', image.startsWith('http') ? image : `${window.location.origin}${image}`);
     if (config.customFaviconUrl) {
       let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
       if (!link) {
@@ -870,6 +877,10 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         primaryColor={config?.primaryColor}
         variant={variant}
         hideUntilHover={config?.hidePlayerUntilHover}
+        showVolume={config?.volumeControlVisible}
+        volume={volume}
+        onToggleMute={toggleMute}
+        onVolumeChange={(v) => { setVolume(v); if (v > 0) setIsMuted(false); }}
         onPlayPause={handlePlayPause}
         onPrev={handlePrevSong}
         onNext={handleNextSong}
@@ -913,9 +924,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
     );
   }
 
-  const verifiedBadge = config.verified;
-
   return (
+    <MobileBioLayout config={config} className="min-h-screen w-full">
     <div
       className={`min-h-screen relative text-white flex items-center justify-center p-4 overflow-x-hidden ${config.monochromeMode ? 'grayscale' : ''}`}
       style={resolveBackgroundCSS()}
@@ -1061,48 +1071,57 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
           initial={{ opacity: 0, y: 35, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1, rotateX: parallax.y * 0.4, rotateY: parallax.x * 0.4 }}
           transition={{ duration: 0.7, type: 'spring', stiffness: 45 }}
-          style={{ transformPerspective: 800 }}
-          className={`w-full max-w-lg p-6 relative z-10 flex flex-col items-center space-y-6 transition-all duration-300 ${
+          style={{ transformPerspective: 800, ...getGlowStyle(config, 'card') }}
+          className={`w-full ${mobile.cardPadding} ${mobile.cardMaxWidth} relative z-10 flex flex-col items-center space-y-6 transition-all duration-300 ${
             previewConfig ? 'mt-14' : ''
           }`}
         >
           {(config.layout || ['avatar', 'username', 'location', 'badges', 'discord', 'bio', 'blocks', 'player']).map((section) => {
             if (section === 'avatar') {
               return (
-                <div key="avatar" className="relative flex flex-col items-center mb-4">
-                  <img
-                    src={config.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
-                    alt={config.displayName}
-                    referrerPolicy="no-referrer"
-                    loading="eager"
-                    decoding="async"
-                    className="w-[100px] h-[100px] rounded-full object-cover relative z-10 transition duration-300"
-                    style={{
-                      ...(verifiedBadge || config.avatarGlowEnabled
-                        ? { border: `2px solid ${config.glowColor || '#00f2ff'}`, boxShadow: `0 0 24px ${config.glowColor || '#00f2ff'}88` }
-                        : { boxShadow: '0 0 15px rgba(0,0,0,0.5)' }),
-                    }}
-                  />
+                <div key="avatar">
+                <GlowLayer config={config} target="avatar">
+                  <div className="relative flex flex-col items-center mb-4">
+                    <VerifiedAvatarRing config={config}>
+                      <img
+                        src={config.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
+                        alt={config.displayName}
+                        referrerPolicy="no-referrer"
+                        loading="eager"
+                        decoding="async"
+                        className={`${mobile.avatarSize} rounded-full object-cover relative z-10 transition duration-300`}
+                        style={
+                          config.verified || config.avatarGlowEnabled
+                            ? getGlowStyle(config, 'avatar')
+                            : { boxShadow: '0 0 15px rgba(0,0,0,0.5)' }
+                        }
+                      />
+                    </VerifiedAvatarRing>
+                  </div>
+                </GlowLayer>
                 </div>
               );
             }
 
             if (section === 'username') {
               return (
-                <div key="username" className="flex flex-col items-center mb-4">
-                  <div className="group relative flex items-center justify-center gap-1.5">
-                    <h1
-                      className={`text-[39.5px] leading-none font-semibold pb-1 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
-                      style={getNameEffectStyle(config.nameEffect, config.displayName || config.username)}
-                    >
-                      {config.displayName || config.username}
-                    </h1>
-                    {verifiedBadge && (
-                      <div className="relative flex items-center justify-center bg-gradient-to-tr from-[#1d9bf0] to-[#00f2ff] rounded-full w-[20px] h-[20px] shadow-[0_0_12px_rgba(29,155,240,0.8)] border border-cyan-300/30 ml-2 animate-pulse" title="Верифицированный профиль">
-                        <svg viewBox="0 0 24 24" aria-label="Verified account" role="img" className="w-[12px] h-[12px] text-white fill-current"><g><path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.918-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.337 2.25c-.416-.165-.866-.25-1.336-.25-2.21 0-3.918 1.79-3.918 4 0 .495.084.965.238 1.4-1.273.65-2.148 2.02-2.148 3.6 0 1.46.728 2.76 1.833 3.533-.066.31-.103.63-.103.953 0 2.21 1.71 4 3.918 4 .554 0 1.082-.12 1.564-.342.585 1.134 1.737 1.91 3.104 1.91s2.518-.776 3.104-1.91c.48.22 1.01.34 1.563.34 2.21 0 3.918-1.79 3.918-4 0-.32-.037-.64-.103-.95 1.106-.77 1.834-2.07 1.834-3.53zm-9.39 5.86l-3.62-3.61 1.58-1.58 2.04 2.03 4.96-4.95 1.58 1.58-6.54 6.53z"></path></g></svg>
-                      </div>
-                    )}
+                <div key="username">
+                <GlowLayer config={config} target="username">
+                  <div className="flex flex-col items-center mb-4">
+                    <div className="group relative flex items-center justify-center gap-1.5 flex-wrap">
+                      <h1
+                        className={`${mobile.nameSize} leading-none font-semibold pb-1 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
+                        style={{
+                          ...getNameEffectStyle(config.nameEffect, config.displayName || config.username),
+                          ...getGlowStyle(config, 'username'),
+                        }}
+                      >
+                        {config.displayName || config.username}
+                      </h1>
+                      <VerifiedBadge config={config} />
+                    </div>
                   </div>
+                </GlowLayer>
                 </div>
               );
             }
@@ -1118,17 +1137,12 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
             if (section === 'badges') {
               if (config.badges && config.badges.filter(b => b.enabled).length > 0) {
                 return (
-                  <div key="badges" className="flex flex-wrap items-center justify-center gap-2 mb-4">
-                    {config.badges.filter(b => b.enabled).map(badge => (
-                      <div
-                        key={badge.id}
-                        className="flex items-center justify-center p-1.5 rounded-sm bg-black/40 border border-white/10 hover:border-white/30 transition-colors shadow-sm cursor-help"
-                        title={badge.description || badge.label}
-                        style={badge.color ? { color: badge.color, borderColor: `${badge.color}66` } : { color: 'white' }}
-                      >
-                        {renderBadgeIcon(badge.icon)}
-                      </div>
-                    ))}
+                  <div key="badges" className="mb-4 w-full flex justify-center">
+                    <BadgeRow
+                      badges={config.badges}
+                      badgeOpacity={config.badgeOpacity}
+                      primaryColor={config.primaryColor}
+                    />
                   </div>
                 );
               }
@@ -1416,5 +1430,6 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         </motion.div>
       )}
     </div>
+    </MobileBioLayout>
   );
 }

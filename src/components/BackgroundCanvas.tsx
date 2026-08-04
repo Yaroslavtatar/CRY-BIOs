@@ -33,7 +33,7 @@ export default function BackgroundCanvas({ config, entered }: BackgroundCanvasPr
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const snowCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const animatedBg = ['matrix', 'stars', 'rain', 'particles', 'snow'].includes(config.bgType);
+  const animatedBg = ['matrix', 'stars', 'rain', 'particles', 'snow', 'aurora', 'plasma', 'dither'].includes(config.bgType);
 
   useEffect(() => {
     if (!entered || !bgCanvasRef.current || !animatedBg) return;
@@ -89,6 +89,9 @@ export default function BackgroundCanvas({ config, entered }: BackgroundCanvasPr
       speedX: Math.random() * 1 - 0.5,
       opacity: Math.random() * 0.6 + 0.4,
     }));
+
+    let auroraPhase = 0;
+    let plasmaTime = 0;
 
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
@@ -149,6 +152,46 @@ export default function BackgroundCanvas({ config, entered }: BackgroundCanvasPr
         ctx.fillStyle = 'rgba(10, 8, 15, 0.45)';
         ctx.fillRect(0, 0, width, height);
         drawSnow(ctx, width, height, snowFlakes, config.snowIntensity || 'medium');
+      } else if (config.bgType === 'aurora') {
+        auroraPhase += 0.008;
+        const grad = ctx.createLinearGradient(0, 0, width, height);
+        grad.addColorStop(0, `hsla(${(auroraPhase * 40) % 360}, 70%, 45%, 0.35)`);
+        grad.addColorStop(0.5, `${effectColor}55`);
+        grad.addColorStop(1, `hsla(${(auroraPhase * 40 + 120) % 360}, 70%, 45%, 0.35)`);
+        ctx.fillStyle = 'rgba(5, 4, 10, 0.85)';
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, height * 0.2, width, height * 0.6);
+      } else if (config.bgType === 'plasma') {
+        plasmaTime += 0.02;
+        const intensity = config.bgEffectIntensity || 1;
+        const img = ctx.createImageData(Math.ceil(width / 4), Math.ceil(height / 4));
+        for (let i = 0; i < img.data.length; i += 4) {
+          const x = (i / 4) % img.width;
+          const y = Math.floor(i / 4 / img.width);
+          const v =
+            Math.sin(x * 0.05 + plasmaTime) +
+            Math.sin(y * 0.05 + plasmaTime * 1.3) +
+            Math.sin((x + y) * 0.03 + plasmaTime * 0.7);
+          const c = Math.floor(((v + 3) / 6) * 180 * intensity);
+          img.data[i] = c * 0.2;
+          img.data[i + 1] = c * 0.8;
+          img.data[i + 2] = c;
+          img.data[i + 3] = 90;
+        }
+        ctx.putImageData(img, 0, 0);
+        ctx.drawImage(canvas, 0, 0, width / 4, height / 4, 0, 0, width, height);
+      } else if (config.bgType === 'dither') {
+        ctx.fillStyle = config.bgValue || '#0a0910';
+        ctx.fillRect(0, 0, width, height);
+        const step = 4;
+        for (let y = 0; y < height; y += step) {
+          for (let x = 0; x < width; x += step) {
+            const dither = ((x + y) / step) % 2 === 0 ? 0.08 : 0.03;
+            ctx.fillStyle = `${effectColor}${Math.floor(dither * 255).toString(16).padStart(2, '0')}`;
+            ctx.fillRect(x, y, step, step);
+          }
+        }
       }
 
       animId = requestAnimationFrame(draw);
@@ -159,7 +202,7 @@ export default function BackgroundCanvas({ config, entered }: BackgroundCanvasPr
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
     };
-  }, [entered, config.bgType, config.primaryColor, config.bgEffectColor, config.bgValue, animatedBg]);
+  }, [entered, config.bgType, config.primaryColor, config.bgEffectColor, config.bgEffectIntensity, config.bgValue, animatedBg]);
 
   // Snow overlay — independent of bgType
   useEffect(() => {
