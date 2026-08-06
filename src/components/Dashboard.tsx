@@ -9,7 +9,7 @@ import AnalyticsView from './AnalyticsView';
 import BioPage from './BioPage';
 import QRCode from 'qrcode';
 import { getThumbUrl } from '../utils/media';
-import { parseGunsLolHtml, applyGunsImportToConfig, getImportPreviewSummary } from '../gunsImportMap';
+import { parseGunsLolHtml, applyGunsImportToConfig, getImportPreviewSummary, getImportPreviewItems, type GunsImportResult, type ImportPreviewItem } from '../gunsImportMap';
 import {
   GLOW_TARGET_LABELS,
   LOCATION_STYLE_LABELS,
@@ -21,7 +21,10 @@ import {
   VERIFIED_BADGE_LABELS,
   AUDIO_PLAYER_LABELS,
   TEXTBOX_STYLE_LABELS,
+  ELEMENT_COLOR_LABELS,
+  IMPORT_PREVIEW_STATUS_LABELS,
 } from '../dashboardLabels';
+import { resolveThemeColor, ELEMENT_COLOR_FIELDS, type ElementColorField } from '../themeColors';
 import { NAME_EFFECT_GROUPS, NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
 import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
 import SocialIcon from './SocialIcon';
@@ -353,8 +356,11 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
-  const [importMethod, setImportMethod] = useState<'api' | 'html'>('api');
+  const [importMethod, setImportMethod] = useState<'api' | 'html'>('html');
   const [importPreview, setImportPreview] = useState('');
+  const [importPreviewItems, setImportPreviewItems] = useState<ImportPreviewItem[]>([]);
+  const [pendingImport, setPendingImport] = useState<GunsImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState('');
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
 
   // Checks and loads active sessions
@@ -410,11 +416,60 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       .catch(err => console.error("Analytics fetch error", err));
   };
 
+  const rehostImportPayload = async (parsed: GunsImportResult): Promise<GunsImportResult> => {
+    const res = await fetch('/api/rehost-import-media', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        avatarUrl: parsed.avatarUrl,
+        bgType: parsed.bgType,
+        bgValue: parsed.bgValue,
+        audioUrl: parsed.audioUrl,
+        customCursorUrl: parsed.customCursorUrl,
+        playlist: parsed.playlist,
+      }),
+    });
+    const text = await res.text();
+    let body: any = {};
+    try { body = JSON.parse(text); } catch { /* ignore */ }
+    if (!res.ok) throw new Error(body.error || 'Не удалось загрузить медиа на сервер');
+    return { ...parsed, ...body.data, playlist: body.data?.playlist || parsed.playlist };
+  };
+
+  const showImportPreview = (parsed: GunsImportResult) => {
+    setPendingImport(parsed);
+    setImportPreviewItems(getImportPreviewItems(parsed));
+    setImportPreview(getImportPreviewSummary(parsed));
+  };
+
+  const handleApplyImport = () => {
+    if (!config || !pendingImport) return;
+    setConfig(applyGunsImportToConfig(config, pendingImport));
+    setImportSuccess(`Профиль применён! ${getImportPreviewSummary(pendingImport)}. Нажмите «Сохранить».`);
+    setPendingImport(null);
+    setImportPreviewItems([]);
+    setImportPreview('');
+    setPastedHtml('');
+    setImportGunsUsername('');
+  };
+
+  const handleCancelImport = () => {
+    setPendingImport(null);
+    setImportPreviewItems([]);
+    setImportPreview('');
+    setImportError('');
+  };
+
   // Handler to migrate/import configurations of user
-  const handleImportFromGunsLol = (e: React.FormEvent) => {
+  const handleImportFromGunsLol = async (e: React.FormEvent) => {
     e.preventDefault();
     setImportError('');
     setImportSuccess('');
+    setImportProgress('');
+    handleCancelImport();
 
     if (!config) return;
 
@@ -425,15 +480,16 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       }
       try {
         setImportLoading(true);
+        setImportProgress('Разбор HTML…');
         const parsed = parseGunsLolHtml(pastedHtml);
-        setImportPreview(getImportPreviewSummary(parsed));
-        setConfig(applyGunsImportToConfig(config, parsed));
-        setImportSuccess(`Профиль из HTML скопирован! ${getImportPreviewSummary(parsed)}. Нажмите «Сохранить».`);
-        setPastedHtml('');
+        setImportProgress('Загрузка медиа на сервер…');
+        const withMedia = await rehostImportPayload(parsed);
+        showImportPreview(withMedia);
       } catch (err: any) {
         setImportError(`Ошибка импорта: ${err.message}`);
       } finally {
         setImportLoading(false);
+        setImportProgress('');
       }
     } else {
       if (!importGunsUsername.trim()) {
@@ -441,6 +497,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
         return;
       }
       setImportLoading(true);
+      setImportProgress('Запрос к guns.lol…');
       fetch('/api/import-gunslol', {
         method: 'POST',
         headers: {
@@ -457,17 +514,16 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
           return body;
         })
         .then(resData => {
-          const parsed = resData.data;
-          setImportPreview(resData.data.preview || getImportPreviewSummary(parsed));
-          setConfig(applyGunsImportToConfig(config, parsed));
-          setImportSuccess(`Профиль с guns.lol перенесён! ${resData.data.preview || ''} Нажмите «Сохранить».`);
-          setImportGunsUsername('');
+          setImportProgress('Обработка данных…');
+          showImportPreview(resData.data);
         })
         .catch(err => {
-          setImportError(err.message || 'Ошибка сервера. Попробуйте вкладку «Вручную через HTML» ниже!');
+          setImportError(err.message || 'Ошибка сервера. Переключитесь на «HTML (100% безотказно)» — это обходит Cloudflare.');
+          setImportMethod('html');
         })
         .finally(() => {
           setImportLoading(false);
+          setImportProgress('');
         });
     }
   };
@@ -1157,7 +1213,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                                   </div>
                                   <button
                                     type="submit"
-                                    disabled={importLoading}
+                                    disabled={importLoading || !!pendingImport}
                                     className="px-5 bg-[#00f2ff] text-black font-black text-[10px] uppercase tracking-wider rounded-sm hover:bg-[#00d0e0] active:scale-95 transition-all text-center flex items-center justify-center space-x-1.5 cursor-pointer shadow-[0_0_15px_rgba(0,242,255,0.25)] flex-shrink-0"
                                   >
                                     {importLoading ? (
@@ -1168,14 +1224,20 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                                   </button>
                                 </div>
                                 <span className="text-[9px] text-neutral-500 leading-normal block">
-                                  ⚠️ Сервер отправит защищенный агент-запрос для мгновенного парсинга метаданных страницы.
+                                  Может не сработать из-за Cloudflare. Если ошибка — используйте HTML-импорт.
                                 </span>
                               </div>
                             ) : (
                               <div className="space-y-2">
                                 <label className="block text-[9px] text-neutral-500 uppercase font-black">Вставьте исходный код страницы (HTML)</label>
+                                <ol className="text-[9px] text-neutral-500 space-y-0.5 list-decimal list-inside font-sans leading-relaxed">
+                                  <li>Откройте свой профиль на guns.lol в браузере</li>
+                                  <li>Нажмите Ctrl+U (просмотр кода страницы)</li>
+                                  <li>Выделите всё (Ctrl+A) и скопируйте (Ctrl+C)</li>
+                                  <li>Вставьте код в поле ниже и нажмите «Разобрать»</li>
+                                </ol>
                                 <textarea
-                                  placeholder="1. Перейдите на свой профиль в браузере (например, guns.lol/cryteam)&#10;2. Нажмите комбинацию клавиш Ctrl+U (или просмотр кода вашей страницы)&#10;3. Выделите весь текст (Ctrl+A), скопируйте его и вставьте сюда..."
+                                  placeholder="Вставьте сюда полный HTML-код страницы guns.lol…"
                                   value={pastedHtml}
                                   onChange={e => setPastedHtml(e.target.value)}
                                   rows={4}
@@ -1183,23 +1245,86 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                                 />
                                 <div className="flex justify-between items-center gap-4">
                                   <span className="text-[9.5px] leading-snug text-neutral-500">
-                                    💡 Идеально обходит Cloudflare проверки! Скрипт разберет все фоны, плееры, линки и иконки локально на вашем устройстве.
+                                    Обходит Cloudflare. Медиа загружаются на ваш сервер автоматически.
                                   </span>
                                   <button
                                     type="submit"
-                                    disabled={importLoading}
+                                    disabled={importLoading || !!pendingImport}
                                     className="px-6 py-2.5 bg-[#00f2ff] text-black font-black text-[10px] uppercase tracking-wider rounded-sm hover:bg-[#00d0e0] active:scale-95 transition-all text-center flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,255,0.25)] flex-shrink-0"
                                   >
                                     {importLoading ? (
                                       <span className="w-3.5 h-3.5 border-2 border-t-black border-transparent animate-spin rounded-full" />
                                     ) : (
-                                      <span>Импортировать код</span>
+                                      <span>Разобрать</span>
                                     )}
                                   </button>
                                 </div>
                               </div>
                             )}
                           </form>
+
+                          {importProgress && (
+                            <div className="p-2.5 bg-cyan-500/5 border border-cyan-500/20 text-cyan-300 rounded-sm text-[10px] font-mono flex items-center gap-2">
+                              <span className="w-3 h-3 border-2 border-t-cyan-400 border-transparent animate-spin rounded-full flex-shrink-0" />
+                              {importProgress}
+                            </div>
+                          )}
+
+                          {pendingImport && importPreviewItems.length > 0 && (
+                            <div className="p-3.5 bg-black/60 border border-[#00f2ff]/25 rounded-sm space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-black uppercase text-[#00f2ff] tracking-wider">Предпросмотр импорта</span>
+                                <span className="text-[9px] text-neutral-500">{pendingImport.displayName}</span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                                {importPreviewItems.map(item => (
+                                  <div
+                                    key={item.id}
+                                    className={`flex items-start gap-2 p-2 rounded-sm border text-[9px] ${
+                                      item.status === 'found'
+                                        ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-300'
+                                        : item.status === 'partial'
+                                          ? 'bg-amber-500/5 border-amber-500/20 text-amber-300'
+                                          : 'bg-neutral-500/5 border-white/5 text-neutral-500'
+                                    }`}
+                                  >
+                                    <span className="font-black flex-shrink-0">
+                                      {item.status === 'found' ? '✓' : item.status === 'partial' ? '~' : '✗'}
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5">
+                                        {item.color && (
+                                          <span
+                                            className="w-3 h-3 rounded-sm border border-white/20 flex-shrink-0"
+                                            style={{ backgroundColor: item.color }}
+                                          />
+                                        )}
+                                        <span className="font-bold uppercase tracking-wide">{item.label}</span>
+                                        <span className="text-[8px] opacity-60">({IMPORT_PREVIEW_STATUS_LABELS[item.status]})</span>
+                                      </div>
+                                      {item.detail && <p className="text-neutral-400 truncate mt-0.5">{item.detail}</p>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={handleApplyImport}
+                                  className="flex-1 py-2 bg-[#00f2ff] text-black font-black text-[10px] uppercase rounded-sm hover:bg-[#00d0e0] transition"
+                                >
+                                  Применить к профилю
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelImport}
+                                  className="px-4 py-2 bg-black/40 border border-white/10 text-neutral-400 font-bold text-[10px] uppercase rounded-sm hover:text-white transition"
+                                >
+                                  Отмена
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Dynamic Feedback channels */}
                           {importError && (
@@ -1215,9 +1340,9 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                               <span className="font-sans">{importSuccess}</span>
                             </div>
                           )}
-                          {importPreview && (
+                          {importPreview && !pendingImport && (
                             <div className="p-3 bg-cyan-500/5 border border-cyan-500/20 text-cyan-300 rounded-sm text-[10px] font-mono">
-                              Preview: {importPreview}
+                              {importPreview}
                             </div>
                           )}
                         </div>
@@ -2244,6 +2369,63 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                               <option value="Outfit">Outfit Tech</option>
                               <option value="Playfair Display">Playfair Serif</option>
                             </select>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-white/10 pt-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className="text-[10px] uppercase text-[#00f2ff] font-black tracking-widest italic">Цвета элементов</h4>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const cleared = { ...config };
+                                ELEMENT_COLOR_FIELDS.forEach(field => {
+                                  delete (cleared as Record<string, unknown>)[field];
+                                });
+                                delete cleared.sparkleColor;
+                                setConfig(cleared);
+                              }}
+                              className="text-[8px] uppercase font-bold text-neutral-500 hover:text-[#00f2ff] transition"
+                            >
+                              Сбросить к основному
+                            </button>
+                          </div>
+                          <p className="text-[9px] text-neutral-500 leading-relaxed">
+                            Настройте цвет каждого элемента отдельно. Если не задан — используется «Свечение (Основной)».
+                          </p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {([...ELEMENT_COLOR_FIELDS, 'sparkleColor'] as const).map(field => {
+                              const meta = ELEMENT_COLOR_LABELS[field];
+                              const value = (config as Record<string, string | undefined>)[field] || config.primaryColor;
+                              return (
+                                <div key={field} className="p-2.5 bg-black/30 border border-white/10 rounded-sm space-y-1.5">
+                                  <span className="text-[9px] block text-neutral-400 font-bold uppercase tracking-wide">{meta.label}</span>
+                                  <input
+                                    type="color"
+                                    value={value}
+                                    onChange={e => updateConfigValue(field as ElementColorField | 'sparkleColor', e.target.value)}
+                                    className="w-full h-9 bg-transparent border-0 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] text-neutral-600 block leading-snug">{meta.hint}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="p-3 bg-black/40 border border-white/10 rounded-sm flex items-center gap-4">
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <CheckCircle2 className="w-5 h-5" style={{ color: resolveThemeColor(config, 'verifiedBadge') }} />
+                              <span className="text-[9px] text-neutral-500 uppercase font-bold">Галочка</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                                <div className="h-full w-2/3 rounded-full" style={{ backgroundColor: resolveThemeColor(config, 'player') }} />
+                              </div>
+                              <span className="text-[8px] text-neutral-600 mt-1 block uppercase">Плеер</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0 px-2 py-1 rounded-full border" style={{ borderColor: `${resolveThemeColor(config, 'location')}44`, color: resolveThemeColor(config, 'location') }}>
+                              <Globe2 className="w-3 h-3" />
+                              <span className="text-[8px] font-mono uppercase">LOC</span>
+                            </div>
                           </div>
                         </div>
 

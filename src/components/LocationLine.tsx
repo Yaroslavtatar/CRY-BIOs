@@ -1,6 +1,7 @@
 import React from 'react';
 import { MapPin, Globe, Map } from 'lucide-react';
 import { BioConfig } from '../types';
+import { resolveThemeColor } from '../themeColors';
 
 interface LocationLineProps {
   config: BioConfig;
@@ -11,7 +12,7 @@ export default function LocationLine({ config }: LocationLineProps) {
 
   const icon = config.locationIcon || 'pin';
   const style = config.locationStyle || 'pill';
-  const color = config.primaryColor || '#00f2ff';
+  const color = resolveThemeColor(config, 'location');
 
   const Icon = icon === 'globe' ? Globe : icon === 'map' ? Map : MapPin;
 

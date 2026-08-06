@@ -1,6 +1,7 @@
 import type {
   BackgroundType,
   BioConfig,
+  LayoutMode,
   NameEffect,
   SocialLink,
   SongConfig,
@@ -44,6 +45,25 @@ export interface GunsImportResult {
   swapBoxColors?: boolean;
   glowEnabled?: boolean;
   bgEffectColor?: string;
+  verifiedBadgeColor?: string;
+  playerAccentColor?: string;
+  locationColor?: string;
+  enterOverlayColor?: string;
+  linkAccentColor?: string;
+  sparkleColor?: string;
+  layoutMode?: LayoutMode;
+  hidePlayerUntilHover?: boolean;
+  audioVisualizerEnabled?: boolean;
+}
+
+export type ImportPreviewStatus = 'found' | 'missing' | 'partial';
+
+export interface ImportPreviewItem {
+  id: string;
+  label: string;
+  status: ImportPreviewStatus;
+  detail?: string;
+  color?: string;
 }
 
 export function mapGunsBackgroundEffects(effects: string): {
@@ -146,6 +166,22 @@ function getValueByRegex(html: string, regex: RegExp, def = ''): string {
 }
 
 function parseHydrationConfig(html: string): any | null {
+  const nextDataMatch = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]+?)<\/script>/i);
+  if (nextDataMatch) {
+    try {
+      const nextData = JSON.parse(nextDataMatch[1]);
+      const cfg =
+        nextData?.props?.pageProps?.config ||
+        nextData?.props?.pageProps?.data?.config ||
+        nextData?.props?.pageProps?.profile?.config;
+      if (cfg && (cfg.avatar || cfg.display_name || cfg.socials || cfg.bg_color)) {
+        return cfg;
+      }
+    } catch {
+      /* continue */
+    }
+  }
+
   const configBlockRegex = /"config"\s*:\s*(\{.+?\})(?:,\s*"premium"|"success"|\}\s*\}\s*\]|,\s*"verified")/g;
   let blockMatch;
   while ((blockMatch = configBlockRegex.exec(html)) !== null) {
@@ -247,6 +283,49 @@ function parseSocials(html: string, parsedConfig: any): SocialLink[] {
   }
 
   return socialsList;
+}
+
+const GUNS_FONT_MAP: Record<string, BioConfig['fontFamily']> = {
+  inter: 'Inter',
+  'space grotesk': 'Space Grotesk',
+  space_grotesk: 'Space Grotesk',
+  'jetbrains mono': 'JetBrains Mono',
+  jetbrains_mono: 'JetBrains Mono',
+  outfit: 'Outfit',
+  'playfair display': 'Playfair Display',
+  playfair: 'Playfair Display',
+};
+
+const GUNS_LAYOUT_MAP: Record<string, LayoutMode> = {
+  default: 'default',
+  standard: 'default',
+  compact: 'compact',
+  sleek: 'sleek',
+  modern: 'sleek',
+  card: 'default',
+};
+
+function pickColor(parsedConfig: any, html: string, keys: string[], regex?: RegExp): string | undefined {
+  for (const key of keys) {
+    const val = parsedConfig?.[key];
+    if (val && typeof val === 'string' && val.trim()) return val.trim();
+  }
+  if (regex) {
+    const fromHtml = getValueByRegex(html, regex);
+    if (fromHtml) return fromHtml;
+  }
+  return undefined;
+}
+
+function mapGunsFont(raw: string | undefined): BioConfig['fontFamily'] | undefined {
+  if (!raw) return undefined;
+  const key = raw.toLowerCase().replace(/[-_]/g, ' ').trim();
+  return GUNS_FONT_MAP[key] || GUNS_FONT_MAP[key.replace(/\s+/g, '_')] || undefined;
+}
+
+function mapGunsLayout(raw: string | undefined): LayoutMode | undefined {
+  if (!raw) return undefined;
+  return GUNS_LAYOUT_MAP[raw.toLowerCase().replace(/[-\s]/g, '_')] || GUNS_LAYOUT_MAP[raw.toLowerCase()];
 }
 
 function parsePlaylist(parsedConfig: any, html: string, displayName: string): { audioUrl: string; playlist: SongConfig[] } {
@@ -382,13 +461,25 @@ export function parseGunsLolHtml(htmlContent: string, fallbackUsername = ''): Gu
     get(/"city"\s*:\s*"([^"]+)"/) ||
     '';
 
-  const primaryColor = parsedConfig?.accent_color || parsedConfig?.primary_color || get(/"accent_color"\s*:\s*"([^"]+)"/) || undefined;
-  const textColor = parsedConfig?.text_color || get(/"text_color"\s*:\s*"([^"]+)"/) || undefined;
-  const glowColor = parsedConfig?.glow_color || parsedConfig?.glow || get(/"glow_color"\s*:\s*"([^"]+)"/) || primaryColor;
+  const primaryColor = pickColor(parsedConfig, htmlContent, ['accent_color', 'primary_color', 'accent'], /"accent_color"\s*:\s*"([^"]+)"/)
+    || pickColor(parsedConfig, htmlContent, ['primary_color'], /"primary_color"\s*:\s*"([^"]+)"/);
+  const textColor = pickColor(parsedConfig, htmlContent, ['text_color', 'username_color'], /"text_color"\s*:\s*"([^"]+)"/)
+    || pickColor(parsedConfig, htmlContent, ['username_color'], /"username_color"\s*:\s*"([^"]+)"/);
+  const glowColor = pickColor(parsedConfig, htmlContent, ['glow_color', 'glow'], /"glow_color"\s*:\s*"([^"]+)"/) || primaryColor;
+  const verifiedBadgeColor = pickColor(parsedConfig, htmlContent, ['verified_color', 'badge_color', 'verified_badge_color'], /"verified_color"\s*:\s*"([^"]+)"/);
+  const playerAccentColor = pickColor(parsedConfig, htmlContent, ['audio_color', 'player_color', 'audio_player_color'], /"audio_color"\s*:\s*"([^"]+)"/);
+  const linkAccentColor = pickColor(parsedConfig, htmlContent, ['icon_color', 'icons_color', 'link_color'], /"icon_color"\s*:\s*"([^"]+)"/);
+  const locationColor = pickColor(parsedConfig, htmlContent, ['location_color'], /"location_color"\s*:\s*"([^"]+)"/);
+  const enterOverlayColor = pickColor(parsedConfig, htmlContent, ['enter_color', 'overlay_color'], /"enter_color"\s*:\s*"([^"]+)"/);
+  const sparkleColor = pickColor(parsedConfig, htmlContent, ['sparkle_color', 'cursor_sparkle_color'], /"sparkle_color"\s*:\s*"([^"]+)"/);
   const enterText = parsedConfig?.enter_text || get(/"enter_text"\s*:\s*"([^"]+)"/) || undefined;
   const discordId = parsedConfig?.discord_id || get(/"discord_id"\s*:\s*"([^"]+)"/) || undefined;
   const audioShown = parsedConfig?.audio_shown ?? get(/"audio_shown"\s*:\s*(true|false)/) !== 'false';
   const monochromeMode = parsedConfig?.monochrome === true || get(/"monochrome"\s*:\s*(true|false)/) === 'true';
+  const hidePlayerUntilHover = parsedConfig?.hide_player === true || get(/"hide_player"\s*:\s*(true|false)/) === 'true';
+  const audioVisualizerEnabled = parsedConfig?.audio_visualizer === true || get(/"audio_visualizer"\s*:\s*(true|false)/) === 'true';
+  const fontFamily = mapGunsFont(parsedConfig?.font || parsedConfig?.font_family || get(/"font"\s*:\s*"([^"]+)"/));
+  const layoutMode = mapGunsLayout(parsedConfig?.layout || parsedConfig?.profile_layout || get(/"layout"\s*:\s*"([^"]+)"/));
 
   const profileGradientCss = parsedConfig?.profile_gradient || get(/"profile_gradient"\s*:\s*"([^"]+)"/) || undefined;
   const swapBoxColors = parsedConfig?.swap_box_colors === true || get(/"swap_box_colors"\s*:\s*(true|false)/) === 'true';
@@ -429,20 +520,121 @@ export function parseGunsLolHtml(htmlContent: string, fallbackUsername = ''): Gu
     swapBoxColors,
     glowEnabled,
     bgEffectColor: parsedConfig?.background_effects_color || primaryColor,
+    verifiedBadgeColor,
+    playerAccentColor,
+    locationColor,
+    enterOverlayColor,
+    linkAccentColor,
+    sparkleColor,
+    layoutMode,
+    fontFamily,
+    hidePlayerUntilHover,
+    audioVisualizerEnabled,
   };
 }
 
+export function getImportPreviewItems(result: GunsImportResult): ImportPreviewItem[] {
+  const items: ImportPreviewItem[] = [
+    {
+      id: 'displayName',
+      label: 'Имя профиля',
+      status: result.displayName ? 'found' : 'missing',
+      detail: result.displayName,
+    },
+    {
+      id: 'bio',
+      label: 'Описание',
+      status: result.bio && result.bio.length > 5 ? 'found' : 'missing',
+      detail: result.bio ? result.bio.slice(0, 60) + (result.bio.length > 60 ? '…' : '') : undefined,
+    },
+    {
+      id: 'avatar',
+      label: 'Аватар',
+      status: result.avatarUrl ? 'found' : 'missing',
+    },
+    {
+      id: 'background',
+      label: 'Фон',
+      status: result.bgValue ? 'found' : 'missing',
+      detail: `${result.bgType}${result.snowEffectsEnabled ? ' + снег' : ''}`,
+    },
+    {
+      id: 'audio',
+      label: 'Музыка',
+      status: result.playlist.length > 0 || result.audioUrl ? 'found' : 'missing',
+      detail: result.playlist.length ? `${result.playlist.length} трек(ов)` : result.audioUrl ? '1 трек' : undefined,
+    },
+    {
+      id: 'socials',
+      label: 'Ссылки',
+      status: result.socialsList.length > 0 ? 'found' : 'missing',
+      detail: result.socialsList.length ? `${result.socialsList.length} ссылок` : undefined,
+    },
+    {
+      id: 'badges',
+      label: 'Бейджи',
+      status: result.badges.length > 0 ? 'found' : 'missing',
+      detail: result.badges.length ? `${result.badges.length} шт.` : undefined,
+    },
+    {
+      id: 'verified',
+      label: 'Verified',
+      status: result.verified ? 'found' : 'missing',
+    },
+    {
+      id: 'nameEffect',
+      label: 'Эффект имени',
+      status: result.nameEffect && result.nameEffect !== 'none' ? 'found' : 'missing',
+      detail: result.nameEffect,
+    },
+    {
+      id: 'location',
+      label: 'Локация',
+      status: result.locationText ? 'found' : 'missing',
+      detail: result.locationText,
+    },
+    {
+      id: 'colors',
+      label: 'Цвета темы',
+      status: result.primaryColor || result.textColor || result.glowColor ? 'found' : 'missing',
+      detail: [result.primaryColor, result.textColor, result.glowColor].filter(Boolean).join(', ') || undefined,
+      color: result.primaryColor,
+    },
+    {
+      id: 'elementColors',
+      label: 'Цвета элементов',
+      status:
+        result.verifiedBadgeColor || result.playerAccentColor || result.linkAccentColor
+          ? 'found'
+          : result.primaryColor
+            ? 'partial'
+            : 'missing',
+      detail: [
+        result.verifiedBadgeColor && 'галочка',
+        result.playerAccentColor && 'плеер',
+        result.linkAccentColor && 'ссылки',
+      ].filter(Boolean).join(', ') || undefined,
+    },
+    {
+      id: 'cursor',
+      label: 'Курсор',
+      status: result.customCursorUrl ? 'found' : 'missing',
+    },
+    {
+      id: 'layout',
+      label: 'Layout',
+      status: result.layoutMode ? 'found' : 'partial',
+      detail: result.layoutMode,
+    },
+  ];
+  return items;
+}
+
 export function getImportPreviewSummary(result: GunsImportResult): string {
-  const parts = [
-    `Имя: ${result.displayName}`,
-    result.nameEffect ? `Эффект имени: ${result.nameEffect}` : null,
-    result.locationText ? `Location: ${result.locationText}` : null,
-    result.playlist.length ? `Треков: ${result.playlist.length}` : result.audioUrl ? '1 трек' : null,
-    result.badges.length ? `Бейджей: ${result.badges.length}` : null,
-    result.verified ? 'Verified: да' : 'Verified: нет',
-    `Фон: ${result.bgType}${result.snowEffectsEnabled ? ' + снег' : ''}`,
-  ].filter(Boolean);
-  return parts.join(' • ');
+  return getImportPreviewItems(result)
+    .filter(i => i.status === 'found')
+    .map(i => (i.detail ? `${i.label}: ${i.detail}` : i.label))
+    .join(' • ');
 }
 
 export function applyGunsImportToConfig(config: BioConfig, imported: GunsImportResult): BioConfig {
@@ -484,6 +676,16 @@ export function applyGunsImportToConfig(config: BioConfig, imported: GunsImportR
     swapBoxColors: imported.swapBoxColors ?? config.swapBoxColors,
     glowEnabled: imported.glowEnabled ?? config.glowEnabled,
     bgEffectColor: imported.bgEffectColor || config.bgEffectColor,
+    verifiedBadgeColor: imported.verifiedBadgeColor || config.verifiedBadgeColor,
+    playerAccentColor: imported.playerAccentColor || config.playerAccentColor,
+    locationColor: imported.locationColor || config.locationColor,
+    enterOverlayColor: imported.enterOverlayColor || config.enterOverlayColor,
+    linkAccentColor: imported.linkAccentColor || config.linkAccentColor,
+    sparkleColor: imported.sparkleColor || config.sparkleColor,
+    layoutMode: imported.layoutMode || config.layoutMode,
+    fontFamily: imported.fontFamily || config.fontFamily,
+    hidePlayerUntilHover: imported.hidePlayerUntilHover ?? config.hidePlayerUntilHover,
+    audioVisualizerEnabled: imported.audioVisualizerEnabled ?? config.audioVisualizerEnabled,
   };
 
   if (imported.socialsList.length > 0) {

@@ -119,6 +119,11 @@ export interface BioConfig {
   primaryColor: string;
   textColor: string;
   glowColor: string;
+  verifiedBadgeColor?: string;
+  playerAccentColor?: string;
+  locationColor?: string;
+  enterOverlayColor?: string;
+  linkAccentColor?: string;
   customCSS?: string;
   cardOpacity?: number;
   badgeOpacity?: number;
