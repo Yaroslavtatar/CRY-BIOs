@@ -6,32 +6,28 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-export async function processUploadedVideo(
+/** Transcode uploaded audio to compact MP3 (128 kbps) for faster loading. */
+export async function processUploadedAudio(
   inputPath: string,
   uploadsDir: string
 ): Promise<{ filename: string }> {
   const id = crypto.randomUUID();
-  const outputFilename = `${id}.mp4`;
+  const outputFilename = `${id}.mp3`;
   const outputPath = path.join(uploadsDir, outputFilename);
 
   try {
     await execFileAsync('ffmpeg', [
       '-y',
       '-i', inputPath,
-      '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease',
-      '-c:v', 'libx264',
-      '-crf', '30',
-      '-preset', 'veryfast',
-      '-maxrate', '2500k',
-      '-bufsize', '5000k',
-      '-c:a', 'aac',
-      '-b:a', '96k',
-      '-movflags', '+faststart',
+      '-vn',
+      '-c:a', 'libmp3lame',
+      '-b:a', '128k',
+      '-ar', '44100',
+      '-ac', '2',
       outputPath,
-    ], { timeout: 180000 });
+    ], { timeout: 120000 });
   } catch {
-    // Fallback: copy original if ffmpeg fails
-    const ext = path.extname(inputPath) || '.mp4';
+    const ext = path.extname(inputPath) || '.mp3';
     const fallbackName = `${id}${ext}`;
     fs.copyFileSync(inputPath, path.join(uploadsDir, fallbackName));
     fs.unlinkSync(inputPath);
@@ -42,6 +38,6 @@ export async function processUploadedVideo(
   return { filename: outputFilename };
 }
 
-export function isVideoMime(mimetype: string): boolean {
-  return /^video\//.test(mimetype);
+export function isAudioMime(mimetype: string): boolean {
+  return /^audio\//.test(mimetype);
 }
