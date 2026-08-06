@@ -883,13 +883,13 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       {config.bgType === 'video' && config.bgValue && (
         <video
           ref={bgVideoRef}
-          autoPlay
+          autoPlay={entered}
           muted={!entered || !(config.bgVideoAudioEnabled || config.bgVideoUseAsAudio) || isMuted}
           loop
           playsInline
-          preload="metadata"
+          preload={entered ? 'auto' : 'none'}
           className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none"
-          src={config.bgValue}
+          src={entered ? config.bgValue : undefined}
           onTimeUpdate={(e) => {
             if (config.bgVideoUseAsAudio) {
               setAudioCurrentTime(e.currentTarget.currentTime);

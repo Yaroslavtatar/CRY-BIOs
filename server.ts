@@ -10,12 +10,16 @@ import crypto from 'crypto';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
 import * as db from './src/db';
 import { streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup, importUserBackup } from './src/backup';
 import { isAllowedMime, isImageMime, processUploadedImage, type ImageUploadType } from './src/imageProcessing';
 import { isVideoMime, processUploadedVideo } from './src/videoProcessing';
+import { isAudioMime, processUploadedAudio } from './src/audioProcessing';
+import { validateUserPassword, validateAdminPassword } from './src/passwordPolicy';
+import { isAccountLocked, recordFailedLogin, clearLoginAttempts } from './src/authLockout';
 import { rehostImportMedia } from './src/rehostMedia';
 import { parseGunsLolHtml } from './src/gunsImportMap';
 import { cleanupAllOrphans, deleteUnusedBetweenConfigs } from './src/uploadCleanup';
@@ -117,8 +121,15 @@ function verifyPassword(password: string, storedHash: string): { valid: boolean;
   return { valid: false, needsRehash: false };
 }
 
-// Seed a handsome default profile for demonstration if needed
-if (!db.getBio('cryteam') && !db.getUser('cryteam')) {
+function verifyAdminPassword(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+// Seed demo profile only when explicitly enabled
+if (process.env.SEED_DEMO_USER === 'true' && !db.getBio('cryteam') && !db.getUser('cryteam')) {
   const seedUsername = 'cryteam';
   const seedPasswordHash = hashPassword('demo123');
   const sessionToken = crypto.randomUUID();
@@ -237,7 +248,12 @@ if (!db.getBio('cryteam') && !db.getUser('cryteam')) {
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', 1);
 
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }));
   app.use(express.json());
   const PORT = 3000;
 
@@ -253,10 +269,14 @@ async function startServer() {
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 30,
+    max: 20,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many auth attempts. Try again later.' },
+    message: { error: 'Слишком много попыток входа. Попробуйте позже.' },
+    keyGenerator: (req) => {
+      const username = typeof req.body?.username === 'string' ? req.body.username.toLowerCase().trim() : '';
+      return `${req.ip}:${username}`;
+    },
   });
 
   const uploadLimiter = rateLimit({
@@ -319,6 +339,12 @@ async function startServer() {
         return res.json({ url: fileUrl });
       }
 
+      if (isAudioMime(req.file.mimetype)) {
+        const result = await processUploadedAudio(req.file.path, UPLOADS_DIR);
+        const fileUrl = `/uploads/${result.filename}`;
+        return res.json({ url: fileUrl });
+      }
+
       const fileUrl = `/uploads/${req.file.filename}`;
       res.json({ url: fileUrl });
     } catch (err: any) {
@@ -333,16 +359,12 @@ async function startServer() {
   app.use('/api/admin', adminLimiter);
 
   const checkAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    let secret = req.headers['x-admin-password'] || req.query.password;
-    if (secret && typeof secret === 'string') {
-      try {
-        secret = decodeURIComponent(secret);
-      } catch (e) {
-        // Fallback
-      }
+    const secret = req.headers['x-admin-password'];
+    if (!secret || typeof secret !== 'string') {
+      return res.status(401).json({ error: 'Unauthorized Admin Session. Invalid Admin Password.' });
     }
     const adminPass = getAdminPassword();
-    if (secret !== adminPass) {
+    if (!verifyAdminPassword(secret, adminPass)) {
       return res.status(401).json({ error: 'Unauthorized Admin Session. Invalid Admin Password.' });
     }
     next();
@@ -414,8 +436,9 @@ async function startServer() {
 
   app.post('/api/admin/change-password', checkAdminAuth, (req, res) => {
     const { newPassword } = req.body;
-    if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 4) {
-      return res.status(400).json({ error: 'Пароль должен быть не менее 4 символов' });
+    const policy = validateAdminPassword(newPassword);
+    if (!policy.valid) {
+      return res.status(400).json({ error: policy.error });
     }
     saveAdminPassword(newPassword);
     res.json({ success: true, message: 'Пароль администратора успешно изменен' });
@@ -455,16 +478,16 @@ async function startServer() {
       return res.status(400).json({ error: 'Username and newPassword are required' });
     }
     const normUsername = username.toLowerCase().trim();
-    if (newPassword.trim().length < 4) {
-      return res.status(400).json({ error: 'Пароль должен быть не менее 4 символов' });
+    const policy = validateUserPassword(newPassword);
+    if (!policy.valid) {
+      return res.status(400).json({ error: policy.error });
     }
     const user = db.getUser(normUsername);
     if (!user) {
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
-    const hashedPassword = hashPassword(newPassword);
-    db.updateUserPassword(normUsername, hashedPassword);
-    res.json({ success: true, message: `Пароль пользователя @${normUsername} успешно изменен` });
+    db.updateUserPasswordAndInvalidateSessions(normUsername, hashPassword(newPassword));
+    res.json({ success: true, message: `Пароль пользователя @${normUsername} изменён. Все сессии сброшены.` });
   });
 
   app.post('/api/admin/toggle-verify/:username', checkAdminAuth, (req, res) => {
@@ -480,7 +503,8 @@ async function startServer() {
 
   app.get('/api/admin/export-db', checkAdminAuth, (req, res) => {
     const includeAnalytics = req.query.includeAnalytics !== 'false';
-    const dump = db.exportDatabase({ includeAnalytics });
+    const includeSecrets = req.query.includeSecrets === 'true';
+    const dump = db.exportDatabase({ includeAnalytics, includeSecrets });
     res.json(dump);
   });
 
@@ -616,35 +640,46 @@ async function startServer() {
   app.post('/api/auth/login-register', authLimiter, (req, res) => {
     const { username, password } = req.body;
     if (!username || !password || username.trim() === '' || password.trim() === '') {
-      return res.status(400).json({ error: 'Username and password credentials required' });
+      return res.status(400).json({ error: 'Укажите имя пользователя и пароль' });
     }
 
     const normUsername = username.toLowerCase().trim();
     if (!/^[a-zA-Z0-9_-]{3,15}$/.test(normUsername)) {
-      return res.status(400).json({ error: 'Username must be 3-15 chars, alphanumeric letters, underscores or dashes' });
+      return res.status(400).json({ error: 'Имя: 3–15 символов, латиница, цифры, _ или -' });
     }
 
     const existingUser = db.getUser(normUsername);
+    const authFailMessage = 'Неверное имя пользователя или пароль';
 
     if (existingUser) {
+      if (isAccountLocked(existingUser)) {
+        return res.status(429).json({ error: 'Аккаунт временно заблокирован из-за множества неудачных попыток. Попробуйте позже.' });
+      }
+
       const { valid, needsRehash } = verifyPassword(password, existingUser.password_hash);
       if (valid) {
+        clearLoginAttempts(normUsername);
         if (needsRehash) {
           db.updateUserPassword(normUsername, hashPassword(password));
         }
         const sessionToken = crypto.randomUUID();
         db.updateUserToken(normUsername, sessionToken);
         return res.json({ token: sessionToken, username: normUsername, isNew: false });
-      } else {
-        return res.status(401).json({ error: 'Incorrect passcode for this existing profile URL' });
       }
-    } else {
-      // Sign-Up flow
-      const sessionToken = crypto.randomUUID();
-      db.createUser(normUsername, hashPassword(password), sessionToken);
-      
-      // Default bio landing page
-      const defaultBio: BioConfig = {
+
+      recordFailedLogin(normUsername);
+      return res.status(401).json({ error: authFailMessage });
+    }
+
+    const policy = validateUserPassword(password, { isRegistration: true });
+    if (!policy.valid) {
+      return res.status(400).json({ error: policy.error });
+    }
+
+    const sessionToken = crypto.randomUUID();
+    db.createUser(normUsername, hashPassword(password), sessionToken);
+
+    const defaultBio: BioConfig = {
         username: normUsername,
         displayName: normUsername,
         bio: 'Just another badass awesome creator page.',
@@ -682,10 +717,50 @@ async function startServer() {
         ]
       };
 
-      db.saveBio(normUsername, defaultBio);
+    db.saveBio(normUsername, defaultBio);
 
-      res.status(201).json({ token: sessionToken, username: normUsername, isNew: true });
+    res.status(201).json({ token: sessionToken, username: normUsername, isNew: true });
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    const authedUser = getUsernameFromRequest(req);
+    if (authedUser) {
+      db.clearUserToken(authedUser);
     }
+    res.json({ success: true });
+  });
+
+  app.post('/api/auth/change-password', authLimiter, (req, res) => {
+    const authedUser = getUsernameFromRequest(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: 'Сессия недействительна' });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Укажите текущий и новый пароль' });
+    }
+
+    const policy = validateUserPassword(newPassword, { isRegistration: true });
+    if (!policy.valid) {
+      return res.status(400).json({ error: policy.error });
+    }
+
+    const user = db.getUser(authedUser);
+    if (!user) {
+      return res.status(401).json({ error: 'Сессия недействительна' });
+    }
+
+    const { valid } = verifyPassword(currentPassword, user.password_hash);
+    if (!valid) {
+      recordFailedLogin(authedUser);
+      return res.status(401).json({ error: 'Неверный текущий пароль' });
+    }
+
+    const sessionToken = crypto.randomUUID();
+    db.updateUserPassword(authedUser, hashPassword(newPassword));
+    db.updateUserToken(authedUser, sessionToken);
+    res.json({ success: true, token: sessionToken, message: 'Пароль успешно изменён' });
   });
 
   // Check auth session validity
@@ -1029,7 +1104,7 @@ echo -e "\${BLUE}=====================================================\${NC}"
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({ error: 'File too large. Maximum size is 5 MB for uploads, 500 MB for backups.' });
+        return res.status(413).json({ error: 'File too large. Maximum size is 50 MB for uploads, 500 MB for backups.' });
       }
       return res.status(400).json({ error: err.message });
     }
