@@ -68,6 +68,10 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordChangeError, setPasswordChangeError] = useState('');
+  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
 
   // Profile configuration states
   const [config, setConfig] = useState<BioConfig | null>(null);
@@ -495,12 +499,49 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   };
 
   const handleLogout = () => {
+    const sessionToken = token || localStorage.getItem('biogun_token');
+    if (sessionToken) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      }).catch(() => {});
+    }
     localStorage.removeItem('biogun_token');
     localStorage.removeItem('biogun_username');
     setToken('');
     setUsername('');
     setConfig(null);
     setAnalytics(null);
+  };
+
+  const handleChangePassword = () => {
+    if (!currentPassword || !newPassword) {
+      setPasswordChangeError('Заполните оба поля');
+      return;
+    }
+    setPasswordChangeLoading(true);
+    setPasswordChangeError('');
+    fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    })
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Ошибка смены пароля');
+        if (data.token) {
+          localStorage.setItem('biogun_token', data.token);
+          setToken(data.token);
+        }
+        setCurrentPassword('');
+        setNewPassword('');
+        alert('Пароль успешно изменён');
+      })
+      .catch(err => setPasswordChangeError(err.message))
+      .finally(() => setPasswordChangeLoading(false));
   };
 
   // Profile configuration saves
@@ -749,7 +790,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
         className="hidden" 
         onChange={handleFileUpload}
         accept={
-          uploadTarget === 'audioUrl'
+          uploadTarget === 'audioUrl' || uploadTarget === 'playlistTrack'
             ? 'audio/*'
             : uploadTarget === 'imageBlock'
               ? 'image/*'
@@ -849,7 +890,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                 </div>
 
                 <div className="p-3.5 rounded-sm bg-white/5 border border-white/10 text-[10px] text-neutral-400 leading-relaxed font-sans">
-                  ⭐ <strong>Open Source Auto-Provision:</strong> If the username does not exist on this node database, a new creator bio page is generated instantly for you using this passphrase!
+                  ⭐ <strong>Регистрация:</strong> если имя свободно — создаётся новый профиль. Пароль: минимум 8 символов, буквы и цифры.
                 </div>
 
                 <button
@@ -1003,6 +1044,41 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             {totalViews} hits
                           </span>
                         </div>
+                      </div>
+
+                      <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-3">
+                        <h4 className="text-[10px] font-black uppercase text-neutral-400 tracking-widest flex items-center gap-2">
+                          <Lock className="w-3.5 h-3.5" />
+                          Безопасность аккаунта
+                        </h4>
+                        <p className="text-[9px] text-neutral-500">Смена пароля завершит все другие активные сессии.</p>
+                        {passwordChangeError && (
+                          <p className="text-[10px] text-red-400 font-mono">{passwordChangeError}</p>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="password"
+                            placeholder="Текущий пароль"
+                            value={currentPassword}
+                            onChange={e => setCurrentPassword(e.target.value)}
+                            className="bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none focus:border-[#00f2ff]"
+                          />
+                          <input
+                            type="password"
+                            placeholder="Новый пароль (8+ символов, буквы и цифры)"
+                            value={newPassword}
+                            onChange={e => setNewPassword(e.target.value)}
+                            className="bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none focus:border-[#00f2ff]"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleChangePassword}
+                          disabled={passwordChangeLoading}
+                          className="px-4 py-2 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[10px] text-[#00f2ff] font-bold uppercase tracking-wider rounded-sm cursor-pointer disabled:opacity-50"
+                        >
+                          {passwordChangeLoading ? 'Сохранение...' : 'Сменить пароль'}
+                        </button>
                       </div>
 
                       {/* --- GUNS.LOL MODERN PROFILE IMPORTER --- */}

@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { processUploadedImage, type ImageUploadType } from './imageProcessing';
 import { processUploadedVideo } from './videoProcessing';
+import { processUploadedAudio } from './audioProcessing';
 
 export type RehostMediaType = 'avatar' | 'bg' | 'video' | 'audio' | 'cursor';
 
@@ -127,7 +128,13 @@ export async function rehostRemoteUrl(
       return `/uploads/${result.filename}`;
     }
 
-    if (isAudio || type === 'cursor') {
+    if (isAudio) {
+      const result = await processUploadedAudio(tmpPath, uploadsDir);
+      tmpPath = null;
+      return `/uploads/${result.filename}`;
+    }
+
+    if (type === 'cursor') {
       return copyRawToUploads(tmpPath, uploadsDir);
     }
 
