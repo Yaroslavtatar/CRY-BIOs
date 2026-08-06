@@ -12,10 +12,17 @@ export interface SongConfig {
 
 export interface SocialLink {
   id: string;
-  platform: 'discord' | 'github' | 'telegram' | 'youtube' | 'steam' | 'spotify' | 'twitter' | 'instagram' | 'tiktok' | 'website';
+  platform:
+    | 'discord' | 'github' | 'telegram' | 'youtube' | 'steam' | 'spotify'
+    | 'twitter' | 'instagram' | 'tiktok' | 'website'
+    | 'twitch' | 'vk' | 'reddit' | 'snapchat' | 'facebook' | 'linkedin'
+    | 'whatsapp' | 'email' | 'soundcloud' | 'patreon' | 'kick' | 'threads'
+    | 'roblox' | 'paypal';
   url: string;
   label?: string;
   glow?: boolean;
+  useBrandColor?: boolean;
+  iconColor?: string;
 }
 
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'video' | 'matrix' | 'stars' | 'rain' | 'particles' | 'snow' | 'aurora' | 'plasma' | 'dither';

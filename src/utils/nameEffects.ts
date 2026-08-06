@@ -7,7 +7,7 @@ export function getNameEffectClasses(effect: NameEffect | undefined, displayName
     case 'glow':
       return 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.85)]';
     case 'neon':
-      return 'text-cyan-300 drop-shadow-[0_0_20px_rgba(34,211,238,0.95)] animate-pulse';
+      return 'text-cyan-300 drop-shadow-[0_0_20px_rgba(34,211,238,0.95)] animate-neon-pulse';
     case 'neon_red':
       return 'text-red-400 drop-shadow-[0_0_15px_rgba(248,113,113,0.9)]';
     case 'neon_blue':
@@ -23,7 +23,7 @@ export function getNameEffectClasses(effect: NameEffect | undefined, displayName
     case 'shine':
       return 'text-transparent bg-clip-text bg-gradient-to-r from-white via-neutral-500 to-white animate-shine bg-[length:200%_auto]';
     case 'glitch':
-      return 'text-white animate-glitch relative';
+      return 'text-white animate-glitch-v2 relative';
     case 'shuffle':
       return 'text-white animate-shuffle inline-block';
     case 'fuzzy':
@@ -33,7 +33,7 @@ export function getNameEffectClasses(effect: NameEffect | undefined, displayName
     case 'rainbow':
       return 'text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-yellow-400 to-blue-400 animate-rainbow bg-[length:200%_auto]';
     case 'flicker':
-      return 'text-white animate-flicker';
+      return 'text-white animate-flicker-neon';
     case 'bounce':
       return 'text-white animate-bounce-subtle inline-block';
     case 'shadow_3d':

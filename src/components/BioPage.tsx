@@ -14,8 +14,10 @@ import LocationLine from './LocationLine';
 import MobileBioLayout, { useMobileBio } from './MobileBioLayout';
 import VerifiedBadge, { VerifiedAvatarRing } from './VerifiedBadge';
 import BadgeRow from './BadgeRow';
+import SocialIcon from './SocialIcon';
 import GlowLayer, { getGlowStyle, ProfileGradientWrapper } from './GlowLayer';
 import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
+import { getSocialIconColor } from '../utils/socialPlatforms';
 
 const renderBadgeIcon = (iconName: string) => {
   const iconProps = { className: "w-3 h-3 flex-shrink-0" };
@@ -451,13 +453,6 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       });
   }, [username, previewConfig]);
 
-  // Handle immediate auto-entrance without splash if click-to-enter is disabled
-  useEffect(() => {
-    if (config && config.clickToEnterEnabled === false) {
-      setEntered(true);
-    }
-  }, [config]);
-
   // Track visit on enter (Visitor hit counter logging)
   useEffect(() => {
     if (!previewConfig && entered && username) {
@@ -701,71 +696,6 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
     return style;
   };
 
-  const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case 'discord':
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.46-.63.872-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.094 13.094 0 0 1-1.873-.894.077.077 0 0 1-.008-.128c.126-.093.252-.19.372-.287a.075.075 0 0 1 .077-.011c3.92 1.793 8.18 1.793 12.061 0a.073.073 0 0 1 .078.009c.12.099.246.195.373.289a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.156-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.156 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.156-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.156 2.418z" />
-          </svg>
-        );
-      case 'github':
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
-          </svg>
-        );
-      case 'telegram':
-        return (
-          <svg className="w-5 h-5 fill-current animate-pulse" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M11.944 0a12 12 0 0 0-12 12 12 12 0 0 0 12 12 12 12 0 0 0 12-12 12 12 0 0 0-12-12zm5.892 7.9c-.197 2.067-.842 5.854-1.168 7.601-.138.74-.412.988-.674 1.013-.572.053-.997-.379-1.552-.743-.868-.571-1.36-.922-2.198-1.47-1-.629-.352-.976.218-1.569 1.493-1.554 2.747-2.946 3.541-4.041.11-.15.21-.35.21-.45 0-.08-.09-.13-.21-.13l-.04-.01c-.16.03-2.22 1.41-5.71 3.74-.51.35-.97.52-1.38.51-.45 0-1.33-.24-1.98-.46-.8-.26-1.43-.4-1.37-.84.03-.23.35-.46.96-.71 3.75-1.63 6.25-2.71 7.5-3.23 3.57-1.49 4.31-.13 3.52 1.15z" />
-          </svg>
-        );
-      case 'youtube':
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.11C19.517 3.545 12 3.545 12 3.545s-7.517 0-9.388.507a3.003 3.003 0 0 0-2.11 2.11C.5 8.033.5 12 .5 12s0 3.967.502 5.837a3.003 3.003 0 0 0 2.11 2.11c1.871.507 9.388.507 9.388.507s7.517 0 9.388-.507a3.003 3.003 0 0 0 2.11-2.11C23.5 15.967 23.5 12 23.5 12s0-3.967-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-          </svg>
-        );
-      case 'steam':
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 .002a11.996 11.996 0 0 0-11.96 10.87l6.09 2.52a4.42 4.42 0 0 1 2.76-2.008V8.165a2.536 2.536 0 0 1 1.776-5.013 2.536 2.536 0 0 1-1.776 5.013V11.4a4.432 4.432 0 0 1 2.058.91l4.792-2.106a4.4 4.4 0 0 1-.225-1.39A4.43 4.43 0 0 1 20.14 4.39a4.43 4.43 0 0 1 0 8.85 4.432 4.432 0 0 1-4.425-4.424 4.4 4.4 0 0 1 .184-1.242l-4.73 2.08a4.423 4.423 0 0 1-8.156 1.488l-2.02-.835A12 12 0 0 0 12 24a12 12 0 0 0 12-12A12 12 0 0 0 12 .002z" />
-          </svg>
-        );
-      case 'spotify':
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 .007a12 12 0 0 0-12 12s0 12 12 12 12-5.372 12-12-5.371-12-12-12zm5.494 17.311c-.237.389-.74.512-1.129.274-3.051-1.867-6.892-2.29-11.417-1.258-.445.101-.89-.176-.991-.62s.176-.89.62-.991c4.957-1.134 9.191-.65 12.643 1.464.389.237.512.74.274 1.131zm1.467-3.264c-.298.482-.924.64-1.406.342-3.49-2.146-8.811-2.771-12.936-1.517-.542.164-1.114-.145-1.279-.687-.164-.542.145-1.114.687-1.279 4.717-1.432 10.584-.734 14.592 1.731.482.298.64.925.342 1.41zm.126-3.32c-4.185-2.484-11.085-2.713-15.093-1.498-.642.195-1.316-.164-1.511-.806s.164-1.315.806-1.511c4.603-1.397 12.213-1.11 17.026 1.744.577.344.767 1.091.423 1.668-.344.578-1.091.767-1.651.403z" />
-          </svg>
-        );
-      case 'twitter':
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-          </svg>
-        );
-      case 'instagram':
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051C.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44a1.44 0 1 0 0 2.881 1.44 0 0 0 0-2.881z" />
-          </svg>
-        );
-      case 'tiktok':
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12.525.02c1.31 0 2.59.35 3.71 1.01.27.16.54.34.79.54.49-.08.97-.2 1.44-.37.15-.05.3.1.28.26-.06.49-.18.97-.36 1.43v.01l.01-.01c1.17-.4 2.21-1.12 3.01-2.07.12-.13.33-.03.3.15-.31 1.95-1.51 3.61-3.21 4.46v3c-.02 4.29-3.41 7.82-7.7 7.97-4.36.15-8.03-3.21-8.11-7.57C3.31 4.7 6.8 1.04 11.16 1c.21 0 .42.01.63.03l.01.01V4.2l-.12-.02c-.17-.03-.34-.04-.52-.04-2.58.07-4.57 2.25-4.5 4.83.07 2.45 2.1 4.4 4.56 4.33 2.41-.06 4.31-2.11 4.24-4.59l-.02-8.69z" />
-          </svg>
-        );
-      default:
-        return (
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.53c-.26-.81-1-1.4-1.9-1.4h-1v-3c0-.55-.45-1-1-1h-6v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-          </svg>
-        );
-    }
-  };
-
   const getBlockStyle = (block: BlockConfig) => {
     const style: React.CSSProperties = {};
     if (block.bgColor) {
@@ -864,6 +794,26 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
   const playerMode = config?.audioPlayerMode || 'minimal';
 
+  const visibleLayout = (config?.layout || ['avatar', 'username', 'location', 'badges', 'discord', 'bio', 'blocks', 'player']).filter((section) => {
+    if (!config) return false;
+    switch (section) {
+      case 'location':
+        return !!(config.locationEnabled && config.locationText?.trim());
+      case 'discord':
+        return !!(config.discordConnected && config.discordId);
+      case 'badges':
+        return !!(config.badges?.some(b => b.enabled));
+      case 'bio':
+        return !!config.bio?.trim();
+      case 'blocks':
+        return !!(config.blocks?.some(b => b.enabled));
+      case 'player':
+        return !!(hasAudio && playerMode === 'inline');
+      default:
+        return true;
+    }
+  });
+
   const renderAudioBar = (variant: 'minimal' | 'inline' | 'floating') => {
     if (!hasAudio || playerMode === 'hidden' || playerMode !== variant) return null;
     return (
@@ -927,7 +877,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   return (
     <MobileBioLayout config={config} className="min-h-screen w-full">
     <div
-      className={`min-h-screen relative text-white flex items-center justify-center p-4 overflow-x-hidden ${config.monochromeMode ? 'grayscale' : ''}`}
+      className={`min-h-screen relative text-white flex items-start justify-center pt-6 sm:pt-10 p-4 overflow-x-hidden ${config.monochromeMode ? 'grayscale' : ''}`}
       style={resolveBackgroundCSS()}
     >
       {config.bgType === 'video' && config.bgValue && (
@@ -1072,16 +1022,16 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
           animate={{ opacity: 1, y: 0, scale: 1, rotateX: parallax.y * 0.4, rotateY: parallax.x * 0.4 }}
           transition={{ duration: 0.7, type: 'spring', stiffness: 45 }}
           style={{ transformPerspective: 800, ...getGlowStyle(config, 'card') }}
-          className={`w-full ${mobile.cardPadding} ${mobile.cardMaxWidth} relative z-10 flex flex-col items-center space-y-6 transition-all duration-300 ${
+          className={`w-full ${mobile.cardPadding} ${mobile.cardMaxWidth} relative z-10 flex flex-col items-center space-y-3 transition-all duration-300 ${
             previewConfig ? 'mt-14' : ''
           }`}
         >
-          {(config.layout || ['avatar', 'username', 'location', 'badges', 'discord', 'bio', 'blocks', 'player']).map((section) => {
+          {visibleLayout.map((section) => {
             if (section === 'avatar') {
               return (
                 <div key="avatar">
                 <GlowLayer config={config} target="avatar">
-                  <div className="relative flex flex-col items-center mb-4">
+                  <div className="relative flex flex-col items-center">
                     <VerifiedAvatarRing config={config}>
                       <img
                         src={config.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
@@ -1107,7 +1057,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
               return (
                 <div key="username">
                 <GlowLayer config={config} target="username">
-                  <div className="flex flex-col items-center mb-4">
+                  <div className="flex flex-col items-center">
                     <div className="group relative flex items-center justify-center gap-1.5 flex-wrap">
                       <h1
                         className={`${mobile.nameSize} leading-none font-semibold pb-1 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
@@ -1137,10 +1087,9 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
             if (section === 'badges') {
               if (config.badges && config.badges.filter(b => b.enabled).length > 0) {
                 return (
-                  <div key="badges" className="mb-4 w-full flex justify-center">
+                  <div key="badges" className="w-full flex justify-center">
                     <BadgeRow
                       badges={config.badges}
-                      badgeOpacity={config.badgeOpacity}
                       primaryColor={config.primaryColor}
                     />
                   </div>
@@ -1151,7 +1100,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
             if (section === 'discord') {
               if (config.discordConnected && config.discordId) {
                 return (
-                  <div key="discord" className="flex flex-col items-center p-3 bg-black/40 border border-white/5 rounded-xl min-w-[240px] shadow-lg mb-4">
+                  <div key="discord" className="flex flex-col items-center p-3 bg-black/40 border border-white/5 rounded-xl min-w-[240px] shadow-lg">
                     {discordUser && discordUser.discord_user ? (
                       <div className="flex items-center gap-3">
                         <div className="relative">
@@ -1207,7 +1156,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
             if (section === 'bio') {
               if (config.bio) {
                 return (
-                  <p key="bio" className="text-[14px] font-sans text-center text-white/90 leading-normal max-w-[320px] px-2 whitespace-pre-line drop-shadow-md mb-4">
+                  <p key="bio" className="text-[14px] font-sans text-center text-white/90 leading-normal max-w-[320px] px-2 whitespace-pre-line drop-shadow-md">
                     {config.bio}
                   </p>
                 );
@@ -1216,7 +1165,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
             if (section === 'blocks') {
               return (
-                <div key="blocks" className="flex flex-col items-center space-y-4 w-full mb-4">
+                <div key="blocks" className="flex flex-col items-center space-y-3 w-full">
                   {config.blocks && config.blocks.filter(b => b.enabled).map((block) => {
                     const blockStyle = getBlockStyle(block);
                     const blockClasses = getBlockClasses(block);
@@ -1230,18 +1179,21 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                             style={blockStyle}
                             className={`flex flex-wrap items-center justify-center gap-3.5 py-2 mt-2 ${blockClasses}`}
                           >
-                            {block.socialsList && block.socialsList.map((soc: SocialLink) => (
+                            {block.socialsList && block.socialsList.map((soc: SocialLink) => {
+                              const iconColor = getSocialIconColor(soc, config.textColor || '#ffffff');
+                              return (
                               <a
                                 key={soc.id}
                                 href={soc.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center justify-center text-[22px] transition-all duration-300 hover:scale-110 active:scale-95 text-[#fff2f2] drop-shadow-[0_0_7px_#fff2f2]"
+                                className="flex items-center justify-center text-[22px] transition-all duration-300 hover:scale-110 active:scale-95"
+                                style={{ color: iconColor, filter: `drop-shadow(0 0 7px ${iconColor}88)` }}
                                 title={soc.label || soc.platform}
                               >
-                                {getPlatformIcon(soc.platform)}
+                                <SocialIcon platform={soc.platform} className="w-5 h-5" />
                               </a>
-                            ))}
+                            );})}
                           </div>
                         );
 
