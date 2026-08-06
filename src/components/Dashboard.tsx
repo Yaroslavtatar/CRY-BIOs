@@ -10,6 +10,21 @@ import BioPage from './BioPage';
 import QRCode from 'qrcode';
 import { getThumbUrl } from '../utils/media';
 import { parseGunsLolHtml, applyGunsImportToConfig, getImportPreviewSummary } from '../gunsImportMap';
+import {
+  GLOW_TARGET_LABELS,
+  LOCATION_STYLE_LABELS,
+  LAYOUT_SECTION_LABELS,
+  EXTRA_TOGGLE_LABELS,
+  LOCATION_ICON_LABELS,
+  GLOW_INTENSITY_LABELS,
+  LAYOUT_MODE_LABELS,
+  VERIFIED_BADGE_LABELS,
+  AUDIO_PLAYER_LABELS,
+  TEXTBOX_STYLE_LABELS,
+} from '../dashboardLabels';
+import { NAME_EFFECT_GROUPS, NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
+import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
+import SocialIcon from './SocialIcon';
 import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy } from 'lucide-react';
 
 const renderDashboardBadgeIcon = (iconName: string) => {
@@ -638,7 +653,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
         ...defaultDetails,
         title: 'Social networks',
         socialsList: [
-          { id: Math.random().toString(), platform: 'discord', url: 'https://discord.gg/' }
+          { id: Math.random().toString(), platform: 'discord', url: 'https://discord.gg/', useBrandColor: true }
         ]
       };
     } else if (type === 'html') {
@@ -710,8 +725,9 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       id: Math.random().toString(),
       platform: 'website',
       url: 'https://',
-      label: 'My Custom Site',
-      glow: false
+      label: 'Мой сайт',
+      glow: false,
+      useBrandColor: true,
     };
 
     updateBlock(blockId, { socialsList: [...block.socialsList, newLink] });
@@ -1374,33 +1390,21 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
 
                       <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
                          <div>
-                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Эффекты для имени пользователя</label>
+                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Эффект имени</label>
                           <select
                             value={config.nameEffect || 'none'}
                             onChange={e => updateConfigValue('nameEffect', e.target.value)}
                             className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none text-white text-xs cursor-pointer"
                           >
-                            <option value="none">Отключено (Без эффекта)</option>
-                            <option value="glow">Белое Свечение (Glow)</option>
-                            <option value="neon">Неон (Пульсирующее Свечение)</option>
-                            <option value="neon_red">Красный Неон (Red Glow)</option>
-                            <option value="neon_blue">Синий Неон (Blue Glow)</option>
-                            <option value="stroke">Обводка (Thick Stroke Hollow)</option>
-                            <option value="gradient">Градиент (Purple-Pink)</option>
-                            <option value="gradient_fire">Огненный Градиент (Fire)</option>
-                            <option value="gradient_ocean">Океанский Градиент (Ocean)</option>
-                            <option value="shine">Проблеск (Shine Sweep)</option>
-                            <option value="glitch">Глитч (Glitch Pulse)</option>
-                            <option value="shuffle">Shuffle (Перемешивание)</option>
-                            <option value="fuzzy">Fuzzy (Размытие)</option>
-                            <option value="typewriter">Печатная Машинка (Typewriter)</option>
-                            <option value="rainbow">Радуга (Rainbow)</option>
-                            <option value="flicker">Мерцание (Flicker)</option>
-                            <option value="bounce">Подпрыгивание (Bounce)</option>
-                            <option value="shadow_3d">3D Тень (Shadow)</option>
-                            <option value="underline_glow">Подчёркивание (Glow Underline)</option>
-                            <option value="cyber">Кибер (Cyber Glitch)</option>
+                            {NAME_EFFECT_GROUPS.map(group => (
+                              <optgroup key={group} label={group}>
+                                {NAME_EFFECT_CATALOG.filter(e => e.group === group).map(e => (
+                                  <option key={e.id} value={e.id}>{e.label}</option>
+                                ))}
+                              </optgroup>
+                            ))}
                           </select>
+                          <p className="text-[9px] text-neutral-500 mt-1.5 leading-relaxed">{getNameEffectHint(config.nameEffect)}</p>
                         </div>
                       </div>
 
@@ -1415,19 +1419,20 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Текст на клик-заставке (Click to Enter)</label>
+                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Текст на клик-заставке</label>
                         <input
                           type="text"
                           value={config.enterText}
                           onChange={e => updateConfigValue('enterText', e.target.value)}
+                          placeholder="Войти"
                           className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
                         />
+                        <p className="text-[9px] text-neutral-500 mt-1">Экран перед входом на профиль. Всегда включён — настройте только текст.</p>
                       </div>
 
-                      {/* Location */}
                       <div className="pt-4 border-t border-white/10 space-y-3">
                         <div className="flex items-center justify-between">
-                          <label className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">Location строка</label>
+                          <label className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">Строка локации</label>
                           <button
                             type="button"
                             onClick={() => updateConfigValue('locationEnabled', !config.locationEnabled)}
@@ -1438,11 +1443,12 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             {config.locationEnabled ? 'ВКЛ' : 'ВЫКЛ'}
                           </button>
                         </div>
+                        <p className="text-[9px] text-neutral-500">Показывает город или страну под именем.</p>
                         {config.locationEnabled && (
                           <div className="grid grid-cols-1 gap-2">
                             <input
                               type="text"
-                              placeholder="Moscow / Москва"
+                              placeholder="Москва / Россия"
                               value={config.locationText || ''}
                               onChange={e => updateConfigValue('locationText', e.target.value)}
                               className="w-full bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none"
@@ -1453,61 +1459,58 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                                 onChange={e => updateConfigValue('locationIcon', e.target.value)}
                                 className="bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none cursor-pointer"
                               >
-                                <option value="pin">Pin</option>
-                                <option value="globe">Globe</option>
-                                <option value="map">Map</option>
+                                {Object.entries(LOCATION_ICON_LABELS).map(([id, label]) => (
+                                  <option key={id} value={id}>{label}</option>
+                                ))}
                               </select>
                               <select
                                 value={config.locationStyle || 'pill'}
                                 onChange={e => updateConfigValue('locationStyle', e.target.value)}
                                 className="bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none cursor-pointer"
                               >
-                                <option value="minimal">Minimal</option>
-                                <option value="pill">Pill</option>
-                                <option value="glow">Glow</option>
-                                <option value="geo_pulse">Geo Pulse</option>
+                                {Object.entries(LOCATION_STYLE_LABELS).map(([id, meta]) => (
+                                  <option key={id} value={id}>{meta.label}</option>
+                                ))}
                               </select>
                             </div>
+                            {config.locationStyle && LOCATION_STYLE_LABELS[config.locationStyle] && (
+                              <p className="text-[9px] text-neutral-500">{LOCATION_STYLE_LABELS[config.locationStyle].hint}</p>
+                            )}
                           </div>
                         )}
                       </div>
 
-                      {/* Дополнительно */}
                       <div className="pt-4 border-t border-white/10 space-y-3">
                         <h4 className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Дополнительно</h4>
-                        <div className="grid grid-cols-2 gap-2">
-                          {([
-                            ['showViewsCounter', 'Счётчик просмотров'],
-                            ['showUid', 'Показать UID'],
-                            ['monochromeMode', 'Ч/Б режим'],
-                            ['parallaxEnabled', 'Parallax tilt'],
-                            ['avatarGlowEnabled', 'Свечение аватара'],
-                            ['linkHoverGlow', 'Glow ссылок'],
-                            ['clickToEnterEnabled', 'Click to Enter'],
-                          ] as const).map(([key, label]) => (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => updateConfigValue(key, !(config as any)[key])}
-                              className={`py-2 px-2 rounded-sm border text-[8px] font-bold uppercase cursor-pointer ${
-                                (config as any)[key] ? 'bg-[#00f2ff]/10 border-[#00f2ff]/30 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {(['showViewsCounter', 'showUid', 'monochromeMode', 'parallaxEnabled', 'avatarGlowEnabled', 'linkHoverGlow'] as const).map((key) => {
+                            const meta = EXTRA_TOGGLE_LABELS[key];
+                            return (
+                            <div key={key} className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => updateConfigValue(key, !config[key])}
+                                className={`w-full py-2 px-2 rounded-sm border text-[8px] font-bold uppercase cursor-pointer ${
+                                  config[key] ? 'bg-[#00f2ff]/10 border-[#00f2ff]/30 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
+                                }`}
+                              >
+                                {meta.label}
+                              </button>
+                              <p className="text-[8px] text-neutral-600 leading-snug px-0.5">{meta.hint}</p>
+                            </div>
+                          );})}
                         </div>
                         <div className="grid grid-cols-1 gap-2">
                           <input
                             type="text"
-                            placeholder="Custom page title"
+                            placeholder="Заголовок вкладки браузера"
                             value={config.customPageTitle || ''}
                             onChange={e => updateConfigValue('customPageTitle', e.target.value)}
                             className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none"
                           />
                           <input
                             type="text"
-                            placeholder="Custom favicon URL"
+                            placeholder="URL иконки вкладки (favicon)"
                             value={config.customFaviconUrl || ''}
                             onChange={e => updateConfigValue('customFaviconUrl', e.target.value)}
                             className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none"
@@ -1515,7 +1518,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                           <div className="flex gap-2">
                             <input
                               type="text"
-                              placeholder="Custom cursor URL"
+                              placeholder="URL кастомного курсора"
                               value={config.customCursorUrl || ''}
                               onChange={e => updateConfigValue('customCursorUrl', e.target.value)}
                               className="flex-grow bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none"
@@ -1851,25 +1854,24 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Layout Mode</label>
+                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Режим layout</label>
                         <select value={config.layoutMode || 'default'} onChange={e => updateConfigValue('layoutMode', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white">
-                          <option value="default">Default</option>
-                          <option value="compact">Compact (mobile)</option>
-                          <option value="sleek">Sleek (guns.lol)</option>
+                          {Object.entries(LAYOUT_MODE_LABELS).map(([id, label]) => (
+                            <option key={id} value={id}>{label}</option>
+                          ))}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Verified Badge</label>
+                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Верификация</label>
                         <select value={config.verifiedBadgeStyle || 'inline'} onChange={e => updateConfigValue('verifiedBadgeStyle', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white">
-                          <option value="inline">Inline check</option>
-                          <option value="chip">Chip</option>
-                          <option value="ring">Avatar ring</option>
-                          <option value="none">Hidden</option>
+                          {Object.entries(VERIFIED_BADGE_LABELS).map(([id, label]) => (
+                            <option key={id} value={id}>{label}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
                     <button type="button" onClick={() => updateConfigValue('mobileOptimized', config.mobileOptimized === false ? true : false)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.mobileOptimized !== false ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
-                      Mobile Optimized: {config.mobileOptimized !== false ? 'ON' : 'OFF'}
+                      Мобильная оптимизация: {config.mobileOptimized !== false ? 'ВКЛ' : 'ВЫКЛ'}
                     </button>
                     <p className="text-[10px] text-neutral-400 font-sans leading-normal">
                       Настройте порядок отображения элементов на вашей био-странице.
@@ -1878,14 +1880,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                       {(config.layout || ['avatar', 'username', 'location', 'badges', 'discord', 'bio', 'blocks', 'player']).map((item, index, arr) => (
                         <div key={item} className="flex items-center justify-between bg-black/40 border border-white/5 p-2.5 mb-2 rounded-sm last:mb-0">
                           <span className="font-bold text-neutral-300 uppercase tracking-widest flex items-center gap-2">
-                             {item === 'avatar' && '🖼️ Аватар'}
-                             {item === 'username' && '📝 Имя пользователя'}
-                             {item === 'location' && '📍 Location'}
-                             {item === 'badges' && '🎖️ Значки / Бейджи'}
-                             {item === 'discord' && '👾 Discord Статус'}
-                             {item === 'bio' && '💬 Описание профиля'}
-                             {item === 'blocks' && '🧩 Дополнительные блоки'}
-                             {item === 'player' && '🎵 Музыкальный плеер'}
+                             {LAYOUT_SECTION_LABELS[item] || item}
                           </span>
                           <div className="flex space-x-2">
                             <button
@@ -2099,7 +2094,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
 
                     <div className="space-y-5 font-mono text-xs">
                       {/* Transparency configurations for Card and Badges */}
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4">
                         <div>
                           <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Прозрачность карточки</label>
                           <span className="text-[10px] text-[#00f2ff] font-black block mb-1">{config.cardOpacity !== undefined ? config.cardOpacity : 55}%</span>
@@ -2109,19 +2104,6 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             max="100"
                             value={config.cardOpacity !== undefined ? config.cardOpacity : 55}
                             onChange={e => updateConfigValue('cardOpacity', parseInt(e.target.value))}
-                            className="w-full accent-[#00f2ff]"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Прозрачность бейджей</label>
-                          <span className="text-[10px] text-[#00f2ff] font-black block mb-1">{config.badgeOpacity !== undefined ? config.badgeOpacity : 10}%</span>
-                          <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={config.badgeOpacity !== undefined ? config.badgeOpacity : 10}
-                            onChange={e => updateConfigValue('badgeOpacity', parseInt(e.target.value))}
                             className="w-full accent-[#00f2ff]"
                           />
                         </div>
@@ -2201,57 +2183,59 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                   <div className="space-y-4">
                     <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
                       <Sparkles className="w-4 h-4" />
-                      <span>Glow Settings (guns.lol parity)</span>
+                      <span>Настройки свечения</span>
                     </h3>
                     <div className="space-y-4 font-mono text-xs">
                       <button type="button" onClick={() => updateConfigValue('glowEnabled', !config.glowEnabled)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.glowEnabled ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
-                        Global Glow: {config.glowEnabled ? 'ON' : 'OFF'}
+                        Общее свечение: {config.glowEnabled ? 'ВКЛ' : 'ВЫКЛ'}
                       </button>
+                      <p className="text-[9px] text-neutral-500 -mt-2">Подсветка элементов профиля неоновым свечением.</p>
                       <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Intensity</label>
+                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Сила</label>
                         <select value={config.glowIntensity || 'medium'} onChange={e => updateConfigValue('glowIntensity', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white">
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
+                          {Object.entries(GLOW_INTENSITY_LABELS).map(([id, label]) => (
+                            <option key={id} value={id}>{label}</option>
+                          ))}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Glow Targets</label>
+                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Где светится</label>
                         <div className="flex flex-wrap gap-2">
                           {(['avatar', 'username', 'location', 'badges', 'links', 'card'] as const).map(t => (
                             <button key={t} type="button" onClick={() => {
                               const cur = config.glowTargets || ['avatar', 'username', 'badges', 'links'];
                               updateConfigValue('glowTargets', cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t]);
                             }} className={`px-2 py-1 rounded-sm border text-[9px] uppercase ${(config.glowTargets || ['avatar', 'username', 'badges', 'links']).includes(t) ? 'bg-[#00f2ff] text-black' : 'bg-black/40 border-white/10 text-neutral-400'}`}>
-                              {t}
+                              {GLOW_TARGET_LABELS[t] || t}
                             </button>
                           ))}
                         </div>
                       </div>
                       <button type="button" onClick={() => updateConfigValue('profileGradientEnabled', !config.profileGradientEnabled)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.profileGradientEnabled ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
-                        Profile Gradient: {config.profileGradientEnabled ? 'ON' : 'OFF'}
+                        Градиент карточки: {config.profileGradientEnabled ? 'ВКЛ' : 'ВЫКЛ'}
                       </button>
                       {config.profileGradientEnabled && (
                         <input type="text" value={config.profileGradientCss || ''} onChange={e => updateConfigValue('profileGradientCss', e.target.value)} placeholder="linear-gradient(...)" className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white" />
                       )}
                       <button type="button" onClick={() => updateConfigValue('swapBoxColors', !config.swapBoxColors)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.swapBoxColors ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
-                        Swap Box Colors: {config.swapBoxColors ? 'ON' : 'OFF'}
+                        Поменять цвета блоков: {config.swapBoxColors ? 'ВКЛ' : 'ВЫКЛ'}
                       </button>
                       <div className="border-t border-white/10 pt-3 space-y-2">
-                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black">Profile Presets</h4>
+                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black">Шаблоны профиля</h4>
                         <div className="grid grid-cols-1 gap-2">
                           {PROFILE_PRESETS.map((preset, i) => (
                             <button key={i} type="button" onClick={() => setConfig({ ...config, ...preset })} className="py-2 px-3 bg-black/40 border border-white/10 hover:border-[#00f2ff]/40 rounded-sm text-[10px] text-left text-neutral-300">
-                              Preset {i + 1}: {preset.layoutMode} / {preset.bgType}
+                              Шаблон {i + 1}: {LAYOUT_MODE_LABELS[preset.layoutMode || 'default']} / {preset.bgType}
                             </button>
                           ))}
                         </div>
                       </div>
                       <div className="border-t border-white/10 pt-3 space-y-2">
-                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black">OG Meta Tags</h4>
-                        <input type="text" placeholder="og:title" value={config.ogTitle || ''} onChange={e => updateConfigValue('ogTitle', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white mb-2" />
-                        <input type="text" placeholder="og:description" value={config.ogDescription || ''} onChange={e => updateConfigValue('ogDescription', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white mb-2" />
-                        <input type="text" placeholder="og:image URL" value={config.ogImage || ''} onChange={e => updateConfigValue('ogImage', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white" />
+                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black">Мета для соцсетей</h4>
+                        <p className="text-[9px] text-neutral-500">Как профиль выглядит при шаринге в Discord, Telegram и т.д.</p>
+                        <input type="text" placeholder="Заголовок (og:title)" value={config.ogTitle || ''} onChange={e => updateConfigValue('ogTitle', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white mb-2" />
+                        <input type="text" placeholder="Описание (og:description)" value={config.ogDescription || ''} onChange={e => updateConfigValue('ogDescription', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white mb-2" />
+                        <input type="text" placeholder="Картинка превью (og:image URL)" value={config.ogImage || ''} onChange={e => updateConfigValue('ogImage', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white" />
                       </div>
                     </div>
                   </div>
@@ -2293,7 +2277,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Volume Control Visible</label>
+                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Регулятор громкости</label>
                         <button type="button" onClick={() => updateConfigValue('volumeControlVisible', !config.volumeControlVisible)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.volumeControlVisible ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
                           {config.volumeControlVisible ? 'Показан' : 'Скрыт'}
                         </button>
@@ -2306,10 +2290,9 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                           onChange={e => updateConfigValue('audioPlayerMode', e.target.value)}
                           className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none cursor-pointer"
                         >
-                          <option value="hidden">Без UI (hidden)</option>
-                          <option value="minimal">Minimal bar</option>
-                          <option value="inline">В layout</option>
-                          <option value="floating">Уголок</option>
+                          {Object.entries(AUDIO_PLAYER_LABELS).map(([id, label]) => (
+                            <option key={id} value={id}>{label}</option>
+                          ))}
                         </select>
                       </div>
 
@@ -2752,40 +2735,58 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                                 <div className="space-y-2.5">
                                   {block.socialsList.map(soc => (
                                     <div key={soc.id} className="p-3 bg-black/50 border border-white/10 rounded-sm space-y-2">
-                                      <div className="grid grid-cols-2 gap-2.5">
+                                      <div className="grid grid-cols-[auto_1fr_1fr] gap-2.5 items-center">
+                                        <div
+                                          className="w-9 h-9 rounded-sm border border-white/10 flex items-center justify-center flex-shrink-0"
+                                          style={{ color: soc.useBrandColor !== false ? getPlatformBrandColor(soc.platform) : (soc.iconColor || '#ffffff') }}
+                                        >
+                                          <SocialIcon platform={soc.platform} className="w-4 h-4" />
+                                        </div>
                                         <select
                                           value={soc.platform}
                                           onChange={e => handleUpdateSocialLink(block.id, soc.id, { platform: e.target.value as any })}
                                           className="bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] font-bold text-white focus:border-[#00f2ff] outline-none"
                                         >
-                                          <option value="discord">Иконка Discord</option>
-                                          <option value="github">GitHub</option>
-                                          <option value="telegram">Telegram</option>
-                                          <option value="youtube">YouTube</option>
-                                          <option value="steam">Steam Club</option>
-                                          <option value="spotify">Spotify</option>
-                                          <option value="twitter">X / Twitter</option>
-                                          <option value="instagram">Instagram</option>
-                                          <option value="tiktok">TikTok</option>
+                                          {SOCIAL_PLATFORMS.map(p => (
+                                            <option key={p.id} value={p.id}>{p.label}</option>
+                                          ))}
                                         </select>
 
                                         <input
                                           type="text"
-                                          placeholder="Название (например, My GitHub)"
+                                          placeholder="Подпись (необязательно)"
                                           value={soc.label || ''}
                                           onChange={e => handleUpdateSocialLink(block.id, soc.id, { label: e.target.value })}
                                           className="bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 text-white outline-none focus:border-[#00f2ff]"
                                         />
                                       </div>
 
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <input
                                           type="text"
-                                          placeholder="Ссылка URL (https://...)"
+                                          placeholder="Ссылка (https://...)"
                                           value={soc.url}
                                           onChange={e => handleUpdateSocialLink(block.id, soc.id, { url: e.target.value })}
-                                          className="flex-grow bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 focus:border-[#00f2ff] outline-none text-white"
+                                          className="flex-grow min-w-[140px] bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 focus:border-[#00f2ff] outline-none text-white"
                                         />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateSocialLink(block.id, soc.id, { useBrandColor: soc.useBrandColor === false })}
+                                          className={`px-2 py-1 rounded-sm border text-[8px] font-bold uppercase cursor-pointer ${
+                                            soc.useBrandColor !== false ? 'bg-[#00f2ff]/10 border-[#00f2ff]/30 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
+                                          }`}
+                                        >
+                                          Фирм. цвет
+                                        </button>
+                                        {soc.useBrandColor === false && (
+                                          <input
+                                            type="color"
+                                            value={soc.iconColor || '#ffffff'}
+                                            onChange={e => handleUpdateSocialLink(block.id, soc.id, { iconColor: e.target.value })}
+                                            className="w-8 h-8 bg-transparent border-0 cursor-pointer"
+                                            title="Свой цвет иконки"
+                                          />
+                                        )}
                                         <button
                                           type="button"
                                           onClick={() => handleDeleteSocialLink(block.id, soc.id)}
@@ -2804,21 +2805,21 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                               <div className="space-y-2.5">
                                 <div className="grid grid-cols-2 gap-2.5">
                                   <div>
-                                    <label className="block text-[9px] uppercase text-neutral-500 mb-1 font-bold">Visual styling</label>
+                                    <label className="block text-[9px] uppercase text-neutral-500 mb-1 font-bold">Стиль оформления</label>
                                     <select
                                       value={block.textboxStyle || 'standard'}
                                       onChange={e => updateBlock(block.id, { textboxStyle: e.target.value as any })}
                                       className="bg-black border border-white/15 rounded-sm p-1.5 focus:border-[#00f2ff] text-[10px] w-full font-bold text-white focus:outline-none"
                                     >
-                                      <option value="standard">Standard Solid</option>
-                                      <option value="glow">Glint Cosmic Glow</option>
-                                      <option value="marquee">Scrolling Marquee</option>
+                                      {Object.entries(TEXTBOX_STYLE_LABELS).map(([id, label]) => (
+                                        <option key={id} value={id}>{label}</option>
+                                      ))}
                                     </select>
                                   </div>
                                 </div>
 
                                 <div>
-                                  <label className="block text-[9px] uppercase text-neutral-500 mb-1 font-bold">Announcement Body content</label>
+                                  <label className="block text-[9px] uppercase text-neutral-500 mb-1 font-bold">Текст объявления</label>
                                   <textarea
                                     value={block.textboxContent || ''}
                                     onChange={e => updateBlock(block.id, { textboxContent: e.target.value })}

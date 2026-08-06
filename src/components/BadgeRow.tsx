@@ -31,7 +31,7 @@ interface BadgeRowProps {
   primaryColor?: string;
 }
 
-export default function BadgeRow({ badges, badgeOpacity = 1, inline = false, primaryColor = '#00f2ff' }: BadgeRowProps) {
+export default function BadgeRow({ badges, inline = false, primaryColor = '#00f2ff' }: BadgeRowProps) {
   const enabled = badges.filter(b => b.enabled);
   if (enabled.length === 0) return null;
 
@@ -40,7 +40,7 @@ export default function BadgeRow({ badges, badgeOpacity = 1, inline = false, pri
     : 'flex flex-wrap items-center justify-center gap-2 max-sm:overflow-x-auto max-sm:flex-nowrap max-sm:justify-start max-sm:w-full max-sm:px-1 max-sm:pb-1';
 
   return (
-    <div className={containerClass} style={{ opacity: badgeOpacity }}>
+    <div className={containerClass}>
       {enabled.map(badge => {
         const style = badge.badgeStyle || 'icon';
         const size = badge.size || 'md';
@@ -69,7 +69,7 @@ export default function BadgeRow({ badges, badgeOpacity = 1, inline = false, pri
             <div
               key={badge.id}
               className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-[10px] font-mono uppercase tracking-wide cursor-help transition-colors ${
-                style === 'text' ? 'bg-transparent border-transparent' : 'bg-black/40 border-white/10'
+                style === 'text' ? 'bg-transparent border-transparent' : 'bg-black/80 border-white/20'
               }`}
               title={badge.description || badge.label}
               style={{
@@ -88,7 +88,7 @@ export default function BadgeRow({ badges, badgeOpacity = 1, inline = false, pri
         return (
           <div
             key={badge.id}
-            className="flex items-center justify-center p-1.5 rounded-sm bg-black/40 border border-white/10 hover:border-white/30 transition-colors shadow-sm cursor-help"
+            className="flex items-center justify-center p-1.5 rounded-sm bg-black/80 border border-white/20 hover:border-white/40 transition-colors shadow-sm cursor-help"
             title={badge.description || badge.label}
             style={{
               color: textColor,
