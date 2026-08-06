@@ -802,7 +802,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       case 'discord':
         return !!(config.discordConnected && config.discordId);
       case 'badges':
-        return !!(config.badges?.some(b => b.enabled));
+        return false; // временно отключено
       case 'bio':
         return !!config.bio?.trim();
       case 'blocks':
@@ -877,7 +877,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   return (
     <MobileBioLayout config={config} className="min-h-screen w-full">
     <div
-      className={`min-h-screen relative text-white flex items-start justify-center pt-6 sm:pt-10 p-4 overflow-x-hidden ${config.monochromeMode ? 'grayscale' : ''}`}
+      className={`min-h-screen relative text-white flex items-center justify-center py-6 p-4 overflow-x-hidden ${config.monochromeMode ? 'grayscale' : ''}`}
       style={resolveBackgroundCSS()}
     >
       {config.bgType === 'video' && config.bgValue && (
