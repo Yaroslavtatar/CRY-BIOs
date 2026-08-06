@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { BioConfig, VerifiedBadgeStyle } from '../types';
+import { resolveThemeColor } from '../themeColors';
 
 interface VerifiedBadgeProps {
   config: BioConfig;
@@ -14,7 +15,7 @@ export default function VerifiedBadge({ config, style, className = '' }: Verifie
   const variant = style || config.verifiedBadgeStyle || 'inline';
   if (variant === 'none') return null;
 
-  const color = config.primaryColor || config.glowColor || '#00f2ff';
+  const color = resolveThemeColor(config, 'verifiedBadge');
 
   if (variant === 'chip') {
     return (
@@ -53,7 +54,7 @@ export function VerifiedAvatarRing({ config, children }: { config: BioConfig; ch
   if (!config.verified || (config.verifiedBadgeStyle || 'inline') !== 'ring') {
     return <>{children}</>;
   }
-  const color = config.primaryColor || config.glowColor || '#00f2ff';
+  const color = resolveThemeColor(config, 'verifiedBadge');
   return (
     <div
       className="rounded-full p-[3px]"

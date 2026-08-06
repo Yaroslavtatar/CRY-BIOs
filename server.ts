@@ -849,6 +849,30 @@ async function startServer() {
     }
   });
 
+  app.post('/api/rehost-import-media', async (req, res) => {
+    const authedUser = getUsernameFromRequest(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: 'Unauthorized Session' });
+    }
+
+    try {
+      const payload = req.body as {
+        avatarUrl?: string;
+        bgType?: string;
+        bgValue?: string;
+        audioUrl?: string;
+        customCursorUrl?: string;
+        playlist?: { id: string; url: string; title: string; artist: string }[];
+      };
+
+      const rehosted = await rehostImportMedia(payload, UPLOADS_DIR, TMP_DIR);
+      res.json({ success: true, data: rehosted });
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: `Rehost failure: ${error.message}` });
+    }
+  });
+
   // Save/Update Bio Config
   app.post('/api/bio/:username', (req, res) => {
     const username = req.params.username.toLowerCase();

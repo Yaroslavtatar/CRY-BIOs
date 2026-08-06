@@ -71,3 +71,36 @@ export const TEXTBOX_STYLE_LABELS: Record<string, string> = {
   glow: 'Со свечением',
   marquee: 'Бегущая строка',
 };
+
+export const ELEMENT_COLOR_LABELS: Record<string, { label: string; hint: string }> = {
+  verifiedBadgeColor: {
+    label: 'Галочка verified',
+    hint: 'Цвет галочки рядом с именем и кольца на аватаре.',
+  },
+  playerAccentColor: {
+    label: 'Музыкальный плеер',
+    hint: 'Полоска прогресса, кнопка Play и иконка трека.',
+  },
+  locationColor: {
+    label: 'Локация',
+    hint: 'Иконка и текст города / страны.',
+  },
+  enterOverlayColor: {
+    label: 'Экран входа',
+    hint: 'Текст «Нажмите, чтобы войти» и свечение.',
+  },
+  linkAccentColor: {
+    label: 'Ссылки (без бренда)',
+    hint: 'Цвет иконок, когда отключён фирменный цвет платформы.',
+  },
+  sparkleColor: {
+    label: 'Искры курсора',
+    hint: 'Частицы, следующие за курсором.',
+  },
+};
+
+export const IMPORT_PREVIEW_STATUS_LABELS: Record<string, string> = {
+  found: 'Найдено',
+  missing: 'Не найдено',
+  partial: 'Частично',
+};

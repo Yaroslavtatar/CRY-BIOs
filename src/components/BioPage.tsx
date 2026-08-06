@@ -18,6 +18,7 @@ import SocialIcon from './SocialIcon';
 import GlowLayer, { getGlowStyle, ProfileGradientWrapper } from './GlowLayer';
 import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
 import { getSocialIconColor } from '../utils/socialPlatforms';
+import { resolveThemeColor } from '../themeColors';
 
 const renderBadgeIcon = (iconName: string) => {
   const iconProps = { className: "w-3 h-3 flex-shrink-0" };
@@ -211,7 +212,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
       // 2. Render selected visualizer style
       const style = config?.audioVisualizerStyle || 'bars';
-      const primaryColor = config?.primaryColor || '#00f2ff';
+      const primaryColor = resolveThemeColor(config, 'player');
 
       if (style === 'bars') {
         // Neon frequency bars rising from bottom edge
@@ -411,7 +412,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
     };
-  }, [entered, isPlaying, isMuted, volume, config?.primaryColor, config?.audioVisualizerEnabled, config?.audioVisualizerStyle]);
+  }, [entered, isPlaying, isMuted, volume, config?.playerAccentColor, config?.primaryColor, config?.audioVisualizerEnabled, config?.audioVisualizerStyle]);
 
   // Load lanyard if available
   useEffect(() => {
@@ -824,7 +825,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         audioCurrentTime={audioCurrentTime}
         audioDuration={audioDuration}
         songsCount={songs.length}
-        primaryColor={config?.primaryColor}
+        primaryColor={resolveThemeColor(config, 'player')}
         variant={variant}
         hideUntilHover={config?.hidePlayerUntilHover}
         showVolume={config?.volumeControlVisible}
@@ -919,7 +920,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         enabled={!!config.sparkles}
         entered={entered}
         style={config.sparkleStyle}
-        color={config.sparkleColor || config.primaryColor}
+        color={resolveThemeColor(config, 'sparkle')}
         intensity={config.sparkleIntensity}
       />
 
@@ -964,7 +965,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
             {/* Ambient Entry Light Flare */}
             <div
               className="absolute w-72 h-72 rounded-full opacity-20 blur-[100px] animate-pulse"
-              style={{ backgroundColor: config.primaryColor }}
+              style={{ backgroundColor: resolveThemeColor(config, 'enterOverlay') }}
             />
 
             <motion.div
@@ -976,8 +977,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
               <h2
                 className="text-lg md:text-xl font-black tracking-[6px] uppercase italic"
                 style={{
-                  color: config.primaryColor || '#00f2ff',
-                  textShadow: `0 0 15px ${config.glowColor || 'rgba(0,242,255,0.3)'}, 0 0 30px ${config.primaryColor || '#00f2ff'}55`
+                  color: resolveThemeColor(config, 'enterOverlay'),
+                  textShadow: `0 0 15px ${config.glowColor || 'rgba(0,242,255,0.3)'}, 0 0 30px ${resolveThemeColor(config, 'enterOverlay')}55`
                 }}
               >
                 [ {config.enterText || 'Войти'} ]
@@ -1180,7 +1181,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                             className={`flex flex-wrap items-center justify-center gap-3.5 py-2 mt-2 ${blockClasses}`}
                           >
                             {block.socialsList && block.socialsList.map((soc: SocialLink) => {
-                              const iconColor = getSocialIconColor(soc, config.textColor || '#ffffff');
+                              const iconColor = getSocialIconColor(soc, resolveThemeColor(config, 'link'));
                               return (
                               <a
                                 key={soc.id}
