@@ -46,6 +46,24 @@ try {
   // Column already exists
 }
 
+function ensureUserSecurityColumns() {
+  const columns = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+  const names = new Set(columns.map(c => c.name));
+  if (!names.has('token_expires_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN token_expires_at TEXT');
+  }
+  if (!names.has('failed_login_attempts')) {
+    db.exec('ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0');
+  }
+  if (!names.has('locked_until')) {
+    db.exec('ALTER TABLE users ADD COLUMN locked_until TEXT');
+  }
+}
+
+ensureUserSecurityColumns();
+
+export const SESSION_TTL_DAYS = 30;
+
 // MIGRATION FROM JSON IF DB IS EMPTY
 const countUsers = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
 if (countUsers.count === 0) {
@@ -89,15 +107,57 @@ export function getUser(username: string) {
 }
 
 export function getUserByToken(token: string) {
-  return db.prepare('SELECT * FROM users WHERE token = ?').get(token) as any;
+  if (!token) return null;
+  const user = db.prepare('SELECT * FROM users WHERE token = ?').get(token) as any;
+  if (!user || !user.token) return null;
+  if (user.token_expires_at && new Date(user.token_expires_at) < new Date()) {
+    return null;
+  }
+  return user;
 }
 
 export function createUser(username: string, passwordHash: string, token: string) {
-  db.prepare('INSERT INTO users (username, password_hash, token) VALUES (?, ?, ?)').run(username, passwordHash, token);
+  const expires = new Date();
+  expires.setDate(expires.getDate() + SESSION_TTL_DAYS);
+  db.prepare(
+    'INSERT INTO users (username, password_hash, token, token_expires_at, failed_login_attempts, locked_until) VALUES (?, ?, ?, ?, 0, NULL)'
+  ).run(username, passwordHash, token, expires.toISOString());
 }
 
-export function updateUserToken(username: string, token: string) {
-  db.prepare('UPDATE users SET token = ? WHERE username = ?').run(token, username);
+export function updateUserToken(username: string, token: string, expiresInDays = SESSION_TTL_DAYS) {
+  const expires = new Date();
+  expires.setDate(expires.getDate() + expiresInDays);
+  db.prepare(
+    'UPDATE users SET token = ?, token_expires_at = ?, failed_login_attempts = 0, locked_until = NULL WHERE username = ?'
+  ).run(token, expires.toISOString(), username);
+}
+
+export function clearUserToken(username: string) {
+  db.prepare(
+    'UPDATE users SET token = ?, token_expires_at = NULL, failed_login_attempts = 0, locked_until = NULL WHERE username = ?'
+  ).run('', username);
+}
+
+export function incrementFailedLogin(username: string, maxAttempts: number, lockoutMinutes: number) {
+  const user = getUser(username);
+  if (!user) return;
+  const attempts = (user.failed_login_attempts || 0) + 1;
+  if (attempts >= maxAttempts) {
+    const lockedUntil = new Date();
+    lockedUntil.setMinutes(lockedUntil.getMinutes() + lockoutMinutes);
+    db.prepare('UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE username = ?')
+      .run(attempts, lockedUntil.toISOString(), username);
+  } else {
+    db.prepare('UPDATE users SET failed_login_attempts = ? WHERE username = ?').run(attempts, username);
+  }
+}
+
+export function clearFailedLogin(username: string) {
+  db.prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE username = ?').run(username);
+}
+
+export function invalidateUserSessions(username: string) {
+  clearUserToken(username);
 }
 
 export function updateUsername(oldUsername: string, newUsername: string) {
@@ -188,14 +248,31 @@ export function updateUserPassword(username: string, passwordHash: string) {
   db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(passwordHash, username);
 }
 
-export function exportDatabase(options?: { includeAnalytics?: boolean }) {
-  const users = db.prepare('SELECT * FROM users').all();
+export function updateUserPasswordAndInvalidateSessions(username: string, passwordHash: string) {
+  db.prepare(
+    'UPDATE users SET password_hash = ?, token = ?, token_expires_at = NULL, failed_login_attempts = 0, locked_until = NULL WHERE username = ?'
+  ).run(passwordHash, '', username);
+}
+
+export function exportDatabase(options?: { includeAnalytics?: boolean; includeSecrets?: boolean }) {
+  const users = db.prepare('SELECT * FROM users').all() as any[];
   const bios = db.prepare('SELECT * FROM bios').all();
   const includeAnalytics = options?.includeAnalytics !== false;
+  const includeSecrets = options?.includeSecrets === true;
   const analytics = includeAnalytics
     ? db.prepare('SELECT * FROM analytics').all()
     : [];
-  return { users, bios, analytics };
+  const sanitizedUsers = includeSecrets
+    ? users
+    : users.map(u => ({
+        username: u.username,
+        password_hash: u.password_hash,
+        token: '[REDACTED]',
+        token_expires_at: u.token_expires_at ?? null,
+        failed_login_attempts: u.failed_login_attempts ?? 0,
+        locked_until: u.locked_until ?? null,
+      }));
+  return { users: sanitizedUsers, bios, analytics };
 }
 
 export function importDatabase(dump: { users?: any[], bios?: any[], analytics?: any[] }) {
