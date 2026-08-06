@@ -1611,8 +1611,17 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                       </div>
                     </div>
 
-                    {/* CUSTOM TRANSPARENT BADGES SYSTEM CONSTRUCTOR */}
+                    {/* CUSTOM TRANSPARENT BADGES SYSTEM CONSTRUCTOR — временно отключено */}
                     <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
+                      <div className="p-3 bg-black/30 border border-white/10 rounded-sm">
+                        <h4 className="text-xs font-black font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5 italic">
+                          <Sparkles className="w-3.5 h-3.5 text-neutral-600" />
+                          <span>Бейджи профиля</span>
+                        </h4>
+                        <p className="text-[10px] text-neutral-500 mt-1">Временно отключены — скоро вернутся.</p>
+                      </div>
+                      {false && (
+                      <>
                       <div className="flex justify-between items-center bg-black/30 p-2.5 border border-white/5 rounded-sm">
                         <div>
                           <h4 className="text-xs font-black font-mono text-white uppercase tracking-wider flex items-center gap-1.5 italic">
@@ -1917,6 +1926,8 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                           </div>
                         );
                       })()}
+                      </>
+                      )}
                     </div>
                   </div>
                 )}
