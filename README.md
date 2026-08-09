@@ -124,7 +124,7 @@ docker run -d \
 Ключевые моменты:
 
 1. Смонтировать volume в `/app/data`
-2. Задать `ADMIN_PASSWORD` и `APP_URL`
+2. Задать `ADMIN_PASSWORD`, `APP_URL` и `BIO_BASE_DOMAIN`
 3. Для wildcard-поддоменов: DNS `*.yourdomain.com` + домен в Coolify
 4. Health check: `GET /api/health`
 
@@ -148,6 +148,7 @@ chmod +x install.sh
 | `NODE_ENV` | prod | `production` для prod-сборки |
 | `ADMIN_PASSWORD` | **да** | Пароль админ-панели |
 | `APP_URL` | — | Публичный URL инстанса |
+| `BIO_BASE_DOMAIN` | — | Базовый домен для поддоменов (`name.cbios.ru`) |
 | `GEMINI_API_KEY` | — | Опционально, для AI-фич |
 | `BACKUP_RETAIN` | — | Число хранимых автобэкапов (default: `5`) |
 | `BACKUP_CRON_HOURS` | — | Интервал автобэкапа в часах |

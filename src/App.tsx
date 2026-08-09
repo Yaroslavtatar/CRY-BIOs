@@ -8,29 +8,49 @@ import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import BioPage from './components/BioPage';
 import AdminPanel from './components/AdminPanel';
+import {
+  getPlatformDomainConfig,
+  parseShortPathSlug,
+  parseSubdomainSlug,
+  type PlatformDomainConfig,
+} from './platformDomain';
+
+const DEFAULT_PLATFORM: PlatformDomainConfig = getPlatformDomainConfig({
+  requestHost: typeof window !== 'undefined' ? window.location.host : undefined,
+});
 
 export default function App() {
   const [view, setView] = useState<'landing' | 'dashboard' | 'bio' | 'admin'>('landing');
   const [username, setUsername] = useState('');
+  const [platform, setPlatform] = useState<PlatformDomainConfig>(DEFAULT_PLATFORM);
+
+  useEffect(() => {
+    fetch('/api/public-config')
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: PlatformDomainConfig | null) => {
+        if (data?.baseDomain) setPlatform(data);
+      })
+      .catch(() => {
+        /* use client-derived defaults */
+      });
+  }, []);
 
   useEffect(() => {
     const handleRoute = () => {
       const path = window.location.pathname;
       const hostname = window.location.hostname.toLowerCase();
-      
-      // Support subdomains for bio.cryteam.ru or cryteam.ru
-      // e.g. <username>.bio.cryteam.ru or <username>.cryteam.ru
-      let subUsername = '';
-      const hostParts = hostname.split('.');
-      if (hostParts.length === 4 && hostParts[1] === 'bio' && hostParts[2] === 'cryteam' && hostParts[3] === 'ru') {
-        subUsername = hostParts[0];
-      } else if (hostParts.length === 3 && hostParts[1] === 'cryteam' && hostParts[2] === 'ru' && hostParts[0] !== 'bio' && hostParts[0] !== 'www') {
-        subUsername = hostParts[0];
-      }
 
-      // If we are on a custom bio subdomain, default to loading that user's bio (unless they explicitly visit /dashboard or /admin)
-      if (subUsername && !path.startsWith('/dashboard') && !path.startsWith('/admin') && !path.startsWith('/u/')) {
-        setUsername(subUsername.toLowerCase());
+      const runtimePlatform = getPlatformDomainConfig({
+        appUrl: platform.appUrl,
+        bioBaseDomain: platform.baseDomain,
+        requestHost: window.location.host,
+      });
+      const baseDomain = runtimePlatform.baseDomain;
+
+      const subSlug = baseDomain ? parseSubdomainSlug(hostname, baseDomain) : null;
+
+      if (subSlug && !path.startsWith('/dashboard') && !path.startsWith('/admin') && !path.startsWith('/u/')) {
+        setUsername(subSlug);
         setView('bio');
         return;
       }
@@ -41,27 +61,50 @@ export default function App() {
           setUsername(parts[2].toLowerCase());
           setView('bio');
         }
-      } else if (path === '/dashboard') {
-        setView('dashboard');
-      } else if (path === '/admin') {
-        setView('admin');
-      } else {
-        // Support hash route fallback as well
-        const hash = window.location.hash;
-        if (hash.startsWith('#/u/')) {
-          const parts = hash.split('/');
-          if (parts[2]) {
-            setUsername(parts[2].toLowerCase());
-            setView('bio');
-          }
-        } else if (hash === '#dashboard') {
-          setView('dashboard');
-        } else if (hash === '#admin') {
-          setView('admin');
-        } else {
-          setView('landing');
-        }
+        return;
       }
+
+      if (path === '/dashboard') {
+        setView('dashboard');
+        return;
+      }
+
+      if (path === '/admin') {
+        setView('admin');
+        return;
+      }
+
+      const shortSlug =
+        !subSlug && baseDomain && (hostname === baseDomain || hostname === `www.${baseDomain}`)
+          ? parseShortPathSlug(path)
+          : null;
+      if (shortSlug) {
+        setUsername(shortSlug);
+        setView('bio');
+        return;
+      }
+
+      const hash = window.location.hash;
+      if (hash.startsWith('#/u/')) {
+        const parts = hash.split('/');
+        if (parts[2]) {
+          setUsername(parts[2].toLowerCase());
+          setView('bio');
+        }
+        return;
+      }
+
+      if (hash === '#dashboard') {
+        setView('dashboard');
+        return;
+      }
+
+      if (hash === '#admin') {
+        setView('admin');
+        return;
+      }
+
+      setView('landing');
     };
 
     handleRoute();
@@ -72,7 +115,7 @@ export default function App() {
       window.removeEventListener('popstate', handleRoute);
       window.removeEventListener('hashchange', handleRoute);
     };
-  }, []);
+  }, [platform.appUrl, platform.baseDomain]);
 
   const navigateToDashboard = () => {
     window.history.pushState({}, '', '/dashboard');
@@ -84,18 +127,24 @@ export default function App() {
     setView('landing');
   };
 
-  const navigateToBio = (uname: string) => {
-    window.history.pushState({}, '', `/u/${uname}`);
-    setUsername(uname.toLowerCase());
+  const navigateToBio = (slug: string) => {
+    const urls = getPlatformDomainConfig({
+      appUrl: platform.appUrl,
+      bioBaseDomain: platform.baseDomain,
+      requestHost: window.location.host,
+    });
+    const normalized = slug.toLowerCase();
+    if (urls.profileUrlMode === 'subdomain' && urls.baseDomain && urls.baseDomain !== 'localhost') {
+      window.location.href = `https://${normalized}.${urls.baseDomain}`;
+      return;
+    }
+    window.history.pushState({}, '', `/${normalized}`);
+    setUsername(normalized);
     setView('bio');
   };
 
   if (view === 'admin') {
-    return (
-      <AdminPanel
-        onExit={navigateToLanding}
-      />
-    );
+    return <AdminPanel onExit={navigateToLanding} />;
   }
 
   if (view === 'dashboard') {
@@ -103,6 +152,7 @@ export default function App() {
       <Dashboard
         onExit={navigateToLanding}
         onViewProfile={navigateToBio}
+        platformConfig={platform}
       />
     );
   }
@@ -120,6 +170,7 @@ export default function App() {
     <LandingPage
       onNavigateToDashboard={navigateToDashboard}
       onViewProfile={navigateToBio}
+      platformConfig={platform}
     />
   );
 }

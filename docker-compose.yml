@@ -14,7 +14,9 @@ services:
       - PORT=3000
       # Раскомментируйте и настройте по необходимости:
       # - GEMINI_API_KEY=your_key_here
-      # - APP_URL=https://bio.cryteam.ru
+      - APP_URL=https://cbios.ru
+      - BIO_BASE_DOMAIN=cbios.ru
+      # - ADMIN_PASSWORD=your_secure_password
     volumes:
       - cry_bios_data:/app/data
 

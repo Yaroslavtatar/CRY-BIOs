@@ -25,6 +25,7 @@ import {
   IMPORT_PREVIEW_STATUS_LABELS,
 } from '../dashboardLabels';
 import { resolveThemeColor, ELEMENT_COLOR_FIELDS, type ElementColorField } from '../themeColors';
+import { buildProfileUrls, getPlatformDomainConfig, type PlatformDomainConfig } from '../platformDomain';
 import { NAME_EFFECT_GROUPS, NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
 import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
 import SocialIcon from './SocialIcon';
@@ -62,6 +63,7 @@ const renderDashboardBadgeIcon = (iconName: string) => {
 interface DashboardProps {
   onExit: () => void;
   onViewProfile: (username: string) => void;
+  platformConfig?: PlatformDomainConfig;
 }
 
 const GRADIENT_PRESETS = [
@@ -78,7 +80,7 @@ const PROFILE_PRESETS: Partial<BioConfig>[] = [
   { layoutMode: 'sleek', primaryColor: '#00ffcc', glowColor: '#00ffcc', bgType: 'matrix', bgValue: '#050505', profileGradientEnabled: true, profileGradientCss: 'linear-gradient(135deg, #00ffcc, #8b5cf6)' },
 ];
 
-export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
+export default function Dashboard({ onExit, onViewProfile, platformConfig }: DashboardProps) {
   // Authentication States
   const [username, setUsername] = useState(localStorage.getItem('biogun_username') || '');
   const [token, setToken] = useState(localStorage.getItem('biogun_token') || '');
@@ -126,11 +128,26 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
   const [qrCopied, setQrCopied] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  useEffect(() => {
-    if (username) {
-      setQrText(`${window.location.origin}/u/${username}`);
+  const runtimePlatform = getPlatformDomainConfig({
+    appUrl: platformConfig?.appUrl,
+    bioBaseDomain: platformConfig?.baseDomain,
+    requestHost: typeof window !== 'undefined' ? window.location.host : undefined,
+  });
+
+  const getProfileLinks = () => {
+    if (!username || !config) {
+      return buildProfileUrls(username || 'user', runtimePlatform);
     }
-  }, [username]);
+    return buildProfileUrls(username, runtimePlatform, config.aliasSlug);
+  };
+
+  useEffect(() => {
+    if (username && config) {
+      setQrText(getProfileLinks().primary);
+    } else if (username) {
+      setQrText(buildProfileUrls(username, runtimePlatform).primary);
+    }
+  }, [username, config?.aliasSlug, runtimePlatform.appUrl, runtimePlatform.baseDomain]);
 
   useEffect(() => {
     if (activeTab === 'qr' && qrCanvasRef.current && qrText) {
@@ -628,9 +645,10 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
       },
       body: JSON.stringify(config)
     })
-      .then(res => {
-        if (!res.ok) throw new Error('Save error');
-        return res.json();
+      .then(async res => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Ошибка сохранения');
+        return body;
       })
       .then(() => {
         setSaveStatus('success');
@@ -1042,11 +1060,13 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                   const completionPercentage = checkedItems * 20;
 
                   const handleCopyBioURL = () => {
-                    const domain = window.location.origin;
-                    navigator.clipboard.writeText(`${domain}/u/${username}`);
+                    const links = getProfileLinks();
+                    navigator.clipboard.writeText(links.primary);
                     setCopiedLink(true);
                     setTimeout(() => setCopiedLink(false), 2000);
                   };
+
+                  const profileLinks = getProfileLinks();
 
                   return (
                     <div className="space-y-6">
@@ -1078,19 +1098,31 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                         </div>
 
                         <div className="w-full sm:w-auto">
-                          <span className="block text-[8px] uppercase text-neutral-500 font-bold mb-1 font-mono">Your short unique URL address</span>
+                          <span className="block text-[8px] uppercase text-neutral-500 font-bold mb-1 font-mono">Ваш короткий URL</span>
                           <div className="flex items-center border border-white/10 bg-black/50 rounded-sm overflow-hidden select-all max-w-full">
-                            <span className="px-2.5 py-1 text-[10px] text-neutral-400 font-mono break-all line-clamp-1">
-                              /{username}
+                            <span className="px-2.5 py-1 text-[10px] text-[#00f2ff] font-mono break-all line-clamp-1">
+                              {profileLinks.subdomain || profileLinks.shortPath.replace(/^https?:\/\//, '')}
                             </span>
                             <button
                               type="button"
                               onClick={handleCopyBioURL}
                               className="px-3 py-1.5 bg-[#00f2ff] text-black text-[9px] uppercase font-black tracking-wider hover:bg-[#00d0e0] transition cursor-pointer flex-shrink-0"
                             >
-                              {copiedLink ? 'Copied ✓' : 'Copy'}
+                              {copiedLink ? 'Скопировано ✓' : 'Копировать'}
                             </button>
                           </div>
+                          <div className="mt-1.5 space-y-0.5 text-[8px] text-neutral-600 font-mono">
+                            {profileLinks.subdomain && (
+                              <span className="block truncate">Поддомен: {profileLinks.subdomain.replace(/^https?:\/\//, '')}</span>
+                            )}
+                            <span className="block truncate">Короткий: {profileLinks.shortPath.replace(/^https?:\/\//, '')}</span>
+                            <span className="block truncate text-neutral-700">Legacy: {profileLinks.legacy.replace(/^https?:\/\//, '')}</span>
+                          </div>
+                          {runtimePlatform.baseDomain && runtimePlatform.baseDomain !== 'localhost' && (
+                            <span className="text-[7.5px] text-neutral-500 block mt-1 font-sans">
+                              Поддомен работает автоматически при DNS <code className="text-[#00f2ff]">*.{runtimePlatform.baseDomain}</code>
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1396,8 +1428,8 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                                     Задать
                                   </button>
                                 </div>
-                                <span className="text-[7.5px] text-neutral-500 leading-normal block mt-1.5 font-sans italic">
-                                  Allows visitors to navigate using an alternative endpoint slug.
+                                <span className="text-[7.5px] text-neutral-500 leading-normal block mt-1.5 font-sans">
+                                  Альтернативный slug для поддомена и короткой ссылки ({runtimePlatform.baseDomain || 'domain'}/slug). Username тоже работает.
                                 </span>
                               </div>
                             </div>
@@ -3334,14 +3366,29 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                         )}
                       </div>
 
+                      <div className="p-4 bg-emerald-500/10 border border-emerald-500/25 rounded-sm flex gap-3.5 items-start font-sans text-neutral-300">
+                        <Globe2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="font-bold text-emerald-300 uppercase tracking-widest font-mono text-[10px] italic">
+                            Поддомены пользователей
+                          </h4>
+                          <p className="text-[11px] mt-1 leading-relaxed">
+                            При настроенном DNS <code className="text-[#00f2ff]">*.{runtimePlatform.baseDomain || 'yourdomain.com'}</code> каждый профиль доступен как{' '}
+                            <code className="text-[#00f2ff]">slug.{runtimePlatform.baseDomain || 'yourdomain.com'}</code> и{' '}
+                            <code className="text-[#00f2ff]">{runtimePlatform.baseDomain || 'yourdomain.com'}/slug</code>.
+                            Alias slug из профиля задаёт короткий адрес; без alias используется username.
+                          </p>
+                        </div>
+                      </div>
+
                       <div className="p-4 bg-amber-500/10 border border-amber-500/25 rounded-sm flex gap-3.5 items-start font-sans text-neutral-300">
                         <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                         <div>
                           <h4 className="font-bold text-amber-300 uppercase tracking-widest font-mono text-[10px] italic">
-                            Привязка домена второго уровня [Временно недоступно]
+                            Свой домен (mybrand.com)
                           </h4>
                           <p className="text-[11px] mt-1">
-                            Привязка пользовательских доменов (например, вашего личного бренда <code className="text-[#00f2ff]">mybrand.lol</code>) в настоящее время временно ограничена в контексте облачного контейнера. Пожалуйста, используйте стандартные пути субдоменов.
+                            Привязка стороннего apex-домена через поле customDomain — в разработке. Сейчас используйте поддомены платформы.
                           </p>
                         </div>
                       </div>
@@ -3374,7 +3421,7 @@ export default function Dashboard({ onExit, onViewProfile }: DashboardProps) {
                             <span className="block text-[10px] uppercase text-neutral-400 font-bold">🔗 Адрес ссылки</span>
                             <button
                               type="button"
-                              onClick={() => setQrText(`${window.location.origin}/u/${username}`)}
+                              onClick={() => setQrText(getProfileLinks().primary)}
                               className="text-[8px] text-[#00f2ff] hover:underline uppercase font-extrabold cursor-pointer"
                             >
                               Сброс

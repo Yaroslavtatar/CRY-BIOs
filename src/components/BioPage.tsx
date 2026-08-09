@@ -460,7 +460,10 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       fetch(`/api/bio/${username}/visit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referrer: document.referrer })
+        body: JSON.stringify({
+          referrer: document.referrer,
+          host: window.location.hostname,
+        }),
       })
         .then(() => {
           // Increment simulated live visitor stat count visually

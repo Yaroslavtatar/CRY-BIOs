@@ -193,6 +193,44 @@ export function getBio(username: string): BioConfig | null {
   return row ? JSON.parse(row.data) : null;
 }
 
+export function getBioBySlug(slug: string): BioConfig | null {
+  const normalized = slug.toLowerCase().trim();
+  if (!normalized) return null;
+
+  const byUsername = getBio(normalized);
+  if (byUsername) return byUsername;
+
+  const bios = getAllBios();
+  return (
+    bios.find(b => b.aliasSlug && b.aliasSlug.toLowerCase().trim() === normalized) || null
+  );
+}
+
+export function resolveSlugToUsername(slug: string): string | null {
+  const bio = getBioBySlug(slug);
+  return bio?.username || null;
+}
+
+export function isAliasSlugTaken(slug: string, excludeUsername?: string): boolean {
+  const normalized = slug.toLowerCase().trim();
+  if (!normalized) return false;
+
+  const bios = getAllBios();
+  for (const bio of bios) {
+    if (excludeUsername && bio.username.toLowerCase() === excludeUsername.toLowerCase()) continue;
+    if (bio.username.toLowerCase() === normalized) return true;
+    if (bio.aliasSlug && bio.aliasSlug.toLowerCase().trim() === normalized) return true;
+  }
+  return false;
+}
+
+export function getBioByCustomDomain(host: string): BioConfig | null {
+  const normalized = host.toLowerCase().trim();
+  if (!normalized) return null;
+  const bios = getAllBios();
+  return bios.find(b => b.customDomain && b.customDomain.toLowerCase().trim() === normalized) || null;
+}
+
 export function getAllBios(): BioConfig[] {
   const rows = db.prepare('SELECT data FROM bios').all() as { data: string }[];
   return rows.map(r => JSON.parse(r.data));

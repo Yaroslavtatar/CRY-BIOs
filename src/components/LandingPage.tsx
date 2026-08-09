@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Sparkles, Code2, Play, Terminal, Download, Copy, Check, ArrowRight, Activity, Users, Globe2, HelpCircle } from 'lucide-react';
 import { getThumbUrl } from '../utils/media';
+import { getPlatformDomainConfig, type PlatformDomainConfig } from '../platformDomain';
 
 interface ActiveProfile {
   username: string;
@@ -18,15 +19,22 @@ interface ActiveProfile {
 interface LandingPageProps {
   onNavigateToDashboard: () => void;
   onViewProfile: (username: string) => void;
+  platformConfig?: PlatformDomainConfig;
 }
 
-export default function LandingPage({ onNavigateToDashboard, onViewProfile }: LandingPageProps) {
+export default function LandingPage({ onNavigateToDashboard, onViewProfile, platformConfig }: LandingPageProps) {
   const [activeBios, setActiveBios] = useState<ActiveProfile[]>([]);
   const [copiedScript, setCopiedScript] = useState(false);
   const [copiedDocker, setCopiedDocker] = useState(false);
   const [analyticsStats, setAnalyticsStats] = useState({ totalBios: 0, totalTraffic: 0 });
 
-  const installScriptCmd = "curl -sSL https://bio.cryteam.ru/api/install-script | bash";
+  const runtimePlatform = getPlatformDomainConfig({
+    appUrl: platformConfig?.appUrl,
+    bioBaseDomain: platformConfig?.baseDomain,
+    requestHost: typeof window !== 'undefined' ? window.location.host : undefined,
+  });
+  const installOrigin = runtimePlatform.appUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+  const installScriptCmd = `curl -sSL ${installOrigin}/api/install-script | bash`;
   const dockerComposeCode = `version: '3.8'
 
 services:
@@ -285,14 +293,18 @@ services:
               </p>
 
               {/* Second level domain annotation specifically requested */}
-              <div className="p-5 rounded-sm bg-amber-500/10 border border-amber-500/20 flex gap-4 items-start font-mono">
-                <Globe2 className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="p-5 rounded-sm bg-emerald-500/10 border border-emerald-500/20 flex gap-4 items-start font-mono">
+                <Globe2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-xs font-black text-amber-300 uppercase tracking-widest">
-                    Привязка сторонних доменов [Временно отключена]
+                  <h4 className="text-xs font-black text-emerald-300 uppercase tracking-widest">
+                    Короткие адреса профилей
                   </h4>
-                  <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed font-sans normales">
-                    В облачной песочнице контейнеров прямое привязывание доменов 2-го уровня (например, перенаправление вашего личного домена <code className="text-[#00f2ff] font-mono">mybrand.club</code>) временно недоступно. Вы можете полноценно использовать динамические субдомены по адресу <code className="text-[#00f2ff] font-mono">/u/:username</code>.
+                  <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed font-sans">
+                    Каждый пользователь получает поддомен{' '}
+                    <code className="text-[#00f2ff] font-mono">name.{runtimePlatform.baseDomain || 'yourdomain.com'}</code>{' '}
+                    и короткий path{' '}
+                    <code className="text-[#00f2ff] font-mono">/{'{name}'}</code>.
+                    Настройте DNS <code className="text-[#00f2ff]">*.{runtimePlatform.baseDomain || 'yourdomain.com'}</code> на ваш сервер.
                   </p>
                 </div>
               </div>

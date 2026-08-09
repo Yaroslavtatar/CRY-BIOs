@@ -25,6 +25,13 @@ import { parseGunsLolHtml } from './src/gunsImportMap';
 import { cleanupAllOrphans, deleteUnusedBetweenConfigs } from './src/uploadCleanup';
 import { getStorageStats, runHealthChecks, isUsingDefaultAdminPassword } from './src/storageStats';
 import { startScheduledBackups } from './src/scheduledBackup';
+import {
+  getPlatformDomainConfig,
+  isReservedSlug,
+  isValidSlug,
+  normalizeSlug,
+  parseSubdomainSlug,
+} from './src/platformDomain';
 
 // Establish folders
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -100,6 +107,19 @@ const backupUpload = multer({
 
 const BCRYPT_ROUNDS = 10;
 const DEFAULT_ADMIN_PASSWORD = 'admin_secret';
+
+function getRequestHost(req: express.Request): string {
+  const forwarded = req.get('x-forwarded-host');
+  return (forwarded || req.get('host') || '').split(',')[0].trim();
+}
+
+function getPlatformConfig(req?: express.Request) {
+  return getPlatformDomainConfig({
+    bioBaseDomain: process.env.BIO_BASE_DOMAIN,
+    appUrl: process.env.APP_URL,
+    requestHost: req ? getRequestHost(req) : undefined,
+  });
+}
 
 function isLegacySha256Hash(hash: string): boolean {
   return /^[a-f0-9]{64}$/i.test(hash);
@@ -563,24 +583,63 @@ async function startServer() {
     res.json(profiles);
   });
 
-  // Get singular page bio data (Static lookup)
-  app.get('/api/bio/:username', (req, res) => {
-    const username = req.params.username.toLowerCase();
-    const bio = db.getBio(username);
+  // Public platform config (domain, URLs)
+  app.get('/api/public-config', (req, res) => {
+    res.json(getPlatformConfig(req));
+  });
+
+  // Get singular page bio data (username or alias slug)
+  app.get('/api/bio/:slug', (req, res) => {
+    const slug = req.params.slug.toLowerCase();
+    const bio = db.getBioBySlug(slug);
     if (!bio) {
-      return res.status(404).json({ error: 'Username lookup failed' });
+      return res.status(404).json({ error: 'Profile not found' });
     }
     res.json(bio);
   });
 
-  // Get bio username by custom domain mapping
-  app.get('/api/bio-by-host', (req, res) => {
-    const host = (req.query.host as string || '').toLowerCase().trim();
+  // Resolve hostname → username (wildcard subdomain or custom domain)
+  app.get('/api/resolve-host', (req, res) => {
+    const host = (req.query.host as string || getRequestHost(req)).toLowerCase().trim().split(':')[0];
     if (!host) {
       return res.status(400).json({ error: 'Missing host parameter' });
     }
-    const bios = db.getAllBios();
-    const matched = bios.find(b => b.customDomain && b.customDomain.toLowerCase().trim() === host);
+
+    const platform = getPlatformConfig(req);
+    const subdomainSlug = parseSubdomainSlug(host, platform.baseDomain);
+    if (subdomainSlug) {
+      const bio = db.getBioBySlug(subdomainSlug);
+      if (bio) {
+        return res.json({ success: true, username: bio.username, slug: subdomainSlug, source: 'subdomain' });
+      }
+      return res.json({ success: false, reason: 'profile_not_found' });
+    }
+
+    const custom = db.getBioByCustomDomain(host);
+    if (custom) {
+      return res.json({ success: true, username: custom.username, slug: custom.username, source: 'custom_domain' });
+    }
+
+    res.json({ success: false, reason: 'no_match' });
+  });
+
+  // Legacy: custom domain lookup
+  app.get('/api/bio-by-host', (req, res) => {
+    const host = (req.query.host as string || '').toLowerCase().trim().split(':')[0];
+    if (!host) {
+      return res.status(400).json({ error: 'Missing host parameter' });
+    }
+
+    const platform = getPlatformConfig(req);
+    const subdomainSlug = parseSubdomainSlug(host, platform.baseDomain);
+    if (subdomainSlug) {
+      const bio = db.getBioBySlug(subdomainSlug);
+      if (bio) {
+        return res.json({ success: true, username: bio.username });
+      }
+    }
+
+    const matched = db.getBioByCustomDomain(host);
     if (matched) {
       return res.json({ success: true, username: matched.username });
     }
@@ -890,6 +949,20 @@ async function startServer() {
     // Force strict username preservation
     payload.username = username;
 
+    if (payload.aliasSlug) {
+      const alias = normalizeSlug(payload.aliasSlug);
+      payload.aliasSlug = alias;
+      if (!isValidSlug(alias)) {
+        return res.status(400).json({ error: 'Alias slug: только a-z, 0-9, _ и - (1–32 символа)' });
+      }
+      if (isReservedSlug(alias)) {
+        return res.status(400).json({ error: 'Этот alias зарезервирован системой' });
+      }
+      if (db.isAliasSlugTaken(alias, username)) {
+        return res.status(409).json({ error: 'Этот alias уже занят другим пользователем' });
+      }
+    }
+
     const oldConfig = db.getBio(username);
     db.saveBio(username, payload);
 
@@ -902,11 +975,13 @@ async function startServer() {
   });
 
   // Track visit (anonymous, fast increment)
-  app.post('/api/bio/:username/visit', (req, res) => {
-    const username = req.params.username.toLowerCase();
-    if (!db.getBio(username)) {
+  app.post('/api/bio/:slug/visit', (req, res) => {
+    const slug = req.params.slug.toLowerCase();
+    const bio = db.getBioBySlug(slug);
+    if (!bio) {
       return res.status(404).json({ error: 'Lookup target does not exist' });
     }
+    const username = bio.username;
 
     // Capture analytic headers
     const rawReferrer = req.body.referrer || req.get('Referer') || 'Direct Link';
@@ -1051,6 +1126,8 @@ async function startServer() {
 
   // OpenSource scripts provider
   app.get('/api/install-script', (req, res) => {
+    const platform = getPlatformConfig(req);
+    const installOrigin = platform.appUrl;
     // Generates a script config downloader
     const shellScript = `#!/bin/bash
 # =====================================================================
@@ -1115,7 +1192,7 @@ docker compose pull || echo -e "\${RED}Image lookup fallback: Project runs conta
 docker compose up -d || echo -e "\${RED}Continuing local npm install configuration wizard.\${NC}"
 
 echo -e "\${BLUE}=====================================================\${NC}"
-echo -e "\${GREEN}🎯 Server fully running and bound! URL: http://localhost:3000\${NC}"
+echo -e "\${GREEN}🎯 Server fully running and bound! URL: ${installOrigin}\${NC}"
 echo -e "\${GREEN}📊 Persistent data logs safely synchronized to ./data/\${NC}"
 echo -e "\${BLUE}=====================================================\${NC}"
 `;
