@@ -1,54 +1,267 @@
-# CRY BIOS 🎯
+<div align="center">
 
-CRY BIOS — это мощная open-source альтернатива популярному сервису `guns.lol`. Платформа позволяет создавать кастомизированные страницы-био (Bio Pages) профессионального качества с глубокой интеграцией сторонних сервисов, неоновыми эффектами и собственной системой аналитики профиля.
+# CRY BIOS
 
-## Технологический стек 🛠
+**Self-hosted альтернатива [guns.lol](https://guns.lol) — био-страницы с неоновым UI, аналитикой и полным контролем над данными.**
 
-Проект построен как **Full-stack Monorepo App** с использованием современных веб-стандартов:
+[![License: MIT](https://img.shields.io/badge/License-MIT-00f2ff?style=for-the-badge)](LICENSE)
+[![Node](https://img.shields.io/badge/Node-22+-339933?style=for-the-badge&logo=node.js&logoColor=white)](package.json)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](package.json)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](Dockerfile)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](tsconfig.json)
 
-- **Frontend**: React 19 + TypeScript, собранный с помощью Vite.
-- **Styling**: Tailwind CSS (v4) с использованием кастомных утилит-классов. Безупречное отображение неоновых эффектов, drop-shadows и motion анимаций (Framer-модуль `motion/react`).
-- **Backend API**: Express v4 (Custom Server), обрабатывающий все маршруты, REST API и CORS.
-- **Database**: SQLite (драйвер `better-sqlite3`). Выбор SQLite обоснован быстрым доступом к данным пользователей (BioConfig) и автономностью каждого развертывания (Self-Hosted ready).
-- **TypeScript & Build Tool**: `esbuild` для компиляции серверной части и ESM/CJS совместимости; `tsx` для локальной разработки.
-- **Deployment**: Готовые Docker workflow.
+[Быстрый старт](#-быстрый-старт) · [Возможности](#-возможности) · [Деплой](#-деплой) · [Безопасность](SECURITY.md) · [Issues](https://github.com/Yaroslavtatar/CRY-BIOs/issues)
 
-## Архитектура базы данных 🗄
+</div>
 
-База данных переведена на SQLite. Схема состоит из 3-х базовых таблиц:
-1. `users` — хранит юзернейм, хэш пароля (SHA256) и токен авторизации сессии.
-2. `bios` — конфигурации страниц пользователей; все данные о блоках профиля, цветах, аудио-треках хранятся в формате JSON payload в этой таблице.
-3. `analytics` — таблица собирает базовую аналитику профиля (рефереры, гео-расположение, тип устройства и браузер). Хранится до 5000 записей на одного пользователя.
+---
 
-## Ключевые возможности ⚡
+## О проекте
 
-- **Discord Интеграция**: Скрипты автоматически извлекают профиль Discord, отображая статус (Online, DND, Idle), текущую активность пользователя (Игры / Spotify), а также значки Nitro и Server Booster. Так как Discord API ограничивает поиск пользователей по имени без токена бота, система поддерживает "Мягкий Fallback" ввода ID/Юзернеймов.
-- **Аналитика**: Полный дашборд администратора с визуализацией притока трафика (charts, histograms). 
-- **Моделирование UI**: Drag & Drop система блоков с интерактивными API-панелями (текстовые блоки, статус, HTML/CSS).
-- **Загрузка файлов (Uploads)**: `multer` на Express бэкенде обрабатывает загрузку кастомных фонов, аватарок и аудио-файлов в папку `data/uploads/`.
-- **Импорт профиля**: Встроенный парсер/сквапер может попытаться извлечь уже существующую страницу с `guns.lol` по имени пользователя и переконфигурировать ваш профиль на BioGun за секунду.
+CRY BIOS — open-source платформа для персональных био-страниц: аватар, описание, соцсети, музыкальный плеер, кастомные фоны и эффекты. Разворачивается на своём сервере без подписок и кредитов.
 
-## Инструкция по запуску локально (Development)
+| guns.lol | CRY BIOS |
+|----------|----------|
+| Облачный SaaS | Self-hosted, ваши данные |
+| Часть функций за credits | Все фичи из коробки |
+| Ограниченный экспорт | Полный ZIP-бэкап (БД + медиа) |
+| Зависимость от сервиса | Docker, Coolify, VPS |
 
-1. Клонируйте проект и установите зависимости:
-   ```bash
-   npm install
-   ```
-2. Запустите dev-сервер:
-   ```bash
-   npm run dev
-   ```
-   Сервер поднимет фронтенд (Vite Middleware) и бэкенд на `http://localhost:3000`.
+---
 
-## Развертывание (Docker / CI/CD) 🐳
+## Возможности
 
-Проект включает `Dockerfile` и автоматический Workflow файл (`.github/workflows/docker.yml`), который будет собирать и пушить образ в GitHub Container Registry при пушах в ветку `main`.
+### Профиль и дизайн
 
-Для ручного запуска через Docker Compose, просто используйте готовый скрипт, доступный по роуту `/api/install-script`. Сохраните его и запустите на VPS сервере.
+- **Click-to-enter** — экран входа с автозапуском музыки и эффектов
+- **Цвета элементов** — отдельные picker'ы для галочки verified, плеера, локации, экрана входа и ссылок (без CSS)
+- **Эффекты имени** — glow, glitch, typewriter, gradient, neon и др.
+- **Фоны** — видео, GIF, изображения, градиенты, matrix, stars, aurora, rain, snow
+- **Layout-режимы** — default, compact, sleek (guns.lol-style)
+- **Custom CSS** — для тонкой настройки поверх UI
 
-## Директории
+### Контент и интеграции
 
-- `src/components/` — изолированные UI компоненты React.
-- `src/db.ts` — драйвера и инициализация SQLite.
-- `server.ts` — ядро бэкенда.
-- `data/` — локальные данные (sqlite база, json-миграции, картинки/аудио). Игнорируется Git'ом.
+- **Музыкальный плеер** — single track или playlist, visualizer, minimal / inline / floating
+- **Блоки** — соцсети (24+ платформ с brand-цветами), HTML, Discord status, цитаты, embed
+- **Импорт с guns.lol** — по API или HTML (обходит Cloudflare), preview-чеклист перед применением
+- **Discord Presence** — статус, активность, Nitro / Booster badges
+- **QR-код** профиля с кастомными цветами
+
+### Инфраструктура
+
+- **Аналитика** — просмотры, referrers, устройства, страны (до 5000 записей / user)
+- **Админ-панель** — пользователи, verify, rename, экспорт/импорт
+- **Бэкапы** — полный ZIP (SQLite + uploads), scheduled backups, restore one-click
+- **Wildcard-домены** — `user.yourdomain.com` → профиль `user`
+- **Медиа-пайплайн** — оптимизация изображений (sharp), MP3 128 kbps, video transcode
+
+### Безопасность
+
+- bcrypt-хеши паролей, rate limiting, helmet
+- Account lockout после неудачных входов
+- Политика паролей (8+ символов)
+- Подробнее: [SECURITY.md](SECURITY.md) · [RU-SECURITY](RU-SECURITY)
+
+---
+
+## Быстрый старт
+
+### Требования
+
+- **Node.js** 22+
+- **npm** 10+
+
+### Локальная разработка
+
+```bash
+git clone https://github.com/Yaroslavtatar/CRY-BIOs.git
+cd CRY-BIOs
+npm install
+npm run dev
+```
+
+Приложение: **http://localhost:3000**
+
+| Команда | Описание |
+|---------|----------|
+| `npm run dev` | Dev-сервер (Vite + Express) |
+| `npm run build` | Production-сборка |
+| `npm start` | Запуск из `dist/` |
+| `npm run lint` | TypeScript-проверка |
+
+> Демо-аккаунт создаётся при первом запуске. Админка: `/admin` (пароль по умолчанию `admin_secret` — **смените на проде**).
+
+---
+
+## Деплой
+
+### Docker Compose (рекомендуется)
+
+```bash
+docker compose up -d --build
+```
+
+Порт **3000**. Данные сохраняются в volume `cry_bios_data` → `/app/data`.
+
+### Docker
+
+```bash
+docker build -t cry-bios .
+docker run -d \
+  --name cry_bios \
+  -p 3000:3000 \
+  -v cry_bios_data:/app/data \
+  -e NODE_ENV=production \
+  -e ADMIN_PASSWORD=your_secure_password \
+  cry-bios
+```
+
+### Coolify / VPS
+
+Пошаговая инструкция: [COOLIFY_DEPLOYMENT.txt](COOLIFY_DEPLOYMENT.txt)
+
+Ключевые моменты:
+
+1. Смонтировать volume в `/app/data`
+2. Задать `ADMIN_PASSWORD` и `APP_URL`
+3. Для wildcard-поддоменов: DNS `*.yourdomain.com` + домен в Coolify
+4. Health check: `GET /api/health`
+
+### Install-скрипт
+
+На VPS можно скачать авто-installer:
+
+```bash
+curl -fsSL https://your-domain.com/api/install-script -o install.sh
+chmod +x install.sh
+./install.sh
+```
+
+---
+
+## Переменные окружения
+
+| Переменная | Обязательно | Описание |
+|------------|:-----------:|----------|
+| `PORT` | — | Порт сервера (default: `3000`) |
+| `NODE_ENV` | prod | `production` для prod-сборки |
+| `ADMIN_PASSWORD` | **да** | Пароль админ-панели |
+| `APP_URL` | — | Публичный URL инстанса |
+| `GEMINI_API_KEY` | — | Опционально, для AI-фич |
+| `BACKUP_RETAIN` | — | Число хранимых автобэкапов (default: `5`) |
+| `BACKUP_CRON_HOURS` | — | Интервал автобэкапа в часах |
+| `DISABLE_SCHEDULED_BACKUP` | — | `true` — отключить автобэкап |
+
+---
+
+## Архитектура
+
+```mermaid
+flowchart TB
+  subgraph client [Client]
+    Landing[LandingPage]
+    Dashboard[Dashboard Editor]
+    BioPage[Bio Page Public]
+  end
+
+  subgraph server [Express Server]
+    API[REST API]
+    Uploads[Multer Uploads]
+    Auth[Auth + bcrypt]
+    Import[guns.lol Parser]
+  end
+
+  subgraph storage [Persistent Storage]
+    SQLite[(SQLite bios.db)]
+    Media[/data/uploads/]
+    Backups[/data/backups/]
+  end
+
+  Dashboard --> API
+  BioPage --> API
+  API --> SQLite
+  Uploads --> Media
+  Import --> Media
+  API --> Backups
+```
+
+### Стек
+
+| Слой | Технологии |
+|------|------------|
+| Frontend | React 19, TypeScript, Vite 6, Tailwind CSS 4, Motion |
+| Backend | Express 4, multer, bcrypt, helmet, rate-limit |
+| Database | SQLite (`better-sqlite3`) |
+| Media | sharp, ffmpeg (video/audio transcode) |
+| Build | esbuild (server), Vite (client) |
+
+### Структура проекта
+
+```
+CRY-BIOs/
+├── server.ts              # Express API + Vite middleware
+├── src/
+│   ├── components/        # React UI (BioPage, Dashboard, Admin)
+│   ├── gunsImportMap.ts   # guns.lol import parser
+│   ├── themeColors.ts     # Element color resolver
+│   ├── db.ts              # SQLite layer
+│   └── backup.ts          # ZIP backup/restore
+├── data/                  # SQLite, uploads, backups (gitignored)
+├── Dockerfile
+├── docker-compose.yml
+└── COOLIFY_DEPLOYMENT.txt
+```
+
+### База данных
+
+| Таблица | Назначение |
+|---------|------------|
+| `users` | username, bcrypt hash, session token |
+| `bios` | BioConfig JSON (профиль, блоки, цвета, аудио) |
+| `analytics` | визиты, referrers, geo, device (≤5000 / user) |
+
+---
+
+## Импорт с guns.lol
+
+1. Dashboard → **Обзор** → «Копирование с Guns.lol»
+2. **HTML-импорт** (рекомендуется): Ctrl+U на профиле guns.lol → скопировать код → «Разобрать»
+3. Проверить **чеклист предпросмотра** → «Применить к профилю» → **Сохранить**
+
+Медиа автоматически rehost'ятся на ваш сервер через `/api/rehost-import-media`.
+
+---
+
+## Roadmap
+
+- [ ] Возврат редактора бейджей (временно отключён)
+- [ ] OAuth Discord / Google
+- [ ] Custom domains per user (UI)
+
+---
+
+## Contributing
+
+1. Fork репозитория
+2. Ветка: `cursor/your-feature-34eb`
+3. `npm run lint && npm run build`
+4. Pull Request в `main`
+
+Шаблоны: [bug report](.github/ISSUE_TEMPLATE/bug_report.md) · [feature request](.github/ISSUE_TEMPLATE/feature_request.md)
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Cryteamrut
+
+---
+
+<div align="center">
+
+**[⬆ Наверх](#cry-bios)**
+
+Made with neon glow by the CRY BIOS community
+
+</div>
