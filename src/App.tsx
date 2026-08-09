@@ -50,8 +50,7 @@ export default function App() {
       const subSlug = baseDomain ? parseSubdomainSlug(hostname, baseDomain) : null;
 
       if (subSlug && !path.startsWith('/dashboard') && !path.startsWith('/admin') && !path.startsWith('/u/')) {
-        setUsername(subSlug);
-        setView('bio');
+        window.location.replace(`${runtimePlatform.appUrl}/${subSlug}`);
         return;
       }
 
@@ -128,16 +127,7 @@ export default function App() {
   };
 
   const navigateToBio = (slug: string) => {
-    const urls = getPlatformDomainConfig({
-      appUrl: platform.appUrl,
-      bioBaseDomain: platform.baseDomain,
-      requestHost: window.location.host,
-    });
     const normalized = slug.toLowerCase();
-    if (urls.profileUrlMode === 'subdomain' && urls.baseDomain && urls.baseDomain !== 'localhost') {
-      window.location.href = `https://${normalized}.${urls.baseDomain}`;
-      return;
-    }
     window.history.pushState({}, '', `/${normalized}`);
     setUsername(normalized);
     setView('bio');

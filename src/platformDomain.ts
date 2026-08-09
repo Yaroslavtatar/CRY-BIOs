@@ -167,7 +167,7 @@ export function buildProfileUrls(
     subdomain = `https://${slug}.${baseDomain}`;
   }
 
-  const primary = subdomain || shortPath;
+  const primary = shortPath;
   return { primary, subdomain, shortPath, legacy, slug };
 }
 

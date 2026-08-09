@@ -9,7 +9,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import helmet from 'helmet';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
@@ -298,7 +298,7 @@ async function startServer() {
     message: { error: 'Слишком много попыток входа. Попробуйте позже.' },
     keyGenerator: (req) => {
       const username = typeof req.body?.username === 'string' ? req.body.username.toLowerCase().trim() : '';
-      return `${req.ip}:${username}`;
+      return `${ipKeyGenerator(req.ip)}:${username}`;
     },
   });
 

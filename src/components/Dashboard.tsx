@@ -111,7 +111,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [googleInput, setGoogleInput] = useState('');
   
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedLink, setCopiedLink] = useState<'path' | 'subdomain' | false>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadTarget, setUploadTarget] = useState<'avatarUrl' | 'bgValue' | 'audioUrl' | 'imageBlock' | 'playlistTrack' | 'customCursorUrl' | null>(null);
   const [uploadSongId, setUploadSongId] = useState<string | null>(null);
@@ -1059,14 +1059,17 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   if (isTenViews) checkedItems++;
                   const completionPercentage = checkedItems * 20;
 
-                  const handleCopyBioURL = () => {
+                  const handleCopyBioURL = (mode: 'path' | 'subdomain') => {
                     const links = getProfileLinks();
-                    navigator.clipboard.writeText(links.primary);
-                    setCopiedLink(true);
+                    const url = mode === 'subdomain' && links.subdomain ? links.subdomain : links.shortPath;
+                    navigator.clipboard.writeText(url);
+                    setCopiedLink(mode);
                     setTimeout(() => setCopiedLink(false), 2000);
                   };
 
                   const profileLinks = getProfileLinks();
+                  const pathDisplay = profileLinks.shortPath.replace(/^https?:\/\//, '');
+                  const subdomainDisplay = profileLinks.subdomain?.replace(/^https?:\/\//, '') ?? null;
 
                   return (
                     <div className="space-y-6">
@@ -1099,28 +1102,54 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
                         <div className="w-full sm:w-auto">
                           <span className="block text-[8px] uppercase text-neutral-500 font-bold mb-1 font-mono">Ваш короткий URL</span>
-                          <div className="flex items-center border border-white/10 bg-black/50 rounded-sm overflow-hidden select-all max-w-full">
-                            <span className="px-2.5 py-1 text-[10px] text-[#00f2ff] font-mono break-all line-clamp-1">
-                              {profileLinks.subdomain || profileLinks.shortPath.replace(/^https?:\/\//, '')}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={handleCopyBioURL}
-                              className="px-3 py-1.5 bg-[#00f2ff] text-black text-[9px] uppercase font-black tracking-wider hover:bg-[#00d0e0] transition cursor-pointer flex-shrink-0"
-                            >
-                              {copiedLink ? 'Скопировано ✓' : 'Копировать'}
-                            </button>
-                          </div>
-                          <div className="mt-1.5 space-y-0.5 text-[8px] text-neutral-600 font-mono">
-                            {profileLinks.subdomain && (
-                              <span className="block truncate">Поддомен: {profileLinks.subdomain.replace(/^https?:\/\//, '')}</span>
+                          <div className="space-y-2">
+                            <div className="flex items-center border border-white/10 bg-black/50 rounded-sm overflow-hidden select-all max-w-full">
+                              <span className="px-2.5 py-1 text-[10px] text-[#00f2ff] font-mono break-all line-clamp-1 flex-grow">
+                                {pathDisplay}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyBioURL('path')}
+                                className="px-2.5 py-1.5 bg-[#00f2ff] text-black text-[8px] uppercase font-black tracking-wider hover:bg-[#00d0e0] transition cursor-pointer flex-shrink-0 border-l border-black/20"
+                              >
+                                {copiedLink === 'path' ? '✓' : 'Path'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onViewProfile(profileLinks.slug)}
+                                className="px-2.5 py-1.5 bg-white/10 text-[#00f2ff] text-[8px] uppercase font-black tracking-wider hover:bg-white/20 transition cursor-pointer flex-shrink-0 border-l border-white/10"
+                              >
+                                Открыть
+                              </button>
+                            </div>
+                            {subdomainDisplay && (
+                              <div className="flex items-center border border-white/10 bg-black/30 rounded-sm overflow-hidden select-all max-w-full">
+                                <span className="px-2.5 py-1 text-[10px] text-neutral-300 font-mono break-all line-clamp-1 flex-grow">
+                                  {subdomainDisplay}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyBioURL('subdomain')}
+                                  className="px-2.5 py-1.5 bg-white/10 text-white text-[8px] uppercase font-black tracking-wider hover:bg-white/20 transition cursor-pointer flex-shrink-0 border-l border-white/10"
+                                >
+                                  {copiedLink === 'subdomain' ? '✓' : 'Домен'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => profileLinks.subdomain && window.open(profileLinks.subdomain, '_blank')}
+                                  className="px-2.5 py-1.5 bg-white/10 text-neutral-300 text-[8px] uppercase font-black tracking-wider hover:bg-white/20 transition cursor-pointer flex-shrink-0 border-l border-white/10"
+                                >
+                                  Открыть
+                                </button>
+                              </div>
                             )}
-                            <span className="block truncate">Короткий: {profileLinks.shortPath.replace(/^https?:\/\//, '')}</span>
-                            <span className="block truncate text-neutral-700">Legacy: {profileLinks.legacy.replace(/^https?:\/\//, '')}</span>
                           </div>
                           {runtimePlatform.baseDomain && runtimePlatform.baseDomain !== 'localhost' && (
-                            <span className="text-[7.5px] text-neutral-500 block mt-1 font-sans">
-                              Поддомен работает автоматически при DNS <code className="text-[#00f2ff]">*.{runtimePlatform.baseDomain}</code>
+                            <span className="text-[7.5px] text-neutral-500 block mt-1.5 font-sans">
+                              Основной формат: <code className="text-[#00f2ff]">{runtimePlatform.baseDomain}/name</code>
+                              {subdomainDisplay && (
+                                <> · альтернатива: <code className="text-[#00f2ff]">name.{runtimePlatform.baseDomain}</code></>
+                              )}
                             </span>
                           )}
                         </div>
@@ -3419,13 +3448,31 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-2">
                           <div className="flex justify-between items-center">
                             <span className="block text-[10px] uppercase text-neutral-400 font-bold">🔗 Адрес ссылки</span>
-                            <button
-                              type="button"
-                              onClick={() => setQrText(getProfileLinks().primary)}
-                              className="text-[8px] text-[#00f2ff] hover:underline uppercase font-extrabold cursor-pointer"
-                            >
-                              Сброс
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setQrText(getProfileLinks().shortPath)}
+                                className="text-[8px] text-[#00f2ff] hover:underline uppercase font-extrabold cursor-pointer"
+                              >
+                                Path
+                              </button>
+                              {getProfileLinks().subdomain && (
+                                <button
+                                  type="button"
+                                  onClick={() => setQrText(getProfileLinks().subdomain!)}
+                                  className="text-[8px] text-neutral-400 hover:text-[#00f2ff] hover:underline uppercase font-extrabold cursor-pointer"
+                                >
+                                  Поддомен
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setQrText(getProfileLinks().primary)}
+                                className="text-[8px] text-neutral-500 hover:underline uppercase font-extrabold cursor-pointer"
+                              >
+                                Сброс
+                              </button>
+                            </div>
                           </div>
                           <input
                             type="text"
