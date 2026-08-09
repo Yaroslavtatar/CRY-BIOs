@@ -89,6 +89,30 @@ CRY BIOS автоматически определяет домен из APP_URL
 3. Env: APP_URL=https://cbios.ru, BIO_BASE_DOMAIN=cbios.ru
 
 ----------------------------------------------------------------------------------------
+4a. SSL / HTTPS ДЛЯ ПОДДОМЕНОВ (*.cbios.ru) — ОБЯЗАТЕЛЬНО
+----------------------------------------------------------------------------------------
+Если cryteam.cbios.ru показывает «Небезопасно» — на origin нет wildcard-сертификата.
+
+Let's Encrypt НЕ выдаёт *.cbios.ru через HTTP-challenge. Нужно:
+
+1. Coolify → Servers → Proxy → DNS-challenge (Cloudflare API token)
+   См. deploy/coolify/proxy-dns-challenge.snippet.yaml
+
+2. Wildcard cert: cbios.ru + *.cbios.ru
+   См. deploy/coolify/traefik-dynamic-wildcard-cbios.ru.yaml
+   Или labels на Proxy (main=cbios.ru, sans=*.cbios.ru)
+
+3. CRY BIOS app → Custom Labels (HostRegexp для *.cbios.ru)
+   См. deploy/coolify/app-traefik-labels.yaml
+
+4. Cloudflare SSL mode: Full (strict)
+
+Полная инструкция: deploy/coolify/SSL_SETUP.md
+
+После настройки Coolify автоматически перевыпускает cert; новые поддомены
+пользователей сразу получают HTTPS без отдельного cert на каждый.
+
+----------------------------------------------------------------------------------------
 5. ПОШАГОВЫЙ ЗАПУСК ЧЕРЕЗ COOLIFY (ДВА ВАРИАНТА)
 ----------------------------------------------------------------------------------------
 

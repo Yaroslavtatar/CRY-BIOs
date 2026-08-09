@@ -1,0 +1,24 @@
+# Traefik Dynamic Configuration — wildcard Let's Encrypt для cbios.ru
+# Coolify: Servers → your server → Proxy → Dynamic Configurations → New
+# Filename: wildcard-cbios-ru.yaml
+# Requires: DNS challenge enabled on Proxy (Cloudflare API token)
+
+http:
+  routers:
+    wildcard-cbios-ru:
+      rule: 'HostRegexp(`^[a-z0-9-]+\.cbios\.ru$`)'
+      entryPoints:
+        - https
+      priority: 1
+      service: wildcard-cbios-placeholder
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: cbios.ru
+            sans:
+              - '*.cbios.ru'
+
+  services:
+    wildcard-cbios-placeholder:
+      loadBalancer:
+        servers: []

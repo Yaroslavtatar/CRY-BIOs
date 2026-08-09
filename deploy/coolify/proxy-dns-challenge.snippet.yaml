@@ -1,0 +1,20 @@
+# Фрагмент для Coolify Proxy (Traefik) — DNS challenge Cloudflare
+# Servers → Proxy → Docker Compose → command / environment
+#
+# 1. Замените httpChallenge на dnsChallenge
+# 2. Добавьте CF_DNS_API_TOKEN в environment
+# 3. Restart Proxy
+
+command:
+  - '--certificatesresolvers.letsencrypt.acme.dnschallenge=true'
+  - '--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare'
+  - '--certificatesresolvers.letsencrypt.acme.dnschallenge.delaybeforecheck=0'
+  - '--certificatesresolvers.letsencrypt.acme.email=admin@cbios.ru'
+  - '--certificatesresolvers.letsencrypt.acme.storage=/traefik/acme.json'
+
+environment:
+  CF_DNS_API_TOKEN: '${CF_DNS_API_TOKEN}'
+
+# Wildcard cert request (labels на proxy container):
+# - traefik.http.routers.traefik.tls.domains[0].main=cbios.ru
+# - traefik.http.routers.traefik.tls.domains[0].sans=*.cbios.ru

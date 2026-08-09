@@ -119,7 +119,8 @@ docker run -d \
 
 ### Coolify / VPS
 
-Пошаговая инструкция: [COOLIFY_DEPLOYMENT.txt](COOLIFY_DEPLOYMENT.txt)
+Пошаговая инструкция: [COOLIFY_DEPLOYMENT.txt](COOLIFY_DEPLOYMENT.txt)  
+**Wildcard SSL для поддоменов:** [deploy/coolify/SSL_SETUP.md](deploy/coolify/SSL_SETUP.md)
 
 Ключевые моменты:
 

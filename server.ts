@@ -273,6 +273,9 @@ async function startServer() {
   app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    hsts: process.env.NODE_ENV === 'production'
+      ? { maxAge: 31536000, includeSubDomains: true, preload: false }
+      : false,
   }));
   app.use(express.json());
   const PORT = 3000;
@@ -585,7 +588,16 @@ async function startServer() {
 
   // Public platform config (domain, URLs)
   app.get('/api/public-config', (req, res) => {
-    res.json(getPlatformConfig(req));
+    const platform = getPlatformConfig(req);
+    res.json({
+      ...platform,
+      ssl: {
+        wildcardRequired: true,
+        provider: 'coolify-traefik',
+        setupGuidePath: 'deploy/coolify/SSL_SETUP.md',
+        note: 'Wildcard *.cbios.ru требует DNS-challenge (Cloudflare) в Coolify Proxy',
+      },
+    });
   });
 
   // Get singular page bio data (username or alias slug)
