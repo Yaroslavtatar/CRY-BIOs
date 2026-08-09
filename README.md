@@ -236,7 +236,6 @@ CRY-BIOs/
 ## Roadmap
 
 - [ ] Возврат редактора бейджей (временно отключён)
-- [ ] OAuth Discord / Google
 - [ ] Custom domains per user (UI)
 
 ---
@@ -244,7 +243,7 @@ CRY-BIOs/
 ## Contributing
 
 1. Fork репозитория
-2. Ветка: `cursor/your-feature-34eb`
+2. Ветка: `fork/your-feature-34eb`
 3. `npm run lint && npm run build`
 4. Pull Request в `main`
 
