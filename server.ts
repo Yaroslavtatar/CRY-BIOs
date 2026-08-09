@@ -15,17 +15,25 @@ import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
 import * as db from './src/db';
 import { streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup, importUserBackup } from './src/backup';
-import { isAllowedMime, isImageMime, processUploadedImage, type ImageUploadType } from './src/imageProcessing';
-import { isVideoMime, processUploadedVideo } from './src/videoProcessing';
-import { isAudioMime, processUploadedAudio } from './src/audioProcessing';
+import { isAllowedMime, isImageMime, type ImageUploadType } from './src/imageProcessing';
+import { isVideoMime } from './src/videoProcessing';
+import { isAudioMime } from './src/audioProcessing';
 import { validateUserPassword, validateAdminPassword } from './src/passwordPolicy';
 import { isAccountLocked, recordFailedLogin, clearLoginAttempts } from './src/authLockout';
 import { rehostImportMedia } from './src/rehostMedia';
-import { parseGunsLolHtml } from './src/gunsImportMap';
+import { getImportPreviewSummary } from './src/gunsImportMap';
+import { parseImportInput } from './src/importHub';
 import { cleanupAllOrphans, deleteUnusedBetweenConfigs } from './src/uploadCleanup';
 import { getStorageStats, runHealthChecks, isUsingDefaultAdminPassword } from './src/storageStats';
 import { getSiteSettings, updateSiteSettings } from './src/siteSettings';
 import { startScheduledBackups } from './src/scheduledBackup';
+import { processMedia, resolveUploadFilePath, optimizeAllMedia } from './src/mediaPipeline';
+import { verifyEdgeSignature, getEdgeUrl, fetchViaEdge } from './src/edgeAuth';
+import {
+  decodeDiscordBadges,
+  mergeBadgesIntoLanyardUser,
+  staticDiscordPresenceFromBio,
+} from './src/discordBadges';
 import {
   getPlatformDomainConfig,
   isReservedSlug,
@@ -48,6 +56,25 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 const TMP_DIR = path.join(DATA_DIR, 'tmp');
 if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR, { recursive: true });
+}
+
+type ImportJob = {
+  username: string;
+  status: 'running' | 'done' | 'error';
+  progress: { current: number; total: number; label: string };
+  result?: unknown;
+  error?: string;
+  listeners: Set<(event: string, data: unknown) => void>;
+};
+
+const importJobs = new Map<string, ImportJob>();
+
+function emitImportJob(jobId: string, event: string, data: unknown) {
+  const job = importJobs.get(jobId);
+  if (!job) return;
+  for (const listener of job.listeners) {
+    listener(event, data);
+  }
 }
 
 const ADMIN_PASSWORD_FILE = path.join(DATA_DIR, 'admin_password.txt');
@@ -271,6 +298,63 @@ async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
 
+  // Discord OAuth webhook must read raw body for HMAC
+  app.post('/api/discord/oauth/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+    const secret = process.env.CBIOS_EDGE_SECRET?.trim();
+    if (!secret) {
+      return res.status(503).json({ error: 'Webhook secret not configured' });
+    }
+
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : String(req.body || '');
+    const timestamp = req.headers['x-cbios-timestamp'] as string | undefined;
+    const signature = req.headers['x-cbios-signature'] as string | undefined;
+
+    if (!verifyEdgeSignature(secret, rawBody, timestamp, signature)) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    let payload: {
+      state: string;
+      discord: {
+        id: string;
+        username: string;
+        displayName: string;
+        avatarHash: string | null;
+        premiumType: number;
+        publicFlags: number;
+        linkedAt: string;
+      };
+    };
+
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON' });
+    }
+
+    const username = db.consumeOAuthState(payload.state);
+    if (!username) {
+      return res.status(400).json({ error: 'Invalid or expired OAuth state' });
+    }
+
+    const bio = db.getBio(username);
+    if (!bio) {
+      return res.status(404).json({ error: 'Bio not found' });
+    }
+
+    bio.discordConnected = true;
+    bio.discordId = payload.discord.id;
+    bio.discordUsername = payload.discord.username;
+    bio.discordDisplayName = payload.discord.displayName;
+    bio.discordAvatarHash = payload.discord.avatarHash;
+    bio.discordPremiumType = payload.discord.premiumType;
+    bio.discordPublicFlags = payload.discord.publicFlags;
+    bio.discordLinkedAt = payload.discord.linkedAt;
+    db.saveBio(username, bio);
+
+    res.json({ success: true, username });
+  });
+
   app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
@@ -340,7 +424,33 @@ async function startServer() {
 
   // --- API ROUTING ---
 
-  // Expose uploads directory
+  // AVIF negotiation for WebP uploads
+  app.get('/uploads/:folder/:file', (req, res, next) => {
+    const { folder, file } = req.params;
+    if (folder === 'thumbs' || !file.endsWith('.webp')) return next();
+    if (!(req.headers.accept || '').includes('image/avif')) return next();
+    const avifPath = path.join(UPLOADS_DIR, file.replace(/\.webp$/i, '.avif'));
+    if (fs.existsSync(avifPath)) {
+      res.setHeader('Content-Type', 'image/avif');
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+      return res.sendFile(avifPath);
+    }
+    next();
+  });
+
+  app.get('/uploads/:file', (req, res, next) => {
+    const { file } = req.params;
+    if (!file.endsWith('.webp')) return next();
+    if (!(req.headers.accept || '').includes('image/avif')) return next();
+    const avifPath = path.join(UPLOADS_DIR, file.replace(/\.webp$/i, '.avif'));
+    if (fs.existsSync(avifPath)) {
+      res.setHeader('Content-Type', 'image/avif');
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+      return res.sendFile(avifPath);
+    }
+    next();
+  });
+
   app.use('/uploads', express.static(UPLOADS_DIR, {
     maxAge: '30d',
     immutable: true,
@@ -364,24 +474,40 @@ async function startServer() {
         : 'bg';
 
       if (isImageMime(req.file.mimetype)) {
-        const result = await processUploadedImage(req.file.path, UPLOADS_DIR, uploadType);
-        const fileUrl = `/uploads/${result.filename}`;
+        const result = await processMedia({
+          dataDir: DATA_DIR,
+          uploadsDir: UPLOADS_DIR,
+          inputPath: req.file.path,
+          kind: 'image',
+          imageType: uploadType,
+        });
         return res.json({
-          url: fileUrl,
-          thumbUrl: result.thumbFilename ? `/uploads/thumbs/${result.thumbFilename}` : undefined,
+          url: result.url,
+          thumbUrl: result.thumbUrl,
+          avifUrl: result.avifUrl,
+          deduplicated: result.deduplicated,
         });
       }
 
       if (isVideoMime(req.file.mimetype)) {
-        const result = await processUploadedVideo(req.file.path, UPLOADS_DIR);
-        const fileUrl = `/uploads/${result.filename}`;
-        return res.json({ url: fileUrl });
+        const result = await processMedia({
+          dataDir: DATA_DIR,
+          uploadsDir: UPLOADS_DIR,
+          inputPath: req.file.path,
+          kind: 'video',
+        });
+        return res.json({ url: result.url, deduplicated: result.deduplicated });
       }
 
       if (isAudioMime(req.file.mimetype)) {
-        const result = await processUploadedAudio(req.file.path, UPLOADS_DIR);
-        const fileUrl = `/uploads/${result.filename}`;
-        return res.json({ url: fileUrl });
+        const result = await processMedia({
+          dataDir: DATA_DIR,
+          uploadsDir: UPLOADS_DIR,
+          inputPath: req.file.path,
+          kind: 'audio',
+          audioBitrate: '128k',
+        });
+        return res.json({ url: result.url, deduplicated: result.deduplicated });
       }
 
       const fileUrl = `/uploads/${req.file.filename}`;
@@ -441,6 +567,19 @@ async function startServer() {
       res.json({ success: true, ...result, bytesFreedMb: Math.round((result.bytesFreed / (1024 * 1024)) * 100) / 100 });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Cleanup failed' });
+    }
+  });
+
+  app.post('/api/admin/optimize-media', checkAdminAuth, async (_req, res) => {
+    try {
+      const result = await optimizeAllMedia(DATA_DIR, UPLOADS_DIR);
+      res.json({
+        success: true,
+        ...result,
+        savedMb: Math.round(((result.bytesBefore - result.bytesAfter) / (1024 * 1024)) * 100) / 100,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Optimize failed' });
     }
   });
 
@@ -687,50 +826,91 @@ async function startServer() {
     res.json({ success: false });
   });
 
-  // Proxy Discord Lanyard & Profile Data
-  app.get('/api/discord/:query', async (req, res) => {
-    try {
-      const { query } = req.params;
-      const isId = /^\d{17,19}$/.test(query);
+  // Discord OAuth + Lanyard presence
+  app.get('/api/discord/oauth/start', (req, res) => {
+    const authedUser = getUsernameFromRequest(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: 'Unauthorized Session' });
+    }
 
-      // We attempt Lanyard API if it is an ID
-      if (isId) {
-        const lanyardRes = await fetch(`https://api.lanyard.rest/v1/users/${query}`);
+    const edgeUrl = getEdgeUrl();
+    if (!edgeUrl) {
+      return res.status(503).json({ error: 'Discord OAuth не настроен. Задайте CBIOS_EDGE_URL и задеployьте cbios-edge Worker.' });
+    }
+
+    const state = db.createOAuthState(authedUser);
+    const url = `${edgeUrl.replace(/\/$/, '')}/oauth/start?state=${encodeURIComponent(state)}`;
+    res.json({ url });
+  });
+
+  app.post('/api/discord/disconnect', (req, res) => {
+    const authedUser = getUsernameFromRequest(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: 'Unauthorized Session' });
+    }
+
+    const bio = db.getBio(authedUser);
+    if (!bio) {
+      return res.status(404).json({ error: 'Bio not found' });
+    }
+
+    bio.discordConnected = false;
+    bio.discordId = undefined;
+    bio.discordUsername = undefined;
+    bio.discordDisplayName = undefined;
+    bio.discordAvatarHash = undefined;
+    bio.discordPremiumType = undefined;
+    bio.discordPublicFlags = undefined;
+    bio.discordLinkedAt = undefined;
+    db.saveBio(authedUser, bio);
+
+    res.json({ success: true });
+  });
+
+  app.get('/api/discord/:userId', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      if (!/^\d{17,19}$/.test(userId)) {
+        return res.status(400).json({ error: 'Invalid Discord user ID' });
+      }
+
+      const bio = db.getAllBios().find(b => b.discordId === userId) || null;
+      const edgeUrl = getEdgeUrl();
+
+      if (edgeUrl) {
+        const lanyardRes = await fetchViaEdge(`/lanyard/${userId}`);
         if (lanyardRes.ok) {
-          const data = await lanyardRes.json();
-          // Map mock badges as Lanyard doesn't provide them natively
-          if (data.data && data.data.discord_user) {
-            data.data.discord_user.badges = [
-              { id: 'nitro', icon: 'zap', label: 'Nitro' },
-              { id: 'booster', icon: 'flame', label: 'Server Booster' }
-            ];
+          const data = await lanyardRes.json() as { success?: boolean; data?: any };
+          if (data.data?.discord_user && bio) {
+            data.data = mergeBadgesIntoLanyardUser(
+              data.data,
+              bio.discordPublicFlags,
+              bio.discordPremiumType,
+            );
+          } else if (data.data?.discord_user) {
+            data.data.discord_user.badges = decodeDiscordBadges(
+              data.data.discord_user.public_flags ?? 0,
+              0,
+            );
+          }
+          return res.json(data);
+        }
+      } else {
+        const lanyardRes = await fetch(`https://api.lanyard.rest/v1/users/${userId}`);
+        if (lanyardRes.ok) {
+          const data = await lanyardRes.json() as { data?: any };
+          if (data.data && bio) {
+            data.data = mergeBadgesIntoLanyardUser(data.data, bio.discordPublicFlags, bio.discordPremiumType);
           }
           return res.json(data);
         }
       }
 
-      // If it's a username or Lanyard fails, we gracefully map a Discord Profile format via mock/fallback API
-      // Since Discord strictly forbids global username lookups without OAuth2, we provide this deterministic mock for username inputs.
-      const pseudoId = Array.from(query).reduce((acc, char) => acc + char.charCodeAt(0), 0).toString().padStart(18, '1');
-      res.json({
-        success: true,
-        data: {
-          discord_user: {
-            id: pseudoId,
-            username: query.replace('@', ''),
-            display_name: query.replace('@', '').toUpperCase(),
-            avatar: 'a_simulated_avatar_hash', // Without real ID fallback to dicebear in frontend
-            badges: [
-              { id: 'nitro', icon: 'zap', label: 'Nitro' },
-              { id: 'booster', icon: 'flame', label: 'Server Booster' }
-            ]
-          },
-          discord_status: 'online',
-          activities: [
-            { name: 'Visual Studio Code', type: 0 }
-          ]
-        }
-      });
+      if (bio?.discordConnected) {
+        return res.json(staticDiscordPresenceFromBio(bio));
+      }
+
+      return res.status(404).json({ success: false, error: 'Discord presence unavailable' });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -898,54 +1078,126 @@ async function startServer() {
     res.json({ success: true, username: normNewUsername });
   });
 
-  // Import/scrape Guns.lol Profile
+  // Unified import hub (guns.lol URL or HTML)
+  app.post('/api/import-profile', async (req, res) => {
+    const authedUser = getUsernameFromRequest(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: 'Unauthorized Session' });
+    }
+
+    const { input } = req.body ?? {};
+    if (!input || typeof input !== 'string' || !input.trim()) {
+      return res.status(400).json({ error: 'Укажите ссылку guns.lol или HTML страницы' });
+    }
+
+    const jobId = crypto.randomUUID();
+    const job: ImportJob = {
+      username: authedUser,
+      status: 'running',
+      progress: { current: 0, total: 0, label: 'parse' },
+      listeners: new Set(),
+    };
+    importJobs.set(jobId, job);
+
+    res.json({ success: true, jobId });
+
+    (async () => {
+      try {
+        emitImportJob(jobId, 'progress', { ...job.progress, label: 'Разбор профиля…' });
+        const parsed = await parseImportInput(input);
+        emitImportJob(jobId, 'progress', { current: 0, total: 1, label: 'Загрузка медиа…' });
+
+        const withMedia = await rehostImportMedia(
+          parsed,
+          UPLOADS_DIR,
+          TMP_DIR,
+          (current, total, label) => {
+            job.progress = { current, total, label };
+            emitImportJob(jobId, 'progress', job.progress);
+          },
+          DATA_DIR,
+        );
+
+        job.status = 'done';
+        job.result = {
+          ...withMedia,
+          preview: getImportPreviewSummary(withMedia as import('./src/gunsImportMap').GunsImportResult),
+        };
+        emitImportJob(jobId, 'done', job.result);
+      } catch (err: any) {
+        job.status = 'error';
+        job.error = err.message || 'Import failed';
+        emitImportJob(jobId, 'error', { error: job.error });
+      } finally {
+        setTimeout(() => importJobs.delete(jobId), 15 * 60 * 1000);
+      }
+    })();
+  });
+
+  app.get('/api/import-profile/progress/:jobId', (req, res) => {
+    const authedUser = getUsernameFromRequest(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: 'Unauthorized Session' });
+    }
+
+    const job = importJobs.get(req.params.jobId);
+    if (!job || job.username !== authedUser) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const send = (event: string, data: unknown) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    send('progress', job.progress);
+    if (job.status === 'done') {
+      send('done', job.result);
+      return res.end();
+    }
+    if (job.status === 'error') {
+      send('error', { error: job.error });
+      return res.end();
+    }
+
+    const listener = (event: string, data: unknown) => send(event, data);
+    job.listeners.add(listener);
+
+    req.on('close', () => {
+      job.listeners.delete(listener);
+    });
+  });
+
+  // Legacy import endpoint (deprecated, uses import hub)
   app.post('/api/import-gunslol', async (req, res) => {
     const authedUser = getUsernameFromRequest(req);
     if (!authedUser) {
       return res.status(401).json({ error: 'Unauthorized Session' });
     }
 
-    const { targetUsername } = req.body;
-    if (!targetUsername || targetUsername.trim() === '') {
-      return res.status(400).json({ error: 'Target guns.lol username required' });
+    const { targetUsername, input } = req.body;
+    const importInput = input || (targetUsername ? `https://guns.lol/${targetUsername.trim()}` : '');
+    if (!importInput) {
+      return res.status(400).json({ error: 'Target guns.lol username or input required' });
     }
 
-    const cleanUsername = targetUsername.trim().toLowerCase();
     try {
-      const targetUrl = `https://guns.lol/${cleanUsername}`;
-      const response = await fetch(targetUrl, {
-        redirect: 'manual',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5'
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status >= 300 && response.status < 400) {
-          return res.status(400).json({ error: `Could not fetch profile from guns.lol (Cloudflare/Redirect Challenge - HTTP ${response.status})` });
-        }
-        return res.status(400).json({ error: `Could not fetch profile from guns.lol (HTTP ${response.status})` });
-      }
-
-      const html = await response.text();
-      const parsed = parseGunsLolHtml(html, cleanUsername);
-
-      let responseData = {
-        ...parsed,
-        preview: `${parsed.playlist.length} tracks, effect: ${parsed.nameEffect || 'none'}, location: ${parsed.locationText || 'none'}`,
-      };
-
-      responseData = await rehostImportMedia(responseData, UPLOADS_DIR, TMP_DIR) as typeof responseData;
-
+      const parsed = await parseImportInput(importInput);
+      const responseData = await rehostImportMedia(parsed, UPLOADS_DIR, TMP_DIR, undefined, DATA_DIR);
       res.json({
         success: true,
-        data: responseData,
+        data: {
+          ...responseData,
+          preview: getImportPreviewSummary(responseData as import('./src/gunsImportMap').GunsImportResult),
+        },
       });
     } catch (error: any) {
       console.error(error);
-      res.status(500).json({ error: `Scraping failure: ${error.message}` });
+      res.status(500).json({ error: error.message || 'Import failure' });
     }
   });
 
@@ -965,7 +1217,7 @@ async function startServer() {
         playlist?: { id: string; url: string; title: string; artist: string }[];
       };
 
-      const rehosted = await rehostImportMedia(payload, UPLOADS_DIR, TMP_DIR);
+      const rehosted = await rehostImportMedia(payload, UPLOADS_DIR, TMP_DIR, undefined, DATA_DIR);
       res.json({ success: true, data: rehosted });
     } catch (error: any) {
       console.error(error);

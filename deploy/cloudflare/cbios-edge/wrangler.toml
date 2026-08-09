@@ -1,0 +1,7 @@
+name = "cbios-edge"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+[vars]
+# Set secrets via: wrangler secret put DISCORD_CLIENT_SECRET
+# DISCORD_CLIENT_ID, DISCORD_REDIRECT_URI, CBIOS_WEBHOOK_SECRET, CBIOS_APP_URL, CBIOS_NODE_WEBHOOK_URL

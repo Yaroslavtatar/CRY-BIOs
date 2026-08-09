@@ -9,7 +9,7 @@ import AnalyticsView from './AnalyticsView';
 import BioPage from './BioPage';
 import QRCode from 'qrcode';
 import { getThumbUrl } from '../utils/media';
-import { parseGunsLolHtml, applyGunsImportToConfig, getImportPreviewSummary, getImportPreviewItems, type GunsImportResult, type ImportPreviewItem } from '../gunsImportMap';
+import { applyGunsImportToConfig, getImportPreviewSummary, getImportPreviewItems, type GunsImportResult, type ImportPreviewItem } from '../gunsImportMap';
 import {
   GLOW_TARGET_LABELS,
   LOCATION_STYLE_LABELS,
@@ -26,6 +26,7 @@ import {
 } from '../dashboardLabels';
 import { resolveThemeColor, ELEMENT_COLOR_FIELDS, type ElementColorField } from '../themeColors';
 import { buildProfileUrls, getPlatformDomainConfig, type PlatformDomainConfig } from '../platformDomain';
+import { discordAvatarUrl } from '../discordBadges';
 import { NAME_EFFECT_GROUPS, NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
 import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
 import SocialIcon from './SocialIcon';
@@ -106,10 +107,10 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [renameSuccess, setRenameSuccess] = useState(false);
   const [renameLoading, setRenameLoading] = useState(false);
 
-  const [isDiscordModalOpen, setIsDiscordModalOpen] = useState(false);
-  const [discordInput, setDiscordInput] = useState('');
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [googleInput, setGoogleInput] = useState('');
+  const [discordLinkLoading, setDiscordLinkLoading] = useState(false);
+  const [discordMessage, setDiscordMessage] = useState('');
   
   const [copiedLink, setCopiedLink] = useState<'path' | 'subdomain' | false>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -367,17 +368,16 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     reader.readAsText(file);
   };
 
-  // Guns.lol direct importer states
-  const [importGunsUsername, setImportGunsUsername] = useState('');
-  const [pastedHtml, setPastedHtml] = useState('');
+  // Guns.lol import hub
+  const [importInput, setImportInput] = useState('');
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
-  const [importMethod, setImportMethod] = useState<'api' | 'html'>('html');
   const [importPreview, setImportPreview] = useState('');
   const [importPreviewItems, setImportPreviewItems] = useState<ImportPreviewItem[]>([]);
   const [pendingImport, setPendingImport] = useState<GunsImportResult | null>(null);
   const [importProgress, setImportProgress] = useState('');
+  const [importProgressPct, setImportProgressPct] = useState(0);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
 
   // Checks and loads active sessions
@@ -401,6 +401,65 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         });
     }
   }, [token, username]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const discordStatus = params.get('discord');
+    if (discordStatus === 'linked') {
+      setDiscordMessage('Discord успешно подключён!');
+      if (username) loadBioConfig(username);
+      window.history.replaceState({}, '', '/dashboard');
+      setTimeout(() => setDiscordMessage(''), 4000);
+    } else if (discordStatus === 'error') {
+      setDiscordMessage('Не удалось подключить Discord. Проверьте настройки Worker.');
+      window.history.replaceState({}, '', '/dashboard');
+    }
+  }, [username]);
+
+  const handleConnectDiscord = async () => {
+    if (!token) return;
+    setDiscordLinkLoading(true);
+    setDiscordMessage('');
+    try {
+      const res = await fetch('/api/discord/oauth/start', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'OAuth start failed');
+      window.location.href = data.url;
+    } catch (err: any) {
+      setDiscordMessage(err.message || 'Ошибка OAuth');
+    } finally {
+      setDiscordLinkLoading(false);
+    }
+  };
+
+  const handleDisconnectDiscord = async () => {
+    if (!token) return;
+    setDiscordLinkLoading(true);
+    try {
+      const res = await fetch('/api/discord/disconnect', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Disconnect failed');
+      }
+      updateConfigValue('discordConnected', false);
+      updateConfigValue('discordId', '');
+      updateConfigValue('discordUsername', '');
+      updateConfigValue('discordDisplayName', '');
+      updateConfigValue('discordAvatarHash', null);
+      setDiscordMessage('Discord отключён');
+      if (username) loadBioConfig(username);
+      setTimeout(() => setDiscordMessage(''), 3000);
+    } catch (err: any) {
+      setDiscordMessage(err.message || 'Ошибка отключения');
+    } finally {
+      setDiscordLinkLoading(false);
+    }
+  };
 
   // Load config on command
   const loadBioConfig = (uname: string) => {
@@ -433,29 +492,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       .catch(err => console.error("Analytics fetch error", err));
   };
 
-  const rehostImportPayload = async (parsed: GunsImportResult): Promise<GunsImportResult> => {
-    const res = await fetch('/api/rehost-import-media', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        avatarUrl: parsed.avatarUrl,
-        bgType: parsed.bgType,
-        bgValue: parsed.bgValue,
-        audioUrl: parsed.audioUrl,
-        customCursorUrl: parsed.customCursorUrl,
-        playlist: parsed.playlist,
-      }),
-    });
-    const text = await res.text();
-    let body: any = {};
-    try { body = JSON.parse(text); } catch { /* ignore */ }
-    if (!res.ok) throw new Error(body.error || 'Не удалось загрузить медиа на сервер');
-    return { ...parsed, ...body.data, playlist: body.data?.playlist || parsed.playlist };
-  };
-
   const showImportPreview = (parsed: GunsImportResult) => {
     setPendingImport(parsed);
     setImportPreviewItems(getImportPreviewItems(parsed));
@@ -469,8 +505,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     setPendingImport(null);
     setImportPreviewItems([]);
     setImportPreview('');
-    setPastedHtml('');
-    setImportGunsUsername('');
+    setImportInput('');
   };
 
   const handleCancelImport = () => {
@@ -486,62 +521,77 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     setImportError('');
     setImportSuccess('');
     setImportProgress('');
+    setImportProgressPct(0);
     handleCancelImport();
 
-    if (!config) return;
+    if (!config || !token) return;
 
-    if (importMethod === 'html') {
-      if (!pastedHtml.trim()) {
-        setImportError('Пожалуйста, вставьте исходный HTML вашей страницы (Ctrl+U на guns.lol, скопируйте всё и вставьте сюда).');
-        return;
-      }
-      try {
-        setImportLoading(true);
-        setImportProgress('Разбор HTML…');
-        const parsed = parseGunsLolHtml(pastedHtml);
-        setImportProgress('Загрузка медиа на сервер…');
-        const withMedia = await rehostImportPayload(parsed);
-        showImportPreview(withMedia);
-      } catch (err: any) {
-        setImportError(`Ошибка импорта: ${err.message}`);
-      } finally {
-        setImportLoading(false);
-        setImportProgress('');
-      }
-    } else {
-      if (!importGunsUsername.trim()) {
-        setImportError('Пожалуйста, введите имя вашего профиля guns.lol');
-        return;
-      }
-      setImportLoading(true);
-      setImportProgress('Запрос к guns.lol…');
-      fetch('/api/import-gunslol', {
+    if (!importInput.trim()) {
+      setImportError('Вставьте ссылку https://guns.lol/username или HTML страницы (Ctrl+U → Copy).');
+      return;
+    }
+
+    setImportLoading(true);
+    setImportProgress('Запуск импорта…');
+
+    try {
+      const res = await fetch('/api/import-profile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ targetUsername: importGunsUsername })
-      })
-        .then(async res => {
-          const text = await res.text();
-          let body: any = {};
-          try { body = JSON.parse(text); } catch (e) {}
-          if (!res.ok) throw new Error(body.error || 'Не удалось связаться с сервером');
-          return body;
-        })
-        .then(resData => {
-          setImportProgress('Обработка данных…');
-          showImportPreview(resData.data);
-        })
-        .catch(err => {
-          setImportError(err.message || 'Ошибка сервера. Переключитесь на «HTML (100% безотказно)» — это обходит Cloudflare.');
-          setImportMethod('html');
-        })
-        .finally(() => {
-          setImportLoading(false);
-          setImportProgress('');
-        });
+        body: JSON.stringify({ input: importInput.trim() }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Import failed');
+
+      const jobId = body.jobId as string;
+      const progRes = await fetch(`/api/import-profile/progress/${jobId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!progRes.ok) throw new Error('Progress stream failed');
+
+      const reader = progRes.body?.getReader();
+      if (!reader) throw new Error('No progress stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finished = false;
+
+      while (!finished) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+
+        for (const part of parts) {
+          const lines = part.split('\n');
+          const eventLine = lines.find(l => l.startsWith('event: '));
+          const dataLine = lines.find(l => l.startsWith('data: '));
+          if (!eventLine || !dataLine) continue;
+          const event = eventLine.replace('event: ', '').trim();
+          const data = JSON.parse(dataLine.replace('data: ', ''));
+
+          if (event === 'progress') {
+            const { current, total, label } = data;
+            setImportProgress(typeof label === 'string' ? label : `Медиа ${current}/${total}`);
+            setImportProgressPct(total ? Math.round((current / total) * 100) : 0);
+          } else if (event === 'done') {
+            showImportPreview(data as GunsImportResult);
+            finished = true;
+          } else if (event === 'error') {
+            throw new Error(data.error || 'Import error');
+          }
+        }
+      }
+    } catch (err: any) {
+      setImportError(err.message || 'Ошибка импорта');
+    } finally {
+      setImportLoading(false);
+      setImportProgress('');
+      setImportProgressPct(0);
     }
   };
 
@@ -1235,93 +1285,43 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         </p>
 
                         <div className="border border-white/5 bg-black/40 rounded-sm p-3.5 space-y-3 font-mono text-xs">
-                          {/* Method selection */}
-                          <div className="flex bg-black/40 p-1 rounded-sm border border-white/5 space-x-1 max-w-sm">
-                            <button
-                              type="button"
-                              onClick={() => { setImportMethod('api'); setImportError(''); setImportSuccess(''); }}
-                              className={`flex-1 py-1.5 text-[9px] uppercase tracking-wider font-extrabold rounded-sm transition ${
-                                importMethod === 'api' ? 'bg-[#00f2ff] text-black font-black' : 'text-neutral-500 hover:text-white'
-                              }`}
-                            >
-                              Быстрый импорт по нику
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setImportMethod('html'); setImportError(''); setImportSuccess(''); }}
-                              className={`flex-1 py-1.5 text-[9px] uppercase tracking-wider font-extrabold rounded-sm transition ${
-                                importMethod === 'html' ? 'bg-[#00f2ff] text-black font-black' : 'text-neutral-500 hover:text-white'
-                              }`}
-                            >
-                              Вручную через HTML (100% безотказно)
-                            </button>
-                          </div>
-
                           <form onSubmit={handleImportFromGunsLol} className="space-y-3.5 pt-1">
-                            {importMethod === 'api' ? (
-                              <div className="space-y-1.5">
-                                <label className="block text-[9px] text-neutral-500 uppercase font-black">Имя пользователя на guns.lol</label>
-                                <div className="flex gap-2">
-                                  <div className="relative flex-grow">
-                                    <span className="absolute left-3.5 top-3 text-neutral-600 font-bold">@</span>
-                                    <input
-                                      type="text"
-                                      placeholder="Например: cryteam"
-                                      value={importGunsUsername}
-                                      onChange={e => setImportGunsUsername(e.target.value)}
-                                      className="w-full bg-black/50 border border-white/10 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white pl-8 outline-none font-semibold font-mono placeholder-neutral-700"
-                                    />
-                                  </div>
-                                  <button
-                                    type="submit"
-                                    disabled={importLoading || !!pendingImport}
-                                    className="px-5 bg-[#00f2ff] text-black font-black text-[10px] uppercase tracking-wider rounded-sm hover:bg-[#00d0e0] active:scale-95 transition-all text-center flex items-center justify-center space-x-1.5 cursor-pointer shadow-[0_0_15px_rgba(0,242,255,0.25)] flex-shrink-0"
-                                  >
-                                    {importLoading ? (
-                                      <span className="w-3.5 h-3.5 border-2 border-t-black border-transparent animate-spin rounded-full" />
-                                    ) : (
-                                      <span>Сканировать</span>
-                                    )}
-                                  </button>
-                                </div>
-                                <span className="text-[9px] text-neutral-500 leading-normal block">
-                                  Может не сработать из-за Cloudflare. Если ошибка — используйте HTML-импорт.
+                            <div className="space-y-2">
+                              <label className="block text-[9px] text-neutral-500 uppercase font-black">
+                                Ссылка guns.lol или HTML страницы
+                              </label>
+                              <textarea
+                                placeholder="https://guns.lol/username  или  вставьте HTML (Ctrl+U на guns.lol → Ctrl+A → Ctrl+C)"
+                                value={importInput}
+                                onChange={e => setImportInput(e.target.value)}
+                                rows={4}
+                                className="w-full bg-black/50 border border-white/10 focus:border-[#00f2ff] rounded-sm p-3 text-xs text-neutral-300 font-mono outline-none placeholder-neutral-800"
+                              />
+                              <div className="flex justify-between items-center gap-4">
+                                <span className="text-[9.5px] leading-snug text-neutral-500">
+                                  Авто-определение формата. Медиа оптимизируются и загружаются на сервер параллельно.
                                 </span>
+                                <button
+                                  type="submit"
+                                  disabled={importLoading || !!pendingImport}
+                                  className="px-6 py-2.5 bg-[#00f2ff] text-black font-black text-[10px] uppercase tracking-wider rounded-sm hover:bg-[#00d0e0] active:scale-95 transition-all text-center flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,255,0.25)] flex-shrink-0"
+                                >
+                                  {importLoading ? (
+                                    <span className="w-3.5 h-3.5 border-2 border-t-black border-transparent animate-spin rounded-full" />
+                                  ) : (
+                                    <span>Импортировать</span>
+                                  )}
+                                </button>
                               </div>
-                            ) : (
-                              <div className="space-y-2">
-                                <label className="block text-[9px] text-neutral-500 uppercase font-black">Вставьте исходный код страницы (HTML)</label>
-                                <ol className="text-[9px] text-neutral-500 space-y-0.5 list-decimal list-inside font-sans leading-relaxed">
-                                  <li>Откройте свой профиль на guns.lol в браузере</li>
-                                  <li>Нажмите Ctrl+U (просмотр кода страницы)</li>
-                                  <li>Выделите всё (Ctrl+A) и скопируйте (Ctrl+C)</li>
-                                  <li>Вставьте код в поле ниже и нажмите «Разобрать»</li>
-                                </ol>
-                                <textarea
-                                  placeholder="Вставьте сюда полный HTML-код страницы guns.lol…"
-                                  value={pastedHtml}
-                                  onChange={e => setPastedHtml(e.target.value)}
-                                  rows={4}
-                                  className="w-full bg-black/50 border border-white/10 focus:border-[#00f2ff] rounded-sm p-3 text-xs text-neutral-300 font-mono outline-none placeholder-neutral-800"
-                                />
-                                <div className="flex justify-between items-center gap-4">
-                                  <span className="text-[9.5px] leading-snug text-neutral-500">
-                                    Обходит Cloudflare. Медиа загружаются на ваш сервер автоматически.
-                                  </span>
-                                  <button
-                                    type="submit"
-                                    disabled={importLoading || !!pendingImport}
-                                    className="px-6 py-2.5 bg-[#00f2ff] text-black font-black text-[10px] uppercase tracking-wider rounded-sm hover:bg-[#00d0e0] active:scale-95 transition-all text-center flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,255,0.25)] flex-shrink-0"
-                                  >
-                                    {importLoading ? (
-                                      <span className="w-3.5 h-3.5 border-2 border-t-black border-transparent animate-spin rounded-full" />
-                                    ) : (
-                                      <span>Разобрать</span>
-                                    )}
-                                  </button>
+                              {importLoading && importProgressPct > 0 && (
+                                <div className="space-y-1">
+                                  <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                                    <div className="h-full bg-[#00f2ff]/70 transition-all" style={{ width: `${importProgressPct}%` }} />
+                                  </div>
+                                  <span className="text-[8px] text-neutral-500">{importProgress}</span>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </form>
 
                           {importProgress && (
@@ -1471,46 +1471,62 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             </span>
 
                             <span className="text-[10px] text-neutral-500 block leading-relaxed font-sans">
-                              Свяжите ваши аккаунты Discord и Google с guns.lol для вывода баджей и верификации.
+                              OAuth2 Discord — реальные бейджи и аватар. Live-статус через Lanyard.
                             </span>
 
+                            {discordMessage && (
+                              <span className="text-[9px] text-[#5865f2] block font-mono">{discordMessage}</span>
+                            )}
+
                             <div className="space-y-2 pt-1 font-mono text-[10px]">
-                              {/* Discord Connect button structure */}
                               {config.discordConnected ? (
                                 <div className="p-2.5 bg-[#5865f2]/10 border border-[#5865f2]/30 rounded-sm flex justify-between items-center text-[#5865f2]">
                                   <div className="flex items-center space-x-2.5">
-                                    <span className="text-sm font-bold">👾</span>
+                                    {config.discordId && (
+                                      <img
+                                        src={discordAvatarUrl(config.discordId, config.discordAvatarHash, 64)}
+                                        alt=""
+                                        className="w-8 h-8 rounded-full border border-white/10"
+                                      />
+                                    )}
                                     <div>
-                                      <span className="font-extrabold block text-white text-[10px]">Discord Подключён</span>
-                                      <span className="text-[9px] text-[#5865f2]/80 font-mono">@{config.discordUsername || 'unknown'}</span>
+                                      <span className="font-extrabold block text-white text-[10px]">Discord подключён</span>
+                                      <span className="text-[9px] text-[#5865f2]/80 font-mono">
+                                        @{config.discordUsername || 'unknown'}
+                                      </span>
                                     </div>
                                   </div>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      updateConfigValue('discordConnected', false);
-                                      updateConfigValue('discordUsername', '');
-                                    }}
-                                    className="text-[9px] font-black uppercase hover:underline text-red-400 cursor-pointer"
+                                    disabled={discordLinkLoading}
+                                    onClick={handleDisconnectDiscord}
+                                    className="text-[9px] font-black uppercase hover:underline text-red-400 cursor-pointer disabled:opacity-50"
                                   >
-                                    [ Выйти ]
+                                    Отключить
                                   </button>
                                 </div>
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() => setIsDiscordModalOpen(true)}
-                                  className="w-full flex items-center justify-between p-3 bg-black/40 border border-white/10 hover:border-[#5865f2]/40 hover:bg-[#5865f2]/5 rounded-sm transition text-left cursor-pointer"
+                                  disabled={discordLinkLoading}
+                                  onClick={handleConnectDiscord}
+                                  className="w-full flex items-center justify-between p-3 bg-[#5865f2]/15 border border-[#5865f2]/40 hover:bg-[#5865f2]/25 rounded-sm transition text-left cursor-pointer disabled:opacity-50"
                                 >
                                   <span className="font-bold flex items-center space-x-2">
-                                    <span className="text-neutral-500">👾</span>
-                                    <span className="text-neutral-300">Подключить Discord</span>
+                                    <span>👾</span>
+                                    <span className="text-white">Подключить Discord</span>
                                   </span>
-                                  <span className="text-[8px] uppercase tracking-wider text-neutral-500 font-extrabold bg-white/5 px-2 py-0.5 rounded-sm">Link</span>
+                                  <span className="text-[8px] uppercase tracking-wider text-white font-extrabold bg-[#5865f2] px-2 py-0.5 rounded-sm">
+                                    OAuth2
+                                  </span>
                                 </button>
                               )}
-
-                              {/* Google removed directly as requested */}
+                              <p className="text-[8px] text-neutral-600 font-sans leading-relaxed">
+                                Для live-статуса (Playing…) подключите{' '}
+                                <a href="https://discord.gg/lanyard" target="_blank" rel="noreferrer" className="text-[#5865f2] underline">
+                                  Lanyard
+                                </a>
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -3815,60 +3831,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* DISCORD CONNECTION INTEGRATION MODAL OVERLAY */}
-      {isDiscordModalOpen && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[99] flex items-center justify-center p-4">
-          <div className="bg-[#0b0b0f] border border-[#5865f2]/20 p-6 rounded-sm max-w-sm w-full space-y-4 font-mono text-white shadow-[0_0_50px_rgba(88,101,242,0.15)]">
-            <h4 className="text-xs font-black uppercase tracking-widest text-[#5865f2] flex items-center gap-1.5 italic">
-              <span>👾</span>
-              <span>Discord Authorization popup</span>
-            </h4>
-            <p className="text-[10px] text-neutral-400 font-sans leading-normal">
-              Authorize guns.lol integration node to connect your Discord active status and avatar badge? This updates profile statistics instantly!
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[8px] uppercase text-neutral-500 font-bold mb-1.5">DISCORD ИМЯ ПИЛЬЗОВАТЕЛЯ ИЛИ ID</label>
-                <input
-                  type="text"
-                  placeholder="Например: username123 (без @) или ID..."
-                  value={discordInput}
-                  onChange={e => setDiscordInput(e.target.value.trim())}
-                  className="w-full bg-black border border-white/15 focus:border-[#5865f2] p-2.5 rounded-sm text-xs outline-none text-white font-sans"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2 text-[10px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsDiscordModalOpen(false);
-                    setDiscordInput('');
-                  }}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-sm font-bold uppercase transition text-neutral-400 cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (discordInput.trim()) {
-                      updateConfigValue('discordConnected', true);
-                      updateConfigValue('discordId', discordInput.trim());
-                      setDiscordInput('');
-                      setIsDiscordModalOpen(false);
-                    }
-                  }}
-                  className="px-4 py-2 bg-[#5865f2] text-white font-black uppercase rounded-sm hover:bg-[#4752c4] transition cursor-pointer"
-                >
-                  Авторизовать
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}

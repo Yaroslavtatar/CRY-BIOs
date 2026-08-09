@@ -41,6 +41,7 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
   const [siteSettingsLoading, setSiteSettingsLoading] = useState(false);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [optimizeLoading, setOptimizeLoading] = useState(false);
   const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(null);
   const [pendingBackupFile, setPendingBackupFile] = useState<File | null>(null);
   const [userImportTarget, setUserImportTarget] = useState<string | null>(null);
@@ -174,6 +175,26 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       setErrorMessage(err.message);
     } finally {
       setCleanupLoading(false);
+    }
+  };
+
+  const handleOptimizeMedia = async () => {
+    if (!window.confirm('Переоптимизировать все медиафайлы в uploads/? Это может занять несколько минут.')) return;
+    setOptimizeLoading(true);
+    setErrorMessage('');
+    try {
+      const res = await fetch('/api/admin/optimize-media', {
+        method: 'POST',
+        headers: { 'x-admin-password': encodeURIComponent(adminPassword) },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Optimize failed');
+      setSuccessMessage(`Оптимизировано ${data.processed} файлов, сэкономлено ${data.savedMb} MB`);
+      fetchStorageStats();
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    } finally {
+      setOptimizeLoading(false);
     }
   };
 
@@ -918,6 +939,13 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                       className="w-full py-2 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/30 text-amber-400 rounded-sm text-[10px] font-bold uppercase cursor-pointer disabled:opacity-50"
                     >
                       {cleanupLoading ? 'Очистка...' : 'Очистить неиспользуемые файлы'}
+                    </button>
+                    <button
+                      onClick={handleOptimizeMedia}
+                      disabled={optimizeLoading}
+                      className="w-full py-2 bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/30 text-cyan-400 rounded-sm text-[10px] font-bold uppercase cursor-pointer disabled:opacity-50"
+                    >
+                      {optimizeLoading ? 'Оптимизация...' : 'Оптимизировать все медиа'}
                     </button>
                   </div>
                 </>

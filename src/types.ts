@@ -110,6 +110,11 @@ export interface BioConfig {
 
   discordConnected?: boolean;
   discordUsername?: string;
+  discordDisplayName?: string;
+  discordAvatarHash?: string | null;
+  discordPremiumType?: number;
+  discordPublicFlags?: number;
+  discordLinkedAt?: string;
   googleConnected?: boolean;
   googleEmail?: string;
   aliasSlug?: string;

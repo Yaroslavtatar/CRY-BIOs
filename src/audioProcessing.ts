@@ -6,10 +6,11 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-/** Transcode uploaded audio to compact MP3 (128 kbps) for faster loading. */
+/** Transcode uploaded audio to compact MP3 for faster loading. */
 export async function processUploadedAudio(
   inputPath: string,
-  uploadsDir: string
+  uploadsDir: string,
+  bitrate: '96k' | '128k' = '128k',
 ): Promise<{ filename: string }> {
   const id = crypto.randomUUID();
   const outputFilename = `${id}.mp3`;
@@ -21,7 +22,7 @@ export async function processUploadedAudio(
       '-i', inputPath,
       '-vn',
       '-c:a', 'libmp3lame',
-      '-b:a', '128k',
+      '-b:a', bitrate,
       '-ar', '44100',
       '-ac', '2',
       outputPath,

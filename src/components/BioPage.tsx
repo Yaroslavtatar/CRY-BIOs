@@ -19,6 +19,36 @@ import GlowLayer, { getGlowStyle, ProfileGradientWrapper } from './GlowLayer';
 import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
 import { getSocialIconColor } from '../utils/socialPlatforms';
 import { resolveThemeColor } from '../themeColors';
+import { discordAvatarUrl, type DiscordBadge } from '../discordBadges';
+
+const renderDiscordBadgeIcon = (badge: DiscordBadge) => {
+  const iconProps = { className: 'w-3 h-3 flex-shrink-0' };
+  switch (badge.icon) {
+    case 'nitro':
+    case 'nitro_classic':
+    case 'nitro_basic':
+      return <Zap {...iconProps} className="w-3 h-3 text-[#f47fff]" />;
+    case 'hypesquad':
+    case 'hypesquad_bravery':
+    case 'hypesquad_brilliance':
+    case 'hypesquad_balance':
+      return <Flame {...iconProps} className="w-3 h-3 text-[#5865f2]" />;
+    case 'bug_hunter':
+    case 'bug_hunter_gold':
+      return <Shield {...iconProps} className="w-3 h-3 text-green-400" />;
+    case 'early_supporter':
+      return <Heart {...iconProps} className="w-3 h-3 text-pink-400" />;
+    case 'verified_dev':
+    case 'active_dev':
+      return <Code2 {...iconProps} className="w-3 h-3 text-[#00f2ff]" />;
+    case 'staff':
+    case 'mod':
+    case 'partner':
+      return <Crown {...iconProps} className="w-3 h-3 text-amber-400" />;
+    default:
+      return <Star {...iconProps} />;
+  }
+};
 
 const renderBadgeIcon = (iconName: string) => {
   const iconProps = { className: "w-3 h-3 flex-shrink-0" };
@@ -1109,7 +1139,10 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <img 
-                            src={`https://cdn.discordapp.com/avatars/${discordUser.discord_user.id}/${discordUser.discord_user.avatar}.png`}
+                            src={discordAvatarUrl(
+                              discordUser.discord_user.id,
+                              discordUser.discord_user.avatar,
+                            )}
                             className="w-12 h-12 rounded-full border border-white/10"
                             loading="lazy"
                             decoding="async"
@@ -1127,9 +1160,9 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                             <h1 className="font-bold text-[15px] text-white leading-tight flex items-center gap-1.5 drop-shadow-md">
                               {discordUser.discord_user.display_name || discordUser.discord_user.username}
                             </h1>
-                            {discordUser.discord_user.badges && discordUser.discord_user.badges.map((b: any) => (
-                              <div key={b.id} className="w-4 h-4 bg-black/40 rounded-sm border border-white/10 flex items-center justify-center text-[#00f2ff]" title={b.label}>
-                                {b.id === 'nitro' ? <Zap className="w-3 h-3" /> : <Flame className="w-3 h-3 text-[#f47fff]" />}
+                            {discordUser.discord_user.badges && discordUser.discord_user.badges.map((b: DiscordBadge) => (
+                              <div key={b.id} className="w-4 h-4 bg-black/40 rounded-sm border border-white/10 flex items-center justify-center" title={b.label}>
+                                {renderDiscordBadgeIcon(b)}
                               </div>
                             ))}
                           </div>

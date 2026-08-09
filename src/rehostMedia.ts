@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { processUploadedImage, type ImageUploadType } from './imageProcessing';
 import { processUploadedVideo } from './videoProcessing';
 import { processUploadedAudio } from './audioProcessing';
+import { processMedia } from './mediaPipeline';
 
 export type RehostMediaType = 'avatar' | 'bg' | 'video' | 'audio' | 'cursor';
 
@@ -16,6 +17,9 @@ const ALLOWED_HOSTS = new Set([
   'cdn.guns.lol',
   'guns.lol',
   'www.guns.lol',
+  'cdn.discordapp.com',
+  'media.discordapp.net',
+  'i.imgur.com',
 ]);
 
 function isLocalUploadUrl(url: string): boolean {
@@ -29,7 +33,6 @@ function isAllowedRemoteUrl(url: string): boolean {
     const host = parsed.hostname.toLowerCase();
     if (ALLOWED_HOSTS.has(host)) return true;
     if (host.endsWith('.guns.lol')) return true;
-    // Block private/reserved IPs
     if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.|localhost|::1|\[::1\])/.test(host)) {
       return false;
     }
@@ -93,11 +96,18 @@ function copyRawToUploads(tmpPath: string, uploadsDir: string): string {
   return `/uploads/${filename}`;
 }
 
+function mapImageType(type: RehostMediaType): ImageUploadType {
+  if (type === 'avatar') return 'avatar';
+  if (type === 'cursor') return 'image';
+  return 'bg';
+}
+
 export async function rehostRemoteUrl(
   url: string | undefined | null,
   uploadsDir: string,
   tmpDir: string,
-  type: RehostMediaType
+  type: RehostMediaType,
+  dataDir?: string,
 ): Promise<string | null> {
   if (!url || !url.trim()) return null;
   const trimmed = url.trim().replace(/^['"]|['"]$/g, '');
@@ -118,42 +128,72 @@ export async function rehostRemoteUrl(
     const { tmpPath: downloaded, contentType } = await downloadToTemp(trimmed, tmpDir);
     tmpPath = downloaded;
 
-    const isGif = trimmed.toLowerCase().includes('.gif') || contentType.includes('gif');
-    const isVideo = type === 'video' || contentType.startsWith('video/') || /\.(mp4|webm|ogv)$/i.test(trimmed);
-    const isAudio = type === 'audio' || contentType.startsWith('audio/') || /\.(mp3|wav|ogg|m4a)$/i.test(trimmed);
+    const mediaDataDir = dataDir || path.join(path.dirname(uploadsDir));
 
-    if (isVideo) {
-      const result = await processUploadedVideo(tmpPath, uploadsDir);
+    if (type === 'video' || contentType.includes('video')) {
+      const result = await processMedia({
+        dataDir: mediaDataDir,
+        uploadsDir,
+        inputPath: tmpPath,
+        kind: 'video',
+      });
       tmpPath = null;
-      return `/uploads/${result.filename}`;
+      return result.url;
     }
 
-    if (isAudio) {
-      const result = await processUploadedAudio(tmpPath, uploadsDir);
+    if (type === 'audio' || contentType.includes('audio')) {
+      const result = await processMedia({
+        dataDir: mediaDataDir,
+        uploadsDir,
+        inputPath: tmpPath,
+        kind: 'audio',
+        audioBitrate: '96k',
+      });
       tmpPath = null;
-      return `/uploads/${result.filename}`;
+      return result.url;
     }
 
-    if (type === 'cursor') {
-      return copyRawToUploads(tmpPath, uploadsDir);
-    }
-
-    if (isGif) {
-      return copyRawToUploads(tmpPath, uploadsDir);
-    }
-
-    const imageType: ImageUploadType = type === 'avatar' ? 'avatar' : type === 'bg' ? 'bg' : 'image';
-    const result = await processUploadedImage(tmpPath, uploadsDir, imageType);
+    const imageType = mapImageType(type);
+    const result = await processMedia({
+      dataDir: mediaDataDir,
+      uploadsDir,
+      inputPath: tmpPath,
+      kind: 'image',
+      imageType,
+    });
     tmpPath = null;
-    return `/uploads/${result.filename}`;
+    return result.url;
   } catch (err: any) {
     console.warn(`[rehost] Failed to rehost ${trimmed}: ${err.message}`);
+    if (tmpPath && fs.existsSync(tmpPath)) {
+      return copyRawToUploads(tmpPath, uploadsDir);
+    }
     return trimmed;
   } finally {
     if (tmpPath && fs.existsSync(tmpPath)) {
-      try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+      fs.unlinkSync(tmpPath);
     }
   }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
 }
 
 export async function rehostImportMedia(
@@ -167,9 +207,10 @@ export async function rehostImportMedia(
   },
   uploadsDir: string,
   tmpDir: string,
-  onProgress?: (current: number, total: number, label: string) => void
+  onProgress?: (current: number, total: number, label: string) => void,
+  dataDir?: string,
 ): Promise<typeof data> {
-  const result = { ...data };
+  const result = { ...data, playlist: data.playlist ? [...data.playlist] : undefined };
   const tasks: { key: string; url: string; type: RehostMediaType }[] = [];
 
   if (data.avatarUrl) tasks.push({ key: 'avatarUrl', url: data.avatarUrl, type: 'avatar' });
@@ -186,12 +227,13 @@ export async function rehostImportMedia(
     });
   }
 
-  let done = 0;
   const total = tasks.length;
+  let done = 0;
+  const concurrency = parseInt(process.env.MEDIA_MAX_CONCURRENT || '2', 10) || 2;
 
-  for (const task of tasks) {
+  await mapWithConcurrency(tasks, concurrency, async (task) => {
     onProgress?.(done + 1, total, task.key);
-    const rehosted = await rehostRemoteUrl(task.url, uploadsDir, tmpDir, task.type);
+    const rehosted = await rehostRemoteUrl(task.url, uploadsDir, tmpDir, task.type, dataDir);
     if (task.key.startsWith('playlist-')) {
       const idx = parseInt(task.key.split('-')[1], 10);
       if (result.playlist?.[idx] && rehosted) result.playlist[idx].url = rehosted;
@@ -199,7 +241,9 @@ export async function rehostImportMedia(
       (result as any)[task.key] = rehosted || task.url;
     }
     done++;
-  }
+    onProgress?.(done, total, task.key);
+    return rehosted;
+  });
 
   return result;
 }

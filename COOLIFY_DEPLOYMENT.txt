@@ -64,6 +64,19 @@ CRY BIOS использует SQLite в качестве базы данных �
 * ADMIN_PASSWORD=your_secure_admin_password
   (ОБЯЗАТЕЛЬНО на проде! Без этого используется дефолтный admin_secret)
 
+* CBIOS_EDGE_URL=https://your-worker.workers.dev
+  (Cloudflare Worker — Discord OAuth, Lanyard, guns.lol fetch. См. deploy/cloudflare/cbios-edge/)
+
+* CBIOS_EDGE_SECRET=random_64_char_secret
+  (HMAC секрет, одинаковый в Worker и Node)
+
+* DISCORD_CLIENT_ID=...
+  (Discord Application Client ID — дублируется в Worker secrets)
+
+* MEDIA_MAX_CONCURRENT=2
+* MEDIA_ENABLE_AVIF=true
+* MEDIA_ENABLE_DEDUP=true
+
 * BACKUP_RETAIN=5
   (Сколько автоматических ZIP-бэкапов хранить в /app/data/backups/)
 

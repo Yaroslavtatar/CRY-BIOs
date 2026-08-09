@@ -132,6 +132,9 @@ export function writeBackupToFile(
     if (fs.existsSync(path.join(options.dataDir, 'admin_password.txt'))) {
       archive.file(path.join(options.dataDir, 'admin_password.txt'), { name: 'admin_password.txt' });
     }
+    if (fs.existsSync(path.join(options.dataDir, 'site_settings.json'))) {
+      archive.file(path.join(options.dataDir, 'site_settings.json'), { name: 'site_settings.json' });
+    }
 
     archive.finalize();
   });

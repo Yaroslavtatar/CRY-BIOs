@@ -669,6 +669,7 @@ export function applyGunsImportToConfig(config: BioConfig, imported: GunsImportR
     enterText: imported.enterText || config.enterText,
     monochromeMode: imported.monochromeMode ?? config.monochromeMode,
     discordId: imported.discordId || config.discordId,
+    discordConnected: imported.discordId ? true : config.discordConnected,
     avatarGlowEnabled: imported.avatarGlowEnabled ?? config.avatarGlowEnabled,
     linkHoverGlow: imported.linkHoverGlow ?? config.linkHoverGlow,
     profileGradientEnabled: imported.profileGradientEnabled ?? config.profileGradientEnabled,

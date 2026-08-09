@@ -38,6 +38,12 @@ db.exec(`
     country TEXT NOT NULL,
     FOREIGN KEY(username) REFERENCES users(username) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS oauth_states (
+    state TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
 `);
 
 try {
@@ -340,4 +346,31 @@ export function importDatabase(dump: { users?: any[], bios?: any[], analytics?: 
   transaction();
 }
 
+export function createOAuthState(username: string, ttlMinutes = 10): string {
+  cleanupExpiredOAuthStates();
+  const state = crypto.randomUUID();
+  const expiresAt = Date.now() + ttlMinutes * 60 * 1000;
+  db.prepare('INSERT INTO oauth_states (state, username, expires_at) VALUES (?, ?, ?)').run(
+    state,
+    username,
+    expiresAt,
+  );
+  return state;
+}
 
+export function consumeOAuthState(state: string): string | null {
+  cleanupExpiredOAuthStates();
+  const row = db.prepare('SELECT username, expires_at FROM oauth_states WHERE state = ?').get(state) as
+    | { username: string; expires_at: number }
+    | undefined;
+  if (!row || row.expires_at < Date.now()) {
+    db.prepare('DELETE FROM oauth_states WHERE state = ?').run(state);
+    return null;
+  }
+  db.prepare('DELETE FROM oauth_states WHERE state = ?').run(state);
+  return row.username;
+}
+
+export function cleanupExpiredOAuthStates(): void {
+  db.prepare('DELETE FROM oauth_states WHERE expires_at < ?').run(Date.now());
+}
