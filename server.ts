@@ -278,6 +278,21 @@ async function startServer() {
       : false,
   }));
   app.use(express.json());
+
+  // Канонический URL: name.cbios.ru → cbios.ru/name (когда Traefik уже проксирует поддомен)
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+    if (req.path.startsWith('/dashboard') || req.path.startsWith('/admin')) return next();
+    const platform = getPlatformConfig(req);
+    const host = getRequestHost(req).toLowerCase().split(':')[0];
+    const subSlug = parseSubdomainSlug(host, platform.baseDomain);
+    if (subSlug) {
+      const suffix = req.path === '/' ? '' : req.path;
+      return res.redirect(301, `${platform.appUrl}/${subSlug}${suffix}`);
+    }
+    next();
+  });
+
   const PORT = 3000;
 
   // Middleware to support simple authentication

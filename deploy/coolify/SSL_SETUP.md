@@ -119,6 +119,7 @@ openssl s_client -connect cryteam.cbios.ru:443 -servername cryteam.cbios.ru </de
 
 | Симптом | Решение |
 |---------|---------|
+| `cbios.ru` OK, `*.cbios.ru` — ERR_CONNECTION_CLOSED | Coolify Domains с `*.cbios.ru` ломает Traefik 3 → только `cbios.ru` + labels HostRegexp (см. LABELS_PASTE.txt) |
 | Небезопасно на `*.cbios.ru`, apex OK | Нет wildcard cert → шаги 2–3 |
 | 404 на поддомене | Нет HostRegexp labels → шаг 4 |
 | ACME failed | Проверить CF_DNS_API_TOKEN, DNS challenge logs |

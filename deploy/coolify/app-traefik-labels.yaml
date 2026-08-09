@@ -1,14 +1,22 @@
 # Custom Traefik labels для CRY BIOS в Coolify (SaaS / multi-tenant)
-# Coolify → CRY BIOS → Advanced → Labels (или docker-compose labels)
+# Coolify → CRY BIOS → Advanced → Labels
+# Готовый список для вставки: deploy/coolify/LABELS_PASTE.txt
+#
+# ВАЖНО (Traefik 3 / Coolify):
+# - В Domains укажите ТОЛЬКО https://cbios.ru
+# - НЕ добавляйте https://*.cbios.ru в Domains — Coolify создаёт Host(`*.cbios.ru`), роутер не регистрируется → ERR_CONNECTION_CLOSED
+# - Wildcard маршрутизация только через HostRegexp (labels ниже)
 # Порт приложения: 3000
 
 labels:
   - traefik.enable=true
+  - traefik.docker.network=coolify
 
-  # HTTP → HTTPS
+  # HTTP → HTTPS (apex + поддомены)
   - traefik.http.routers.crybios-http.entrypoints=http
   - traefik.http.routers.crybios-http.middlewares=redirect-to-https
   - traefik.http.routers.crybios-http.rule=Host(`cbios.ru`) || HostRegexp(`^[a-z0-9-]+\.cbios\.ru$`)
+  - traefik.http.routers.crybios-http.service=crybios
 
   # HTTPS apex cbios.ru
   - traefik.http.routers.crybios-apex.entrypoints=https
@@ -18,7 +26,7 @@ labels:
   - traefik.http.routers.crybios-apex.tls=true
   - traefik.http.routers.crybios-apex.tls.certresolver=letsencrypt
 
-  # HTTPS все поддомены *.cbios.ru → одно приложение
+  # HTTPS все поддомены *.cbios.ru → одно приложение (Traefik v3: HostRegexp, не Host)
   - traefik.http.routers.crybios-wildcard.entrypoints=https
   - traefik.http.routers.crybios-wildcard.middlewares=gzip
   - traefik.http.routers.crybios-wildcard.rule=HostRegexp(`^[a-z0-9-]+\.cbios\.ru$`)
@@ -27,5 +35,6 @@ labels:
   - traefik.http.routers.crybios-wildcard.tls.certresolver=letsencrypt
   - traefik.http.routers.crybios-wildcard.tls.domains[0].main=cbios.ru
   - traefik.http.routers.crybios-wildcard.tls.domains[0].sans=*.cbios.ru
+  - traefik.http.routers.crybios-wildcard.priority=10
 
   - traefik.http.services.crybios.loadbalancer.server.port=3000
