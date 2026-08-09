@@ -37,6 +37,8 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [usingDefaultPassword, setUsingDefaultPassword] = useState(false);
+  const [hideAdminPanelLink, setHideAdminPanelLink] = useState(false);
+  const [siteSettingsLoading, setSiteSettingsLoading] = useState(false);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(null);
@@ -126,8 +128,33 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       if (res.ok) {
         const data = await res.json();
         setUsingDefaultPassword(!!data.usingDefaultPassword);
+        setHideAdminPanelLink(!!data.hideAdminPanelLink);
       }
     } catch { /* ignore */ }
+  };
+
+  const handleToggleHideAdminLink = async (checked: boolean) => {
+    setSiteSettingsLoading(true);
+    setErrorMessage('');
+    try {
+      const res = await fetch('/api/admin/site-settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': encodeURIComponent(adminPassword),
+        },
+        body: JSON.stringify({ hideAdminPanelLink: checked }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Не удалось сохранить настройки');
+      setHideAdminPanelLink(checked);
+      setSuccessMessage(checked ? 'Ссылка на админ-панель скрыта на главной' : 'Ссылка на админ-панель снова видна');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Ошибка сохранения настроек');
+    } finally {
+      setSiteSettingsLoading(false);
+    }
   };
 
   const handleCleanupOrphans = async () => {
@@ -700,6 +727,24 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                   <code className="text-amber-300">cry_bios_data:/app/data</code> во вкладке Storages.
                 </p>
               </div>
+            </div>
+
+            {/* Site settings */}
+            <div className="bg-[#0b0b0b] border border-white/10 rounded-sm p-4">
+              <h3 className="text-xs font-black font-mono text-[#00f2ff] uppercase tracking-wider">Настройки сайта</h3>
+              <label className="mt-3 flex items-start gap-3 text-[10px] text-neutral-300 font-sans cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hideAdminPanelLink}
+                  disabled={siteSettingsLoading}
+                  onChange={(e) => handleToggleHideAdminLink(e.target.checked)}
+                  className="accent-[#00f2ff] mt-0.5"
+                />
+                <span>
+                  <strong className="text-white block mb-1">Скрыть ссылку «АДМИН-ПАНЕЛЬ» на главной</strong>
+                  Убирает ссылку в футере landing page. Страница <code className="text-[#00f2ff]">/admin</code> остаётся доступной по прямому URL.
+                </span>
+              </label>
             </div>
 
             {/* Backup options */}

@@ -19,7 +19,7 @@ interface ActiveProfile {
 interface LandingPageProps {
   onNavigateToDashboard: () => void;
   onViewProfile: (username: string) => void;
-  platformConfig?: PlatformDomainConfig;
+  platformConfig?: PlatformDomainConfig & { hideAdminPanelLink?: boolean };
 }
 
 export default function LandingPage({ onNavigateToDashboard, onViewProfile, platformConfig }: LandingPageProps) {
@@ -386,8 +386,12 @@ services:
           </div>
           <div className="text-[9px] text-neutral-600 uppercase tracking-widest font-mono flex items-center gap-2 justify-end">
             <span>ПАНЕЛЬ УПРАВЛЕНИЯ В КОМПЛЕКТЕ</span>
-            <span>•</span>
-            <a href="/admin" className="text-neutral-500 hover:text-[#00f2ff] underline transition">АДМИН-ПАНЕЛЬ</a>
+            {!platformConfig?.hideAdminPanelLink && (
+              <>
+                <span>•</span>
+                <a href="/admin" className="text-neutral-500 hover:text-[#00f2ff] underline transition">АДМИН-ПАНЕЛЬ</a>
+              </>
+            )}
             <span>•</span>
             <span>ПОДДЕРЖКА DOCKER ВКЛЮЧЕНА</span>
           </div>

@@ -22,13 +22,22 @@ const DEFAULT_PLATFORM: PlatformDomainConfig = getPlatformDomainConfig({
 export default function App() {
   const [view, setView] = useState<'landing' | 'dashboard' | 'bio' | 'admin'>('landing');
   const [username, setUsername] = useState('');
-  const [platform, setPlatform] = useState<PlatformDomainConfig>(DEFAULT_PLATFORM);
+  type PublicConfig = PlatformDomainConfig & { hideAdminPanelLink?: boolean };
+
+  const [platform, setPlatform] = useState<PublicConfig>(DEFAULT_PLATFORM);
 
   useEffect(() => {
     fetch('/api/public-config')
       .then(res => (res.ok ? res.json() : null))
-      .then((data: PlatformDomainConfig | null) => {
-        if (data?.baseDomain) setPlatform(data);
+      .then((data: PublicConfig | null) => {
+        if (data) {
+          setPlatform(prev => ({
+            ...prev,
+            ...data,
+            appUrl: data.appUrl || prev.appUrl,
+            baseDomain: data.baseDomain || prev.baseDomain,
+          }));
+        }
       })
       .catch(() => {
         /* use client-derived defaults */

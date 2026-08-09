@@ -24,6 +24,7 @@ import { rehostImportMedia } from './src/rehostMedia';
 import { parseGunsLolHtml } from './src/gunsImportMap';
 import { cleanupAllOrphans, deleteUnusedBetweenConfigs } from './src/uploadCleanup';
 import { getStorageStats, runHealthChecks, isUsingDefaultAdminPassword } from './src/storageStats';
+import { getSiteSettings, updateSiteSettings } from './src/siteSettings';
 import { startScheduledBackups } from './src/scheduledBackup';
 import {
   getPlatformDomainConfig,
@@ -413,9 +414,20 @@ async function startServer() {
   });
 
   app.get('/api/admin/status', checkAdminAuth, (_req, res) => {
+    const site = getSiteSettings(DATA_DIR);
     res.json({
       usingDefaultPassword: isUsingDefaultAdminPassword(DATA_DIR),
+      hideAdminPanelLink: site.hideAdminPanelLink,
     });
+  });
+
+  app.post('/api/admin/site-settings', checkAdminAuth, (req, res) => {
+    const { hideAdminPanelLink } = req.body ?? {};
+    if (typeof hideAdminPanelLink !== 'boolean') {
+      return res.status(400).json({ error: 'hideAdminPanelLink must be a boolean' });
+    }
+    const settings = updateSiteSettings(DATA_DIR, { hideAdminPanelLink });
+    res.json({ success: true, ...settings });
   });
 
   app.get('/api/admin/storage-stats', checkAdminAuth, (_req, res) => {
@@ -604,8 +616,10 @@ async function startServer() {
   // Public platform config (domain, URLs)
   app.get('/api/public-config', (req, res) => {
     const platform = getPlatformConfig(req);
+    const site = getSiteSettings(DATA_DIR);
     res.json({
       ...platform,
+      hideAdminPanelLink: site.hideAdminPanelLink,
       ssl: {
         wildcardRequired: true,
         provider: 'coolify-traefik',

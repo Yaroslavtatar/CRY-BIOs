@@ -100,6 +100,9 @@ export function streamFullBackup(
   if (fs.existsSync(path.join(options.dataDir, 'admin_password.txt'))) {
     archive.file(path.join(options.dataDir, 'admin_password.txt'), { name: 'admin_password.txt' });
   }
+  if (fs.existsSync(path.join(options.dataDir, 'site_settings.json'))) {
+    archive.file(path.join(options.dataDir, 'site_settings.json'), { name: 'site_settings.json' });
+  }
 
   return archive.finalize();
 }
@@ -228,6 +231,11 @@ export async function importFullBackup(
     const adminPasswordSrc = path.join(tmpDir, 'admin_password.txt');
     if (fs.existsSync(adminPasswordSrc)) {
       fs.copyFileSync(adminPasswordSrc, path.join(options.dataDir, 'admin_password.txt'));
+    }
+
+    const siteSettingsSrc = path.join(tmpDir, 'site_settings.json');
+    if (fs.existsSync(siteSettingsSrc)) {
+      fs.copyFileSync(siteSettingsSrc, path.join(options.dataDir, 'site_settings.json'));
     }
 
     db.importDatabase(dump);
