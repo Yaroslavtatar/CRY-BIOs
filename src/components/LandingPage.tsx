@@ -376,7 +376,7 @@ services:
           <div className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em] italic">Скрипт установки</div>
           <div className="bg-black border border-white/10 px-5 py-3.5 rounded-sm flex items-center gap-4 font-mono text-xs text-neutral-300">
             <span className="text-[#00f2ff] font-bold">$</span>
-            <span className="font-mono">curl -sSL https://bio.cryteam.ru/api/install-script | bash</span>
+            <span className="font-mono">{installScriptCmd}</span>
           </div>
         </div>
         <div className="flex flex-col items-center md:items-end gap-2.5">
