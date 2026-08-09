@@ -17,6 +17,7 @@ Edge proxy for CRY BIOS: Discord OAuth, Lanyard presence, guns.lol HTML fetch.
 **Local:**
 
 ```bash
+cd deploy/cloudflare/cbios-edge
 npm install
 wrangler login
 wrangler secret put DISCORD_CLIENT_ID
