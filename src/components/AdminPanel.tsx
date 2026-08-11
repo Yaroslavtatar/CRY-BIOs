@@ -449,8 +449,16 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       });
 
       if (!previewRes.ok) {
-        const data = await previewRes.json();
-        throw new Error(data.error || 'Не удалось прочитать бэкап');
+        let message = `HTTP ${previewRes.status}`;
+        try {
+          const data = await previewRes.json();
+          message = data.error || message;
+        } catch {
+          if (previewRes.status === 502) {
+            message = 'Сервер не ответил (502). Возможно, бэкап слишком большой или таймаут прокси — попробуйте снова после деплоя фикса или уменьшите архив.';
+          }
+        }
+        throw new Error(message);
       }
 
       const { preview } = await previewRes.json();

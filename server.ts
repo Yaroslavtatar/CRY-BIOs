@@ -591,10 +591,15 @@ async function startServer() {
       const preview = await previewBackupZip(req.file.path);
       res.json({ success: true, preview });
     } catch (err: any) {
+      console.error('[preview-backup]', err);
       res.status(400).json({ error: err.message || 'Preview failed' });
     } finally {
       if (req.file?.path && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch {
+          /* ignore cleanup errors */
+        }
       }
     }
   });

@@ -5,12 +5,121 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import type { Response } from 'express';
+import yauzl from 'yauzl';
 import * as db from './db';
 import { BioConfig } from './types';
 import { collectUsedUploadPaths } from './uploadCleanup';
 
 export const BACKUP_VERSION = 1;
 const MAX_BACKUP_SIZE = 500 * 1024 * 1024;
+
+type BackupPreview = {
+  version?: number;
+  exportedAt?: string;
+  userCount?: number;
+  uploadCount?: number;
+  includeAnalytics?: boolean;
+};
+
+function readZipEntryText(zipfile: yauzl.ZipFile, entry: yauzl.Entry): Promise<string> {
+  return new Promise((resolve, reject) => {
+    zipfile.openReadStream(entry, (err, readStream) => {
+      if (err || !readStream) {
+        reject(err || new Error('Failed to read zip entry'));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      readStream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      readStream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+      readStream.on('error', reject);
+    });
+  });
+}
+
+/** Read meta.json / dump.json from zip without extracting uploads (avoids 502 on large backups). */
+async function inspectBackupZip(zipPath: string): Promise<BackupPreview> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+      if (err || !zipfile) {
+        reject(err || new Error('Failed to open backup zip'));
+        return;
+      }
+
+      let metaText: string | null = null;
+      let dumpText: string | null = null;
+      let uploadCount = 0;
+      let pendingReads = 0;
+      let entriesDone = false;
+
+      const finish = () => {
+        if (!entriesDone || pendingReads > 0) return;
+        zipfile.close();
+
+        if (metaText) {
+          try {
+            resolve(JSON.parse(metaText));
+            return;
+          } catch {
+            reject(new Error('Invalid backup: meta.json is malformed'));
+            return;
+          }
+        }
+
+        if (dumpText) {
+          try {
+            const dump = JSON.parse(dumpText);
+            resolve({
+              version: BACKUP_VERSION,
+              userCount: dump.users?.length ?? 0,
+              uploadCount: uploadCount || undefined,
+            });
+            return;
+          } catch {
+            reject(new Error('Invalid backup: dump.json is malformed'));
+            return;
+          }
+        }
+
+        reject(new Error('Invalid backup: meta.json not found'));
+      };
+
+      zipfile.on('entry', (entry) => {
+        const name = entry.fileName.replace(/\\/g, '/');
+        if (!entry.fileName.endsWith('/') && name.startsWith('uploads/')) {
+          uploadCount += 1;
+        }
+
+        if (name === 'meta.json' || name.endsWith('/meta.json')) {
+          pendingReads += 1;
+          readZipEntryText(zipfile, entry)
+            .then((text) => { metaText = text; })
+            .catch(reject)
+            .finally(() => { pendingReads -= 1; finish(); });
+        } else if (name === 'dump.json' || name.endsWith('/dump.json')) {
+          pendingReads += 1;
+          readZipEntryText(zipfile, entry)
+            .then((text) => { dumpText = text; })
+            .catch(reject)
+            .finally(() => { pendingReads -= 1; finish(); });
+        }
+
+        zipfile.readEntry();
+      });
+
+      zipfile.on('end', () => {
+        entriesDone = true;
+        finish();
+      });
+
+      zipfile.on('error', (zipErr) => {
+        zipfile.close();
+        reject(zipErr);
+      });
+
+      zipfile.readEntry();
+    });
+  });
+}
 
 export function countFiles(dir: string): number {
   if (!fs.existsSync(dir)) return 0;
@@ -140,45 +249,13 @@ export function writeBackupToFile(
   });
 }
 
-export async function previewBackupZip(zipPath: string): Promise<{
-  version?: number;
-  exportedAt?: string;
-  userCount?: number;
-  uploadCount?: number;
-  includeAnalytics?: boolean;
-}> {
+export async function previewBackupZip(zipPath: string): Promise<BackupPreview> {
   const stat = fs.statSync(zipPath);
   if (stat.size > MAX_BACKUP_SIZE) {
     throw new Error('Backup file exceeds maximum allowed size (500 MB)');
   }
 
-  const tmpDir = path.join(path.dirname(zipPath), `preview_${Date.now()}`);
-  fs.mkdirSync(tmpDir, { recursive: true });
-
-  try {
-    await extract(zipPath, { dir: tmpDir });
-
-    const metaPath = path.join(tmpDir, 'meta.json');
-    if (fs.existsSync(metaPath)) {
-      return JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-    }
-
-    const dumpPath = path.join(tmpDir, 'dump.json');
-    if (fs.existsSync(dumpPath)) {
-      const dump = JSON.parse(fs.readFileSync(dumpPath, 'utf-8'));
-      return {
-        version: BACKUP_VERSION,
-        userCount: dump.users?.length ?? 0,
-        uploadCount: undefined,
-      };
-    }
-
-    throw new Error('Invalid backup: meta.json not found');
-  } finally {
-    if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-  }
+  return inspectBackupZip(zipPath);
 }
 
 export async function importFullBackup(
