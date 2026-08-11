@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { previewBackupZipClient } from '../utils/backupPreviewClient';
+import { uploadBackupInChunks, startDiskImport, type ChunkedUploadProgress } from '../utils/chunkedUpload';
 import { Shield, Users, Trash2, Edit2, Download, Upload, LogOut, ArrowLeft, Search, Check, AlertTriangle, RefreshCw, Key, FileJson, CheckCircle2, HardDrive, Database } from 'lucide-react';
 import { getThumbUrl } from '../utils/media';
 
@@ -17,6 +18,12 @@ interface StorageStats {
   dbMb: number;
   userCount: number;
   lastBackupAt: string | null;
+}
+
+interface IncomingBackupFile {
+  filename: string;
+  size: number;
+  mtime: string;
 }
 
 interface BackupPreview {
@@ -76,6 +83,10 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
   // Backup options
   const [includeAnalytics, setIncludeAnalytics] = useState(true);
   const [backupLoading, setBackupLoading] = useState<'export' | 'import' | null>(null);
+  const [importProgress, setImportProgress] = useState<ChunkedUploadProgress | null>(null);
+  const [incomingFiles, setIncomingFiles] = useState<IncomingBackupFile[]>([]);
+  const [selectedIncomingFile, setSelectedIncomingFile] = useState('');
+  const [incomingLoading, setIncomingLoading] = useState(false);
 
   // Attempt login with stored password on mount
   useEffect(() => {
@@ -105,12 +116,38 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       fetchUsers(passwordToVerify);
       fetchAdminStatus(passwordToVerify);
       fetchStorageStats(passwordToVerify);
+      fetchIncomingFiles(passwordToVerify);
     } catch (err: any) {
       setAuthError(err.message || 'Ошибка авторизации');
       setIsAuthenticated(false);
     } finally {
       setAuthLoading(false);
     }
+  };
+
+  const fetchIncomingFiles = async (pass = adminPassword) => {
+    setIncomingLoading(true);
+    try {
+      const res = await fetch('/api/admin/import-full/incoming', {
+        headers: { 'x-admin-password': encodeURIComponent(pass) },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIncomingFiles(data.files || []);
+        if (data.files?.length && !selectedIncomingFile) {
+          setSelectedIncomingFile(data.files[0].filename);
+        }
+      }
+    } catch { /* ignore */ }
+    finally {
+      setIncomingLoading(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${Math.round(bytes / 1024)} KB`;
   };
 
   const fetchStorageStats = async (pass = adminPassword) => {
@@ -455,32 +492,16 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
     if (!pendingBackupFile) return;
 
     setBackupLoading('import');
+    setImportProgress(null);
     try {
-      const formData = new FormData();
-      formData.append('file', pendingBackupFile);
+      const result = await uploadBackupInChunks(
+        pendingBackupFile,
+        adminPassword,
+        (progress) => setImportProgress(progress),
+      );
 
-      const res = await fetch('/api/admin/import-full', {
-        method: 'POST',
-        headers: { 'x-admin-password': encodeURIComponent(adminPassword) },
-        body: formData,
-      });
-
-      if (!res.ok) {
-        let message = `HTTP ${res.status}`;
-        try {
-          const data = await res.json();
-          message = data.error || message;
-        } catch {
-          if (res.status === 502) {
-            message = '502 при загрузке ZIP — увеличьте лимит body/timeout в Traefik (см. deploy/coolify/LABELS_PASTE.txt) или загрузите меньший архив.';
-          }
-        }
-        throw new Error(message);
-      }
-
-      const data = await res.json();
       setSuccessMessage(
-        `Полный бэкап восстановлен! Пользователей: ${data.userCount}, файлов: ${data.uploadCount}`
+        `Полный бэкап восстановлен! Пользователей: ${result.userCount}, файлов: ${result.uploadCount}`
       );
       setBackupPreview(null);
       setPendingBackupFile(null);
@@ -490,7 +511,37 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       setErrorMessage('Ошибка импорта бэкапа: ' + (err.message || 'некорректный формат'));
     } finally {
       setBackupLoading(null);
+      setImportProgress(null);
       if (fullBackupImportInputRef.current) fullBackupImportInputRef.current.value = '';
+    }
+  };
+
+  const confirmDiskBackupImport = async () => {
+    if (!selectedIncomingFile) return;
+    if (!window.confirm(`Импортировать ${selectedIncomingFile} с сервера? Текущие данные будут перезаписаны.`)) {
+      return;
+    }
+
+    setBackupLoading('import');
+    setImportProgress(null);
+    setErrorMessage('');
+    try {
+      const result = await startDiskImport(
+        selectedIncomingFile,
+        adminPassword,
+        (progress) => setImportProgress(progress),
+      );
+      setSuccessMessage(
+        `Полный бэкап восстановлен с диска! Пользователей: ${result.userCount}, файлов: ${result.uploadCount}`
+      );
+      fetchUsers();
+      fetchStorageStats();
+      fetchIncomingFiles();
+    } catch (err: any) {
+      setErrorMessage('Ошибка импорта с диска: ' + (err.message || 'не удалось импортировать'));
+    } finally {
+      setBackupLoading(null);
+      setImportProgress(null);
     }
   };
 
@@ -778,11 +829,25 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
               <div className="bg-[#0b0b0b] border border-[#00f2ff]/30 rounded-sm p-3">
                 <div className="flex items-center gap-2 text-[10px] text-[#00f2ff] font-mono uppercase">
                   <span className="w-3 h-3 border border-t-[#00f2ff] border-transparent animate-spin rounded-full" />
-                  {backupLoading === 'export' ? 'Формирование ZIP-бэкапа...' : 'Восстановление из ZIP-бэкапа...'}
+                  {backupLoading === 'export'
+                    ? 'Формирование ZIP-бэкапа...'
+                    : importProgress?.label || 'Восстановление из ZIP-бэкапа...'}
                 </div>
                 <div className="mt-2 h-1 bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#00f2ff]/60 animate-pulse w-full" />
+                  {importProgress && importProgress.phase === 'upload' && importProgress.total > 0 ? (
+                    <div
+                      className="h-full bg-[#00f2ff]/60 transition-all duration-300"
+                      style={{ width: `${Math.round((importProgress.current / importProgress.total) * 100)}%` }}
+                    />
+                  ) : (
+                    <div className="h-full bg-[#00f2ff]/60 animate-pulse w-full" />
+                  )}
                 </div>
+                {importProgress?.phase === 'upload' && importProgress.total > 0 && (
+                  <p className="mt-2 text-[9px] text-neutral-500 font-mono">
+                    Чанки: {importProgress.current}/{importProgress.total}
+                  </p>
+                )}
               </div>
             )}
 
@@ -815,7 +880,7 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                     <span>Восстановить (ZIP)</span>
                   </h3>
                   <p className="text-[10px] text-neutral-400 mt-1 font-sans">
-                    Загрузить полный ZIP-бэкап после пересоздания контейнера. Текущие данные будут стерты!
+                    Загрузить полный ZIP-бэкап после пересоздания контейнера. Большие архивы загружаются чанками (8 MB). Текущие данные будут стерты!
                   </p>
                 </div>
                 <button
@@ -840,6 +905,55 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                   accept=".zip,application/zip"
                   onChange={handleUserImport}
                 />
+              </div>
+
+              <div className="bg-[#0b0b0b] border border-amber-500/30 rounded-sm p-4 flex flex-col justify-between space-y-3 sm:col-span-1 lg:col-span-1 xl:col-span-2">
+                <div>
+                  <h3 className="text-xs font-black font-mono text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <HardDrive className="w-4 h-4 text-amber-400" />
+                    <span>Импорт с сервера</span>
+                  </h3>
+                  <p className="text-[10px] text-neutral-400 mt-1 font-sans">
+                    ZIP уже на VPS: <code className="text-[#00f2ff]">data/incoming/</code>. Обход Cloudflare/Traefik — без HTTP upload.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <select
+                    value={selectedIncomingFile}
+                    onChange={(e) => setSelectedIncomingFile(e.target.value)}
+                    disabled={backupLoading !== null || incomingLoading || incomingFiles.length === 0}
+                    className="w-full bg-black border border-white/10 rounded-sm p-2 text-[10px] text-white font-mono outline-none disabled:opacity-50"
+                  >
+                    {incomingFiles.length === 0 ? (
+                      <option value="">Нет файлов в data/incoming/</option>
+                    ) : (
+                      incomingFiles.map((f) => (
+                        <option key={f.filename} value={f.filename}>
+                          {f.filename} ({formatFileSize(f.size)})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fetchIncomingFiles()}
+                      disabled={incomingLoading || backupLoading !== null}
+                      className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 rounded-sm font-bold font-mono text-[10px] uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${incomingLoading ? 'animate-spin' : ''}`} />
+                      Обновить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmDiskBackupImport}
+                      disabled={backupLoading !== null || !selectedIncomingFile}
+                      className="flex-1 py-2 bg-amber-600/85 hover:bg-amber-700 text-white rounded-sm font-bold font-mono text-[10px] uppercase cursor-pointer disabled:opacity-50"
+                    >
+                      Импортировать
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-[#0b0b0b] border border-white/10 rounded-sm p-4 flex flex-col justify-between space-y-3">
@@ -1115,6 +1229,19 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
                     <p>Аналитика: {backupPreview.includeAnalytics ? 'включена' : 'выключена'}</p>
                   </div>
                   <p className="text-[10px] text-amber-400">Импорт перезапишет всю БД и uploads/. Продолжить?</p>
+                  {importProgress && backupLoading === 'import' && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-[#00f2ff] font-mono">{importProgress.label}</p>
+                      {importProgress.phase === 'upload' && importProgress.total > 0 && (
+                        <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#00f2ff]/60 transition-all"
+                            style={{ width: `${Math.round((importProgress.current / importProgress.total) * 100)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <button
                       type="button"

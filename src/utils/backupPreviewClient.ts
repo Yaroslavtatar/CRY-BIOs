@@ -8,7 +8,7 @@ export type BackupPreview = {
   includeAnalytics?: boolean;
 };
 
-const MAX_CLIENT_PREVIEW_BYTES = 500 * 1024 * 1024;
+const MAX_CLIENT_PREVIEW_BYTES = 2048 * 1024 * 1024;
 
 function decodeEntry(data: Uint8Array): string {
   return new TextDecoder('utf-8').decode(data);
@@ -17,7 +17,7 @@ function decodeEntry(data: Uint8Array): string {
 /** Preview CRY BIOS backup zip locally — no server upload (avoids 502 on large archives). */
 export async function previewBackupZipClient(file: File): Promise<BackupPreview> {
   if (file.size > MAX_CLIENT_PREVIEW_BYTES) {
-    throw new Error('Backup file exceeds maximum allowed size (500 MB)');
+    throw new Error('Backup file exceeds maximum allowed size (2048 MB)');
   }
 
   const isZip =

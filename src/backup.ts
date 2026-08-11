@@ -11,7 +11,12 @@ import { BioConfig } from './types';
 import { collectUsedUploadPaths } from './uploadCleanup';
 
 export const BACKUP_VERSION = 1;
-const MAX_BACKUP_SIZE = 500 * 1024 * 1024;
+
+export function getMaxBackupBytes(): number {
+  const mb = Number(process.env.BACKUP_MAX_MB || 2048);
+  if (!Number.isFinite(mb) || mb <= 0) return 2048 * 1024 * 1024;
+  return mb * 1024 * 1024;
+}
 
 type BackupPreview = {
   version?: number;
@@ -251,8 +256,9 @@ export function writeBackupToFile(
 
 export async function previewBackupZip(zipPath: string): Promise<BackupPreview> {
   const stat = fs.statSync(zipPath);
-  if (stat.size > MAX_BACKUP_SIZE) {
-    throw new Error('Backup file exceeds maximum allowed size (500 MB)');
+  const max = getMaxBackupBytes();
+  if (stat.size > max) {
+    throw new Error(`Backup file exceeds maximum allowed size (${Math.round(max / (1024 * 1024))} MB)`);
   }
 
   return inspectBackupZip(zipPath);
@@ -263,8 +269,9 @@ export async function importFullBackup(
   options: { uploadsDir: string; dataDir: string }
 ): Promise<{ userCount: number; uploadCount: number }> {
   const stat = fs.statSync(zipPath);
-  if (stat.size > MAX_BACKUP_SIZE) {
-    throw new Error('Backup file exceeds maximum allowed size (500 MB)');
+  const max = getMaxBackupBytes();
+  if (stat.size > max) {
+    throw new Error(`Backup file exceeds maximum allowed size (${Math.round(max / (1024 * 1024))} MB)`);
   }
 
   const tmpDir = path.join(options.dataDir, 'tmp_restore');

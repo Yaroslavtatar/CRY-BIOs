@@ -14,7 +14,17 @@ import helmet from 'helmet';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
 import * as db from './src/db';
-import { streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup, importUserBackup } from './src/backup';
+import { streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup, importUserBackup, getMaxBackupBytes } from './src/backup';
+import {
+  initChunkedUpload,
+  saveUploadChunk,
+  startImportFromAssembledUpload,
+  getImportJob,
+  listIncomingBackupFiles,
+  startImportFromDisk,
+  ensureIncomingDir,
+  getChunkBytes,
+} from './src/backupUpload';
 import { isAllowedMime, isImageMime, type ImageUploadType } from './src/imageProcessing';
 import { isVideoMime } from './src/videoProcessing';
 import { isAudioMime } from './src/audioProcessing';
@@ -119,7 +129,7 @@ const upload = multer({
 
 const backupUpload = multer({
   dest: TMP_DIR,
-  limits: { fileSize: 500 * 1024 * 1024 },
+  limits: { fileSize: getMaxBackupBytes() },
   fileFilter: (_req, file, cb) => {
     const isZip =
       file.mimetype === 'application/zip' ||
@@ -131,6 +141,16 @@ const backupUpload = multer({
       cb(new Error('Only ZIP backup files are allowed'));
     }
   },
+});
+
+const chunkUploadDir = path.join(TMP_DIR, 'chunks');
+if (!fs.existsSync(chunkUploadDir)) {
+  fs.mkdirSync(chunkUploadDir, { recursive: true });
+}
+
+const chunkUpload = multer({
+  dest: chunkUploadDir,
+  limits: { fileSize: getChunkBytes() + 1024 * 1024 },
 });
 
 const BCRYPT_ROUNDS = 10;
@@ -416,6 +436,10 @@ async function startServer() {
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many admin requests. Try again later.' },
+    skip: (req) => {
+      const url = req.originalUrl || req.url || '';
+      return /\/api\/admin\/import-full(\/|$)/.test(url);
+    },
   });
 
   app.get('/api/health', (_req, res) => {
@@ -747,6 +771,103 @@ async function startServer() {
       if (req.file?.path && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
+    }
+  });
+
+  ensureIncomingDir(DATA_DIR);
+
+  app.post('/api/admin/import-full/init', checkAdminAuth, (req, res) => {
+    try {
+      const { filename, totalSize, totalChunks } = req.body ?? {};
+      if (!filename || typeof filename !== 'string') {
+        return res.status(400).json({ error: 'filename is required' });
+      }
+      if (typeof totalSize !== 'number' || typeof totalChunks !== 'number') {
+        return res.status(400).json({ error: 'totalSize and totalChunks are required' });
+      }
+      const result = initChunkedUpload(DATA_DIR, { filename, totalSize, totalChunks });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Init failed' });
+    }
+  });
+
+  app.post('/api/admin/import-full/chunk', checkAdminAuth, chunkUpload.single('chunk'), (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No chunk uploaded' });
+    }
+    const uploadId = req.body?.uploadId;
+    const index = Number(req.body?.index);
+    if (!uploadId || typeof uploadId !== 'string') {
+      if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'uploadId is required' });
+    }
+    if (!Number.isInteger(index)) {
+      if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'index must be an integer' });
+    }
+    try {
+      const progress = saveUploadChunk(uploadId, index, req.file.path);
+      res.json({ success: true, ...progress });
+    } catch (err: any) {
+      if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: err.message || 'Chunk upload failed' });
+    }
+  });
+
+  app.post('/api/admin/import-full/finish', checkAdminAuth, (req, res) => {
+    try {
+      const { uploadId } = req.body ?? {};
+      if (!uploadId || typeof uploadId !== 'string') {
+        return res.status(400).json({ error: 'uploadId is required' });
+      }
+      const result = startImportFromAssembledUpload(uploadId, {
+        uploadsDir: UPLOADS_DIR,
+        dataDir: DATA_DIR,
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Finish failed' });
+    }
+  });
+
+  app.get('/api/admin/import-full/status/:jobId', checkAdminAuth, (req, res) => {
+    const job = getImportJob(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ error: 'Import job not found or expired' });
+    }
+    res.json({
+      jobId: job.jobId,
+      status: job.status,
+      progress: job.progress,
+      error: job.error,
+      userCount: job.userCount,
+      uploadCount: job.uploadCount,
+    });
+  });
+
+  app.get('/api/admin/import-full/incoming', checkAdminAuth, (_req, res) => {
+    try {
+      const files = listIncomingBackupFiles(DATA_DIR);
+      res.json({ success: true, files });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list incoming files' });
+    }
+  });
+
+  app.post('/api/admin/import-full/from-disk', checkAdminAuth, (req, res) => {
+    try {
+      const { filename } = req.body ?? {};
+      if (!filename || typeof filename !== 'string') {
+        return res.status(400).json({ error: 'filename is required' });
+      }
+      const result = startImportFromDisk(DATA_DIR, filename, {
+        uploadsDir: UPLOADS_DIR,
+        dataDir: DATA_DIR,
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Disk import failed' });
     }
   });
 
