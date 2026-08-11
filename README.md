@@ -237,8 +237,9 @@ CRY-BIOs/
 
 ## Roadmap
 
-- [ ] Возврат редактора бейджей (временно отключён)
-- [ ] Custom domains per user (UI)
+- [x] Возврат редактора бейджей
+- [x] Custom domains per user (UI)
+- [ ] AI-ассистент для био (Gemini)
 
 ---
 

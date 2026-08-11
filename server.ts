@@ -37,7 +37,9 @@ import {
 import {
   getPlatformDomainConfig,
   isReservedSlug,
+  isValidCustomDomain,
   isValidSlug,
+  normalizeCustomDomain,
   normalizeSlug,
   parseSubdomainSlug,
 } from './src/platformDomain';
@@ -378,7 +380,7 @@ async function startServer() {
     next();
   });
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Middleware to support simple authentication
   const getUsernameFromRequest = (req: express.Request): string | null => {
@@ -1254,6 +1256,24 @@ async function startServer() {
       if (db.isAliasSlugTaken(alias, username)) {
         return res.status(409).json({ error: 'Этот alias уже занят другим пользователем' });
       }
+    }
+
+    if (payload.customDomain) {
+      const domain = normalizeCustomDomain(payload.customDomain);
+      payload.customDomain = domain;
+      if (!isValidCustomDomain(domain)) {
+        return res.status(400).json({ error: 'Некорректный формат custom domain' });
+      }
+      const platform = getPlatformConfig(req);
+      const base = platform.baseDomain.toLowerCase();
+      if (domain === base || domain === `www.${base}` || domain.endsWith(`.${base}`)) {
+        return res.status(400).json({ error: 'Для домена платформы используйте alias slug и поддомены' });
+      }
+      if (db.isCustomDomainTaken(domain, username)) {
+        return res.status(409).json({ error: 'Этот домен уже привязан к другому профилю' });
+      }
+    } else {
+      delete payload.customDomain;
     }
 
     const oldConfig = db.getBio(username);

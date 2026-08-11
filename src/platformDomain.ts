@@ -174,3 +174,29 @@ export function buildProfileUrls(
 export function resolveHostToSlug(hostname: string, baseDomain: string): string | null {
   return parseSubdomainSlug(hostname, baseDomain);
 }
+
+const CUSTOM_DOMAIN_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+
+export function normalizeCustomDomain(raw: string): string {
+  let domain = raw.trim().toLowerCase();
+  domain = domain.replace(/^https?:\/\//, '');
+  domain = domain.replace(/\/.*$/, '');
+  domain = domain.replace(/^www\./, '');
+  return domain;
+}
+
+export function isValidCustomDomain(domain: string): boolean {
+  if (!domain || domain.length > 253) return false;
+  if (domain === 'localhost' || domain.endsWith('.localhost')) return false;
+  return CUSTOM_DOMAIN_PATTERN.test(domain);
+}
+
+export function isPlatformHostname(hostname: string, baseDomain: string): boolean {
+  const host = hostname.toLowerCase().split(':')[0];
+  if (!host || host === 'localhost' || host === '127.0.0.1') return true;
+  if (!baseDomain) return true;
+
+  const base = baseDomain.toLowerCase();
+  if (host === base || host === `www.${base}`) return true;
+  return parseSubdomainSlug(host, base) !== null;
+}

@@ -836,7 +836,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       case 'discord':
         return !!(config.discordConnected && config.discordId);
       case 'badges':
-        return false; // временно отключено
+        return !!(config.badges?.some(b => b.enabled));
       case 'bio':
         return !!config.bio?.trim();
       case 'blocks':

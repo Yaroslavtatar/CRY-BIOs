@@ -2,5 +2,5 @@
   "name": "CRY BIOS",
   "description": "Бесплатно и вечно",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

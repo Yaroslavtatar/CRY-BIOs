@@ -10,6 +10,7 @@ import BioPage from './components/BioPage';
 import AdminPanel from './components/AdminPanel';
 import {
   getPlatformDomainConfig,
+  isPlatformHostname,
   parseShortPathSlug,
   parseSubdomainSlug,
   type PlatformDomainConfig,
@@ -22,6 +23,7 @@ const DEFAULT_PLATFORM: PlatformDomainConfig = getPlatformDomainConfig({
 export default function App() {
   const [view, setView] = useState<'landing' | 'dashboard' | 'bio' | 'admin'>('landing');
   const [username, setUsername] = useState('');
+  const [routeLoading, setRouteLoading] = useState(true);
   type PublicConfig = PlatformDomainConfig & { hideAdminPanelLink?: boolean };
 
   const [platform, setPlatform] = useState<PublicConfig>(DEFAULT_PLATFORM);
@@ -45,7 +47,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const handleRoute = () => {
+    let cancelled = false;
+
+    const handleRoute = async () => {
+      setRouteLoading(true);
       const path = window.location.pathname;
       const hostname = window.location.hostname.toLowerCase();
 
@@ -69,16 +74,19 @@ export default function App() {
           setUsername(parts[2].toLowerCase());
           setView('bio');
         }
+        if (!cancelled) setRouteLoading(false);
         return;
       }
 
       if (path === '/dashboard') {
         setView('dashboard');
+        if (!cancelled) setRouteLoading(false);
         return;
       }
 
       if (path === '/admin') {
         setView('admin');
+        if (!cancelled) setRouteLoading(false);
         return;
       }
 
@@ -89,7 +97,31 @@ export default function App() {
       if (shortSlug) {
         setUsername(shortSlug);
         setView('bio');
+        if (!cancelled) setRouteLoading(false);
         return;
+      }
+
+      if (
+        !isPlatformHostname(hostname, baseDomain) &&
+        !path.startsWith('/dashboard') &&
+        !path.startsWith('/admin') &&
+        !path.startsWith('/u/')
+      ) {
+        try {
+          const res = await fetch(`/api/resolve-host?host=${encodeURIComponent(hostname)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.username) {
+              if (cancelled) return;
+              setUsername((data.slug || data.username).toLowerCase());
+              setView('bio');
+              setRouteLoading(false);
+              return;
+            }
+          }
+        } catch {
+          /* fall through to landing */
+        }
       }
 
       const hash = window.location.hash;
@@ -99,20 +131,24 @@ export default function App() {
           setUsername(parts[2].toLowerCase());
           setView('bio');
         }
+        if (!cancelled) setRouteLoading(false);
         return;
       }
 
       if (hash === '#dashboard') {
         setView('dashboard');
+        if (!cancelled) setRouteLoading(false);
         return;
       }
 
       if (hash === '#admin') {
         setView('admin');
+        if (!cancelled) setRouteLoading(false);
         return;
       }
 
       setView('landing');
+      if (!cancelled) setRouteLoading(false);
     };
 
     handleRoute();
@@ -120,6 +156,7 @@ export default function App() {
     window.addEventListener('hashchange', handleRoute);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('popstate', handleRoute);
       window.removeEventListener('hashchange', handleRoute);
     };
@@ -141,6 +178,14 @@ export default function App() {
     setUsername(normalized);
     setView('bio');
   };
+
+  if (routeLoading) {
+    return (
+      <div className="fixed inset-0 bg-[#050505] flex items-center justify-center font-mono text-xs text-neutral-400">
+        <div className="w-8 h-8 rounded-full border-2 border-t-[#00f2ff] border-white/10 animate-spin" />
+      </div>
+    );
+  }
 
   if (view === 'admin') {
     return <AdminPanel onExit={navigateToLanding} />;
