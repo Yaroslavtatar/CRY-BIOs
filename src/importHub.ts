@@ -29,26 +29,28 @@ export async function fetchGunsHtml(input: string): Promise<{ html: string; user
   }
 
   if (detected.source === 'guns_url' && detected.username) {
-    const edgeUrl = getEdgeUrl();
-    if (edgeUrl) {
-      const res = await fetchViaEdge(`/guns/fetch/${detected.username}`);
-      const data = await res.json() as { success?: boolean; html?: string; error?: string };
-      if (!res.ok || !data.html) {
-        throw new Error(data.error || 'Edge fetch failed');
-      }
-      return { html: data.html, username: detected.username };
-    }
-
     const direct = await fetch(`https://guns.lol/${detected.username}`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; CRY-BIOS/1.0)',
         Accept: 'text/html',
       },
     });
-    if (!direct.ok) {
-      throw new Error(`guns.lol HTTP ${direct.status}. Настройте CBIOS_EDGE_URL или вставьте HTML вручную.`);
+    if (direct.ok) {
+      return { html: await direct.text(), username: detected.username };
     }
-    return { html: await direct.text(), username: detected.username };
+
+    const edgeUrl = getEdgeUrl();
+    if (edgeUrl) {
+      const res = await fetchViaEdge(`/guns/fetch/${detected.username}`);
+      const data = await res.json() as { success?: boolean; html?: string; error?: string };
+      if (res.ok && data.html) {
+        return { html: data.html, username: detected.username };
+      }
+    }
+
+    throw new Error(
+      `guns.lol HTTP ${direct.status}. Вставьте HTML страницы вручную (Ctrl+U → Copy).`,
+    );
   }
 
   throw new Error('Вставьте ссылку https://guns.lol/username или HTML страницы (Ctrl+U → Copy).');

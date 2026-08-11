@@ -895,7 +895,6 @@ async function startServer() {
         wildcardRequired: true,
         provider: 'coolify-traefik',
         setupGuidePath: 'deploy/coolify/SSL_SETUP.md',
-        note: 'Wildcard *.cbios.ru требует DNS-challenge (Cloudflare) в Coolify Proxy',
       },
     });
   });

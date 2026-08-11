@@ -1,4 +1,4 @@
-export const DEFAULT_CHUNK_MB = 8;
+export const DEFAULT_CHUNK_MB = 4;
 export const DEFAULT_MAX_BACKUP_MB = 2048;
 
 export function getClientChunkBytes(): number {
@@ -31,12 +31,41 @@ async function parseErrorResponse(res: Response): Promise<string> {
     const data = await res.json();
     message = data.error || message;
   } catch {
-    if (res.status === 502) {
+    if (res.status === 404) {
       message =
-        '502 при загрузке — используйте chunked upload (авто) или scp в data/incoming/ (см. deploy/coolify/BACKUP_IMPORT.md)';
+        'Сервер без chunked import — задеployьте последнюю версию CRY BIOS из main и перезапустите контейнер.';
+    } else if (res.status === 502 || res.status === 504) {
+      message =
+        '502/504 от прокси (Traefik/Cloudflare). Варианты: 1) scp backup.zip → data/incoming/ → «Импорт с сервера»; 2) Cloudflare → DNS only (серое облако) для cbios.ru; 3) обновите Traefik labels (deploy/coolify/LABELS_PASTE.txt).';
     }
   }
   return message;
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  retries = 4,
+): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || res.status === 400 || res.status === 401 || res.status === 404) {
+        return res;
+      }
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        lastError = new Error(await parseErrorResponse(res));
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      return res;
+    } catch (err: any) {
+      lastError = err;
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  throw lastError || new Error('Network error');
 }
 
 export async function pollImportJob(
@@ -82,7 +111,7 @@ export async function uploadBackupInChunks(
     label: 'Инициализация загрузки...',
   });
 
-  const initRes = await fetch('/api/admin/import-full/init', {
+  const initRes = await fetchWithRetry('/api/admin/import-full/init', {
     method: 'POST',
     headers: {
       ...adminHeaders(adminPassword),
@@ -109,7 +138,7 @@ export async function uploadBackupInChunks(
     formData.append('index', String(i));
     formData.append('chunk', blob, `chunk-${i}.part`);
 
-    const chunkRes = await fetch('/api/admin/import-full/chunk', {
+    const chunkRes = await fetchWithRetry('/api/admin/import-full/chunk', {
       method: 'POST',
       headers: adminHeaders(adminPassword),
       body: formData,
@@ -133,7 +162,7 @@ export async function uploadBackupInChunks(
     label: 'Сборка архива и запуск импорта...',
   });
 
-  const finishRes = await fetch('/api/admin/import-full/finish', {
+  const finishRes = await fetchWithRetry('/api/admin/import-full/finish', {
     method: 'POST',
     headers: {
       ...adminHeaders(adminPassword),

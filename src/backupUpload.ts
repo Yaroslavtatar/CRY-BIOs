@@ -31,8 +31,8 @@ const pendingUploads = new Map<string, PendingUpload>();
 const importJobs = new Map<string, ImportJobState>();
 
 export function getChunkBytes(): number {
-  const mb = Number(process.env.BACKUP_CHUNK_MB || 8);
-  if (!Number.isFinite(mb) || mb <= 0) return 8 * 1024 * 1024;
+  const mb = Number(process.env.BACKUP_CHUNK_MB || 4);
+  if (!Number.isFinite(mb) || mb <= 0) return 4 * 1024 * 1024;
   return mb * 1024 * 1024;
 }
 
