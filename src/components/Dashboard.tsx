@@ -27,7 +27,10 @@ import {
 import { resolveThemeColor, ELEMENT_COLOR_FIELDS, type ElementColorField } from '../themeColors';
 import { buildProfileUrls, getPlatformDomainConfig, type PlatformDomainConfig } from '../platformDomain';
 import { discordAvatarUrl } from '../discordBadges';
-import { NAME_EFFECT_GROUPS, NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
+import { NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
+import NameEffectPickerModal from './NameEffectPickerModal';
+import SocialPlatformPickerModal from './SocialPlatformPickerModal';
+import type { NameEffect } from '../types';
 import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
 import SocialIcon from './SocialIcon';
 import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy } from 'lucide-react';
@@ -111,6 +114,9 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [googleInput, setGoogleInput] = useState('');
   const [discordLinkLoading, setDiscordLinkLoading] = useState(false);
   const [discordMessage, setDiscordMessage] = useState('');
+
+  const [isNameEffectModalOpen, setIsNameEffectModalOpen] = useState(false);
+  const [socialPickerBlockId, setSocialPickerBlockId] = useState<string | null>(null);
   
   const [copiedLink, setCopiedLink] = useState<'path' | 'subdomain' | false>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -881,16 +887,17 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     updateConfigValue('blocks', nextBlocks);
   };
 
-  const handleAddSocialLink = (blockId: string) => {
+  const handleAddSocialLink = (blockId: string, platform: SocialLink['platform'] = 'website') => {
     if (!config) return;
     const block = config.blocks.find(b => b.id === blockId);
     if (!block || !block.socialsList) return;
 
+    const meta = SOCIAL_PLATFORMS.find(p => p.id === platform);
     const newLink: SocialLink = {
       id: Math.random().toString(),
-      platform: 'website',
-      url: 'https://',
-      label: 'Мой сайт',
+      platform,
+      url: platform === 'email' ? 'mailto:' : 'https://',
+      label: meta?.label || 'Ссылка',
       glow: false,
       useBrandColor: true,
     };
@@ -1669,19 +1676,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
                          <div>
                           <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Эффект имени</label>
-                          <select
-                            value={config.nameEffect || 'none'}
-                            onChange={e => updateConfigValue('nameEffect', e.target.value)}
-                            className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none text-white text-xs cursor-pointer"
+                          <button
+                            type="button"
+                            onClick={() => setIsNameEffectModalOpen(true)}
+                            className="w-full bg-black/50 border border-white/15 hover:border-[#00f2ff] rounded-sm p-3 text-left text-white text-xs cursor-pointer transition flex items-center justify-between gap-2"
                           >
-                            {NAME_EFFECT_GROUPS.map(group => (
-                              <optgroup key={group} label={group}>
-                                {NAME_EFFECT_CATALOG.filter(e => e.group === group).map(e => (
-                                  <option key={e.id} value={e.id}>{e.label}</option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
+                            <span>{NAME_EFFECT_CATALOG.find(e => e.id === (config.nameEffect || 'none'))?.label || 'Без эффекта'}</span>
+                            <span className="text-[#00f2ff] text-[10px] font-bold uppercase">Выбрать</span>
+                          </button>
                           <p className="text-[9px] text-neutral-500 mt-1.5 leading-relaxed">{getNameEffectHint(config.nameEffect)}</p>
                         </div>
                       </div>
@@ -3071,7 +3073,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   <span>Список социальных сетей</span>
                                   <button
                                     type="button"
-                                    onClick={() => handleAddSocialLink(block.id)}
+                                    onClick={() => setSocialPickerBlockId(block.id)}
                                     className="text-[#00f2ff] hover:underline cursor-pointer"
                                   >
                                     + ДОБАВИТЬ ПЛАТФОРМУ / ССЫЛКУ
@@ -3834,6 +3836,22 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
           </div>
         </div>
       )}
+
+      <NameEffectPickerModal
+        open={isNameEffectModalOpen}
+        value={config?.nameEffect || 'none'}
+        previewText={config?.displayName || username || 'CRYTEAM'}
+        onClose={() => setIsNameEffectModalOpen(false)}
+        onSave={(effect: NameEffect) => updateConfigValue('nameEffect', effect)}
+      />
+
+      <SocialPlatformPickerModal
+        open={!!socialPickerBlockId}
+        onClose={() => setSocialPickerBlockId(null)}
+        onSelect={(platform) => {
+          if (socialPickerBlockId) handleAddSocialLink(socialPickerBlockId, platform);
+        }}
+      />
 
       {/* SIMULATOR OR OTHER MODALS DELETED */}
     </div>

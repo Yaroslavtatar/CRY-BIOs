@@ -14,10 +14,13 @@ export interface SocialLink {
   id: string;
   platform:
     | 'discord' | 'github' | 'telegram' | 'youtube' | 'steam' | 'spotify'
-    | 'twitter' | 'instagram' | 'tiktok' | 'website'
+    | 'twitter' | 'x' | 'instagram' | 'tiktok' | 'website'
     | 'twitch' | 'vk' | 'reddit' | 'snapchat' | 'facebook' | 'linkedin'
     | 'whatsapp' | 'email' | 'soundcloud' | 'patreon' | 'kick' | 'threads'
-    | 'roblox' | 'paypal';
+    | 'roblox' | 'paypal' | 'cashapp' | 'venmo' | 'playstation' | 'xbox'
+    | 'applemusic' | 'gitlab' | 'bluesky' | 'onlyfans' | 'pinterest' | 'lastfm'
+    | 'buymeacoffee' | 'kofi' | 'signal' | 'bitcoin' | 'ethereum' | 'litecoin'
+    | 'solana' | 'monero' | 'xrp';
   url: string;
   label?: string;
   glow?: boolean;
@@ -40,7 +43,8 @@ export type NameEffect =
   | 'none' | 'glow' | 'stroke' | 'gradient' | 'glitch' | 'neon' | 'shine'
   | 'neon_red' | 'neon_blue' | 'gradient_fire' | 'gradient_ocean' | 'typewriter'
   | 'rainbow' | 'flicker' | 'bounce' | 'shadow_3d' | 'underline_glow' | 'cyber'
-  | 'shuffle' | 'fuzzy';
+  | 'shuffle' | 'fuzzy' | 'blur_glitch' | 'shift'
+  | 'sparks_blue' | 'sparks_yellow' | 'sparks_pink' | 'sparks_red' | 'sparks_white' | 'sparks_gold';
 export type SparkleStyle = 'stars' | 'dots' | 'hearts' | 'crosses' | 'neon';
 export type LocationIcon = 'pin' | 'globe' | 'map';
 export type LocationStyle = 'minimal' | 'pill' | 'glow' | 'geo_pulse';

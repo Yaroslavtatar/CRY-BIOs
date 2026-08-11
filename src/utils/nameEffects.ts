@@ -1,6 +1,14 @@
 import type { CSSProperties } from 'react';
 import { NameEffect } from '../types';
 
+const SPARK_EFFECTS = new Set<NameEffect>([
+  'sparks_blue', 'sparks_yellow', 'sparks_pink', 'sparks_red', 'sparks_white', 'sparks_gold',
+]);
+
+export function isSparkNameEffect(effect?: NameEffect): boolean {
+  return !!effect && SPARK_EFFECTS.has(effect);
+}
+
 export function getNameEffectClasses(effect: NameEffect | undefined, displayName: string): string {
   const len = Math.max(displayName.length, 1);
   switch (effect) {
@@ -42,6 +50,17 @@ export function getNameEffectClasses(effect: NameEffect | undefined, displayName
       return 'text-white underline decoration-[#00f2ff] decoration-2 underline-offset-4 drop-shadow-[0_0_8px_#00f2ff]';
     case 'cyber':
       return 'text-cyan-300 animate-cyber tracking-widest uppercase';
+    case 'blur_glitch':
+      return 'text-white animate-blur-glitch inline-block relative';
+    case 'shift':
+      return 'text-white animate-shift inline-block';
+    case 'sparks_blue':
+    case 'sparks_yellow':
+    case 'sparks_pink':
+    case 'sparks_red':
+    case 'sparks_white':
+    case 'sparks_gold':
+      return 'text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.75)] relative z-10';
     default:
       return 'text-white drop-shadow-md';
   }

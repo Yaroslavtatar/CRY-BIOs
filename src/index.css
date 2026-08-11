@@ -129,6 +129,62 @@
   50% { opacity: 0.7; transform: scale(1.08); }
 }
 
+@keyframes blur-glitch {
+  0%, 100% {
+    filter: blur(0);
+    transform: translate(0, 0) skew(0deg);
+    text-shadow: -2px 0 #ff00c1, 2px 0 #00fff9;
+  }
+  15% {
+    filter: blur(1.2px);
+    transform: translate(-3px, 0) skew(-2deg);
+    clip-path: inset(10% 0 55% 0);
+    text-shadow: 2px 0 #ff00c1, -2px 0 #00fff9;
+  }
+  30% {
+    filter: blur(0.4px);
+    transform: translate(2px, -1px) skew(1deg);
+    clip-path: inset(45% 0 20% 0);
+  }
+  45% {
+    filter: blur(1.5px);
+    transform: translate(-2px, 1px) skew(-1deg);
+    clip-path: inset(25% 0 40% 0);
+    text-shadow: -3px 0 #ff00c1, 3px 0 #00fff9;
+  }
+  60% {
+    filter: blur(0.6px);
+    transform: translate(1px, 0) skew(0deg);
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes shift {
+  0%, 100% {
+    letter-spacing: 0;
+    filter: blur(0);
+    transform: translateX(0);
+  }
+  25% {
+    letter-spacing: 0.12em;
+    filter: blur(0.6px);
+    transform: translateX(-2px);
+  }
+  50% {
+    letter-spacing: -0.04em;
+    filter: blur(1px);
+    transform: translateX(3px);
+  }
+  75% {
+    letter-spacing: 0.08em;
+    filter: blur(0.4px);
+    transform: translateX(-1px);
+  }
+}
+
+.animate-blur-glitch { animation: blur-glitch 2.2s steps(4) infinite; }
+.animate-shift { animation: shift 2.8s ease-in-out infinite; }
+
 .animate-shuffle { animation: shuffle 2.5s ease-in-out infinite; }
 .animate-fuzzy { animation: fuzzy 1.8s ease-in-out infinite; }
 .animate-geo-pulse { animation: geo-pulse 2s ease-in-out infinite; }
@@ -199,7 +255,9 @@
   .animate-shuffle,
   .animate-fuzzy,
   .animate-neon-pulse,
-  .animate-cyber {
+  .animate-cyber,
+  .animate-blur-glitch,
+  .animate-shift {
     animation: none !important;
   }
 }

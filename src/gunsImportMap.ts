@@ -115,7 +115,67 @@ const USERNAME_EFFECT_MAP: Record<string, NameEffect> = {
   underline_glow: 'underline_glow',
   cyber: 'cyber',
   none: 'none',
+  blur_glitch: 'blur_glitch',
+  blurred: 'blur_glitch',
+  blur: 'blur_glitch',
+  shift: 'shift',
+  change: 'shift',
+  smena: 'shift',
+  sparks_blue: 'sparks_blue',
+  blue_sparks: 'sparks_blue',
+  sparks_yellow: 'sparks_yellow',
+  yellow_sparks: 'sparks_yellow',
+  sparks_pink: 'sparks_pink',
+  pink_sparks: 'sparks_pink',
+  sparks_red: 'sparks_red',
+  red_sparks: 'sparks_red',
+  sparks_white: 'sparks_white',
+  white_sparks: 'sparks_white',
+  sparks_gold: 'sparks_gold',
+  gold_sparks: 'sparks_gold',
 };
+
+const SOCIAL_PLATFORM_MAP: Record<string, SocialLink['platform']> = {
+  custom_url: 'website',
+  website: 'website',
+  x: 'twitter',
+  apple_music: 'applemusic',
+  buy_me_a_coffee: 'buymeacoffee',
+  buymeacoffee: 'buymeacoffee',
+  last_fm: 'lastfm',
+  lastfm: 'lastfm',
+  cash_app: 'cashapp',
+  cashapp: 'cashapp',
+  play_station: 'playstation',
+  playstation: 'playstation',
+  applemusic: 'applemusic',
+  git_lab: 'gitlab',
+  gitlab: 'gitlab',
+  blue_sky: 'bluesky',
+  bluesky: 'bluesky',
+  only_fans: 'onlyfans',
+  onlyfans: 'onlyfans',
+  buy_me_a_coffee_com: 'buymeacoffee',
+  ko_fi: 'kofi',
+  kofi: 'kofi',
+  lite_coin: 'litecoin',
+  litecoin: 'litecoin',
+};
+
+const KNOWN_SOCIAL_PLATFORMS = new Set<string>([
+  'discord', 'github', 'telegram', 'youtube', 'steam', 'spotify', 'twitter', 'x',
+  'instagram', 'tiktok', 'website', 'twitch', 'vk', 'reddit', 'snapchat', 'facebook',
+  'linkedin', 'whatsapp', 'email', 'soundcloud', 'patreon', 'kick', 'threads', 'roblox',
+  'paypal', 'cashapp', 'venmo', 'playstation', 'xbox', 'applemusic', 'gitlab', 'bluesky',
+  'onlyfans', 'pinterest', 'lastfm', 'buymeacoffee', 'kofi', 'signal', 'bitcoin',
+  'ethereum', 'litecoin', 'solana', 'monero', 'xrp',
+]);
+
+export function normalizeSocialPlatform(raw: string): SocialLink['platform'] {
+  const key = raw.toLowerCase().trim().replace(/-/g, '_');
+  const mapped = SOCIAL_PLATFORM_MAP[key] || key;
+  return KNOWN_SOCIAL_PLATFORMS.has(mapped) ? (mapped as SocialLink['platform']) : 'website';
+}
 
 export function mapGunsUsernameEffect(raw: string | undefined): NameEffect | undefined {
   if (!raw) return undefined;
@@ -217,7 +277,7 @@ function parseSocials(html: string, parsedConfig: any): SocialLink[] {
   if (parsedConfig?.socials && Array.isArray(parsedConfig.socials)) {
     return parsedConfig.socials.map((s: any) => {
       let url = s.value || s.url || '';
-      const platform = s.social === 'custom_url' ? 'website' : s.social;
+      const platform = normalizeSocialPlatform(s.social === 'custom_url' ? 'website' : s.social);
       if (url && !url.startsWith('http')) {
         if (platform === 'discord') url = `https://discord.com/users/${url}`;
         else if (platform === 'telegram') url = `https://t.me/${url}`;
@@ -238,7 +298,7 @@ function parseSocials(html: string, parsedConfig: any): SocialLink[] {
     const itemRegex = /\{\s*"social"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*"([^"]+)"/g;
     let m;
     while ((m = itemRegex.exec(socialsBlockMatch[1])) !== null) {
-      const platform = m[1].toLowerCase();
+      const platform = normalizeSocialPlatform(m[1]);
       let val = m[2];
       if (val) {
         let url = val;
@@ -250,7 +310,7 @@ function parseSocials(html: string, parsedConfig: any): SocialLink[] {
         }
         socialsList.push({
           id: `soc-${Math.random().toString(36).substr(2, 5)}`,
-          platform: platform === 'custom_url' ? 'website' : (platform as SocialLink['platform']),
+          platform,
           url,
           label: platform,
         });

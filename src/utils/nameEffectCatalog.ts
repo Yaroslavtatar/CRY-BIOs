@@ -7,7 +7,7 @@ export interface NameEffectEntry {
   hint: string;
 }
 
-export const NAME_EFFECT_GROUPS = ['Базовые', 'Неон', 'Градиенты', 'Анимации'] as const;
+export const NAME_EFFECT_GROUPS = ['Базовые', 'Неон', 'Градиенты', 'Анимации', 'Искры'] as const;
 
 export const NAME_EFFECT_CATALOG: NameEffectEntry[] = [
   { id: 'none', label: 'Без эффекта', group: 'Базовые', hint: 'Обычный белый текст без анимации.' },
@@ -30,6 +30,14 @@ export const NAME_EFFECT_CATALOG: NameEffectEntry[] = [
   { id: 'fuzzy', label: 'Размытие', group: 'Анимации', hint: 'Лёгкое размытие и искажение текста.' },
   { id: 'bounce', label: 'Подпрыгивание', group: 'Анимации', hint: 'Имя мягко подпрыгивает вверх-вниз.' },
   { id: 'cyber', label: 'Кибер', group: 'Анимации', hint: 'Рваный «хакерский» эффект с широкими буквами.' },
+  { id: 'blur_glitch', label: 'Размытый ник', group: 'Анимации', hint: 'Горизонтальный глитч с размытием, как на guns.lol.' },
+  { id: 'shift', label: 'Смена', group: 'Анимации', hint: 'Motion blur и смещение букв.' },
+  { id: 'sparks_blue', label: 'Синие искры', group: 'Искры', hint: 'Синие и фиолетовые частицы вокруг имени.' },
+  { id: 'sparks_yellow', label: 'Жёлтые искры', group: 'Искры', hint: 'Жёлто-зелёные искры вокруг имени.' },
+  { id: 'sparks_pink', label: 'Розовые искры', group: 'Искры', hint: 'Розовые искры вокруг имени.' },
+  { id: 'sparks_red', label: 'Красные искры', group: 'Искры', hint: 'Красные искры вокруг имени.' },
+  { id: 'sparks_white', label: 'Белые искры', group: 'Искры', hint: 'Серебристые искры вокруг имени.' },
+  { id: 'sparks_gold', label: 'Золотые искры', group: 'Искры', hint: 'Золотые искры вокруг имени.' },
 ];
 
 export function getNameEffectHint(id: NameEffect | undefined): string {

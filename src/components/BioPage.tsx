@@ -17,6 +17,7 @@ import BadgeRow from './BadgeRow';
 import SocialIcon from './SocialIcon';
 import GlowLayer, { getGlowStyle, ProfileGradientWrapper } from './GlowLayer';
 import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
+import NameSparkOverlay from './NameSparkOverlay';
 import { getSocialIconColor } from '../utils/socialPlatforms';
 import { resolveThemeColor } from '../themeColors';
 import { discordAvatarUrl, type DiscordBadge } from '../discordBadges';
@@ -1093,15 +1094,18 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                 <GlowLayer config={config} target="username">
                   <div className="flex flex-col items-center">
                     <div className="group relative flex items-center justify-center gap-1.5 flex-wrap">
-                      <h1
-                        className={`${mobile.nameSize} leading-none font-semibold pb-1 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
-                        style={{
-                          ...getNameEffectStyle(config.nameEffect, config.displayName || config.username),
-                          ...getGlowStyle(config, 'username'),
-                        }}
-                      >
-                        {config.displayName || config.username}
-                      </h1>
+                      <div className="relative inline-block">
+                        <h1
+                          className={`${mobile.nameSize} leading-none font-semibold pb-1 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
+                          style={{
+                            ...getNameEffectStyle(config.nameEffect, config.displayName || config.username),
+                            ...getGlowStyle(config, 'username'),
+                          }}
+                        >
+                          {config.displayName || config.username}
+                        </h1>
+                        <NameSparkOverlay effect={config.nameEffect} />
+                      </div>
                       <VerifiedBadge config={config} />
                     </div>
                   </div>
