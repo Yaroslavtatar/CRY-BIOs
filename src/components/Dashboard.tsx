@@ -25,7 +25,7 @@ import {
   IMPORT_PREVIEW_STATUS_LABELS,
 } from '../dashboardLabels';
 import { resolveThemeColor, ELEMENT_COLOR_FIELDS, type ElementColorField } from '../themeColors';
-import { buildProfileUrls, getPlatformDomainConfig, type PlatformDomainConfig } from '../platformDomain';
+import { buildProfileUrls, getPlatformDomainConfig, normalizeCustomDomain, isValidCustomDomain, type PlatformDomainConfig } from '../platformDomain';
 import { discordAvatarUrl } from '../discordBadges';
 import { NAME_EFFECT_GROUPS, NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
 import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
@@ -107,8 +107,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [renameSuccess, setRenameSuccess] = useState(false);
   const [renameLoading, setRenameLoading] = useState(false);
 
-  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
-  const [googleInput, setGoogleInput] = useState('');
   const [discordLinkLoading, setDiscordLinkLoading] = useState(false);
   const [discordMessage, setDiscordMessage] = useState('');
   
@@ -1813,16 +1811,8 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       </div>
                     </div>
 
-                    {/* CUSTOM TRANSPARENT BADGES SYSTEM CONSTRUCTOR — временно отключено */}
+                    {/* CUSTOM TRANSPARENT BADGES SYSTEM CONSTRUCTOR */}
                     <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
-                      <div className="p-3 bg-black/30 border border-white/10 rounded-sm">
-                        <h4 className="text-xs font-black font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5 italic">
-                          <Sparkles className="w-3.5 h-3.5 text-neutral-600" />
-                          <span>Бейджи профиля</span>
-                        </h4>
-                        <p className="text-[10px] text-neutral-500 mt-1">Временно отключены — скоро вернутся.</p>
-                      </div>
-                      {false && (
                       <>
                       <div className="flex justify-between items-center bg-black/30 p-2.5 border border-white/5 rounded-sm">
                         <div>
@@ -2129,7 +2119,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         );
                       })()}
                       </>
-                      )}
                     </div>
                   </div>
                 )}
@@ -3426,14 +3415,38 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         </div>
                       </div>
 
-                      <div className="p-4 bg-amber-500/10 border border-amber-500/25 rounded-sm flex gap-3.5 items-start font-sans text-neutral-300">
-                        <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div className="p-4 bg-amber-500/10 border border-amber-500/25 rounded-sm space-y-3 font-sans text-neutral-300">
+                        <div className="flex gap-3.5 items-start">
+                          <Globe2 className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <h4 className="font-bold text-amber-300 uppercase tracking-widest font-mono text-[10px] italic">
+                              Свой домен (mybrand.com)
+                            </h4>
+                            <p className="text-[11px] mt-1 leading-relaxed">
+                              Привяжите apex-домен к профилю. Укажите DNS A-запись или CNAME на IP/хост вашего сервера CRY BIOS.
+                            </p>
+                          </div>
+                        </div>
                         <div>
-                          <h4 className="font-bold text-amber-300 uppercase tracking-widest font-mono text-[10px] italic">
-                            Свой домен (mybrand.com)
-                          </h4>
-                          <p className="text-[11px] mt-1">
-                            Привязка стороннего apex-домена через поле customDomain — в разработке. Сейчас используйте поддомены платформы.
+                          <label className="block text-[10px] uppercase text-neutral-500 mb-1.5 tracking-wider font-bold">Custom domain</label>
+                          <input
+                            type="text"
+                            value={config.customDomain || ''}
+                            onChange={e => updateConfigValue('customDomain', normalizeCustomDomain(e.target.value))}
+                            placeholder="mybrand.com"
+                            className="w-full bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white font-mono focus:outline-none focus:border-[#00f2ff]"
+                          />
+                          {config.customDomain && !isValidCustomDomain(config.customDomain) && (
+                            <p className="text-[10px] text-red-400 mt-1">Некорректный формат домена</p>
+                          )}
+                          {config.customDomain && isValidCustomDomain(config.customDomain) && (
+                            <p className="text-[10px] text-emerald-400 mt-1">
+                              Профиль будет доступен на{' '}
+                              <code className="text-[#00f2ff]">https://{config.customDomain}</code>
+                            </p>
+                          )}
+                          <p className="text-[10px] text-neutral-500 mt-2 leading-relaxed">
+                            Домен должен указывать на этот сервер. Не используйте поддомены платформы ({runtimePlatform.baseDomain || 'yourdomain.com'}) — для них есть alias slug выше.
                           </p>
                         </div>
                       </div>

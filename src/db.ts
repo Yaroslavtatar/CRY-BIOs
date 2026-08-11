@@ -237,6 +237,18 @@ export function getBioByCustomDomain(host: string): BioConfig | null {
   return bios.find(b => b.customDomain && b.customDomain.toLowerCase().trim() === normalized) || null;
 }
 
+export function isCustomDomainTaken(domain: string, excludeUsername?: string): boolean {
+  const normalized = domain.toLowerCase().trim();
+  if (!normalized) return false;
+
+  const bios = getAllBios();
+  for (const bio of bios) {
+    if (excludeUsername && bio.username.toLowerCase() === excludeUsername.toLowerCase()) continue;
+    if (bio.customDomain && bio.customDomain.toLowerCase().trim() === normalized) return true;
+  }
+  return false;
+}
+
 export function getAllBios(): BioConfig[] {
   const rows = db.prepare('SELECT data FROM bios').all() as { data: string }[];
   return rows.map(r => JSON.parse(r.data));
