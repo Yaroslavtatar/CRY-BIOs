@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { previewBackupZipClient } from '../utils/backupPreviewClient';
 import { Shield, Users, Trash2, Edit2, Download, Upload, LogOut, ArrowLeft, Search, Check, AlertTriangle, RefreshCw, Key, FileJson, CheckCircle2, HardDrive, Database } from 'lucide-react';
 import { getThumbUrl } from '../utils/media';
 
@@ -439,29 +440,7 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
     setSuccessMessage('');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const previewRes = await fetch('/api/admin/preview-backup', {
-        method: 'POST',
-        headers: { 'x-admin-password': encodeURIComponent(adminPassword) },
-        body: formData,
-      });
-
-      if (!previewRes.ok) {
-        let message = `HTTP ${previewRes.status}`;
-        try {
-          const data = await previewRes.json();
-          message = data.error || message;
-        } catch {
-          if (previewRes.status === 502) {
-            message = 'Сервер не ответил (502). Возможно, бэкап слишком большой или таймаут прокси — попробуйте снова после деплоя фикса или уменьшите архив.';
-          }
-        }
-        throw new Error(message);
-      }
-
-      const { preview } = await previewRes.json();
+      const preview = await previewBackupZipClient(file);
       setBackupPreview(preview);
       setPendingBackupFile(file);
       setBackupLoading(null);
@@ -487,8 +466,16 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Не удалось импортировать бэкап');
+        let message = `HTTP ${res.status}`;
+        try {
+          const data = await res.json();
+          message = data.error || message;
+        } catch {
+          if (res.status === 502) {
+            message = '502 при загрузке ZIP — увеличьте лимит body/timeout в Traefik (см. deploy/coolify/LABELS_PASTE.txt) или загрузите меньший архив.';
+          }
+        }
+        throw new Error(message);
       }
 
       const data = await res.json();

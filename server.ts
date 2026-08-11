@@ -524,9 +524,15 @@ async function startServer() {
   app.use('/api/admin', adminLimiter);
 
   const checkAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const secret = req.headers['x-admin-password'];
-    if (!secret || typeof secret !== 'string') {
+    const raw = req.headers['x-admin-password'];
+    if (!raw || typeof raw !== 'string') {
       return res.status(401).json({ error: 'Unauthorized Admin Session. Invalid Admin Password.' });
+    }
+    let secret = raw;
+    try {
+      secret = decodeURIComponent(raw);
+    } catch {
+      secret = raw;
     }
     const adminPass = getAdminPassword();
     if (!verifyAdminPassword(secret, adminPass)) {
@@ -1422,81 +1428,15 @@ async function startServer() {
     res.json(summary);
   });
 
-  // OpenSource scripts provider
-  app.get('/api/install-script', (req, res) => {
-    const platform = getPlatformConfig(req);
-    const installOrigin = platform.appUrl;
-    // Generates a script config downloader
-    const shellScript = `#!/bin/bash
-# =====================================================================
-#  CRY BIOS (guns.lol OpenSource Alternative) Self-Host Installer
-# =====================================================================
-
-set -e
-
-RED='\\033[0;31m'
-GREEN='\\033[0;32m'
-BLUE='\\033[0;34m'
-NC='\\033[0m'
-
-echo -e "\${BLUE}=====================================================\${NC}"
-echo -e "\${GREEN}🚀 Starting CRY BIOS Server Install Wizard (Guns.lol Alternative)\${NC}"
-echo -e "\${BLUE}=====================================================\${NC}"
-
-# Check docker presence
-if ! [ -x "$(command -v docker)" ]; then
-  echo -e "\${RED}Error: docker is not installed. Please install Docker first.\${NC}" >&2
-  exit 1
-fi
-
-if ! [ -x "$(command -v docker-compose)" ]; then
-  echo -e "\${RED}Error: docker-compose is not installed. Please install docker-compose.\${NC}" >&2
-  exit 2
-fi
-
-# Create space
-mkdir -p biogun-stack
-cd biogun-stack
-mkdir -p data
-
-echo -e "\${BLUE}✍️ Generating docker-compose.yml configuration with persistent binds...\${NC}"
-
-cat << 'EOF' > docker-compose.yml
-version: '3.8'
-
-services:
-  biogun:
-    image: biogun/server:latest
-    container_name: biogun_server
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - PORT=3000
-      - NODE_ENV=production
-      - GEMINI_API_KEY=""  # Optional API integration key
-    volumes:
-      - cry_bios_data:/app/data
-
-volumes:
-  cry_bios_data:
-    driver: local
-EOF
-
-echo -e "\${GREEN}✅ Created docker-compose.yml successfully.\${NC}"
-echo -e "\${BLUE}📦 Pulling official Docker images and starting the stack...\${NC}"
-
-docker compose pull || echo -e "\${RED}Image lookup fallback: Project runs containerized locally via standard local node build too\${NC}"
-docker compose up -d || echo -e "\${RED}Continuing local npm install configuration wizard.\${NC}"
-
-echo -e "\${BLUE}=====================================================\${NC}"
-echo -e "\${GREEN}🎯 Server fully running and bound! URL: ${installOrigin}\${NC}"
-echo -e "\${GREEN}📊 Persistent data logs safely synchronized to ./data/\${NC}"
-echo -e "\${BLUE}=====================================================\${NC}"
-`;
-    res.setHeader('Content-Type', 'application/x-sh');
-    res.setHeader('Content-Disposition', 'attachment; filename="install.sh"');
-    res.send(shellScript);
+  // OpenSource scripts provider — serves repo install.sh
+  app.get('/api/install-script', (_req, res) => {
+    const scriptPath = path.join(process.cwd(), 'install.sh');
+    if (fs.existsSync(scriptPath)) {
+      res.setHeader('Content-Type', 'application/x-sh');
+      res.setHeader('Content-Disposition', 'attachment; filename="install.sh"');
+      return res.send(fs.readFileSync(scriptPath, 'utf-8'));
+    }
+    res.status(404).send('# install.sh not found — clone https://github.com/Yaroslavtatar/CRY-BIOs\n');
   });
 
   // Multer / upload error handler

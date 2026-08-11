@@ -134,9 +134,11 @@ docker run -d \
 На VPS можно скачать авто-installer:
 
 ```bash
-curl -fsSL https://your-domain.com/api/install-script -o install.sh
-chmod +x install.sh
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Yaroslavtatar/CRY-BIOs/main/install.sh | bash
+# или с вашего инстанса:
+curl -fsSL https://cbios.ru/api/install-script | bash
+# Docker:  bash -s -- docker
+# Native:   bash -s -- native
 ```
 
 ---

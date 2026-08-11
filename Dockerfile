@@ -23,6 +23,7 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.ts ./server.ts
+COPY install.sh ./install.sh
 
 EXPOSE 3000
 
