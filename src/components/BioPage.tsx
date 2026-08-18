@@ -20,6 +20,7 @@ import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
 import { getSocialIconColor } from '../utils/socialPlatforms';
 import { resolveThemeColor } from '../themeColors';
 import { discordAvatarUrl, type DiscordBadge } from '../discordBadges';
+import { resolveMediaUrl, isMediaSameOrigin, getClientMediaCdnUrl } from '../utils/cdn';
 
 const renderDiscordBadgeIcon = (badge: DiscordBadge) => {
   const iconProps = { className: 'w-3 h-3 flex-shrink-0' };
@@ -99,6 +100,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [volume, setVolume] = useState(0.8); // 80% default volume
   const mobile = useMobileBio(config);
+  const cdnBase = getClientMediaCdnUrl();
+  const mediaUrl = (url?: string) => resolveMediaUrl(url, cdnBase);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
@@ -114,7 +117,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
     // Check if the current audio URL is same-origin
     const url = audioRef.current.src || "";
-    const isSameOrigin = url.startsWith('/') || url.startsWith(window.location.origin) || !url.startsWith('http');
+    const isSameOrigin = isMediaSameOrigin(url, cdnBase);
 
     // If not same-origin, bypass Web Audio entirely to prevent browsers from muting the audio
     if (!isSameOrigin) {
@@ -551,7 +554,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
     }
 
     const audio = new Audio();
-    audio.src = currentSong.url;
+    audio.src = mediaUrl(currentSong.url);
     audio.loop = songs.length <= 1; // loop if only single track, otherwise play next
     audio.volume = volume;
     audio.muted = isMuted;
@@ -923,7 +926,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
           playsInline
           preload={entered ? 'auto' : 'none'}
           className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none"
-          src={entered ? config.bgValue : undefined}
+          src={entered ? mediaUrl(config.bgValue) : undefined}
           onTimeUpdate={(e) => {
             if (config.bgVideoUseAsAudio) {
               setAudioCurrentTime(e.currentTarget.currentTime);
@@ -935,7 +938,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
       {config.bgType === 'image' && config.bgValue && (
         <img
-          src={config.bgValue}
+          src={mediaUrl(config.bgValue)}
           alt=""
           loading="lazy"
           decoding="async"
@@ -1016,9 +1019,9 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
               >
                 [ {config.enterText || 'Войти'} ]
               </h2>
-              <div className="flex items-center justify-center space-x-1.5 text-neutral-500 text-[10px] font-bold">
-                <Sparkles className="w-3 h-3 text-[#00f2ff]" />
-                <span>НАЖМИТЕ ДЛЯ ВКЛЮЧЕНИЯ МУЗЫКАЛЬНОГО СОПРОВОЖДЕНИЯ</span>
+              <div className="flex flex-col items-center justify-center gap-1.5 text-neutral-500 text-[10px] font-bold max-w-full px-2">
+                <Sparkles className="w-3 h-3 text-[#00f2ff] shrink-0" />
+                <span className="text-center break-words max-w-full">НАЖМИТЕ ДЛЯ ВКЛЮЧЕНИЯ МУЗЫКАЛЬНОГО СОПРОВОЖДЕНИЯ</span>
               </div>
             </motion.div>
           </motion.div>
@@ -1034,7 +1037,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
             </button>
             <div className="w-[1px] h-4 bg-white/10" />
             <div className="flex items-center space-x-2">
-              <img src={config.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'} className="w-7 h-7 rounded-full object-cover border border-white/10" loading="lazy" decoding="async" alt="" />
+              <img src={mediaUrl(config.avatarUrl) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'} className="w-7 h-7 rounded-full object-cover border border-white/10" loading="lazy" decoding="async" alt="" crossOrigin="anonymous" />
               <div className="flex flex-col text-[10px] leading-tight">
                 <span className="text-neutral-400 font-bold font-mono uppercase tracking-wider text-[8px]">ПРЕДПРОСМОТР ШАБЛОНА</span>
                 <span className="text-white font-extrabold font-mono text-[9px]">{config.displayName || config.username || 'samurai'}</span>
@@ -1053,7 +1056,13 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       {entered && (
         <motion.div
           initial={{ opacity: 0, y: 35, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1, rotateX: parallax.y * 0.4, rotateY: parallax.x * 0.4 }}
+          animate={{
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            rotateX: mobile.isViewportMobile ? 0 : parallax.y * 0.4,
+            rotateY: mobile.isViewportMobile ? 0 : parallax.x * 0.4,
+          }}
           transition={{ duration: 0.7, type: 'spring', stiffness: 45 }}
           style={{ transformPerspective: 800, ...getGlowStyle(config, 'card') }}
           className={`w-full ${mobile.cardPadding} ${mobile.cardMaxWidth} relative z-10 flex flex-col items-center space-y-3 transition-all duration-300 ${
@@ -1068,7 +1077,8 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                   <div className="relative flex flex-col items-center">
                     <VerifiedAvatarRing config={config}>
                       <img
-                        src={config.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
+                        src={mediaUrl(config.avatarUrl) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
+                        crossOrigin="anonymous"
                         alt={config.displayName}
                         referrerPolicy="no-referrer"
                         loading="eager"
@@ -1134,7 +1144,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
             if (section === 'discord') {
               if (config.discordConnected && config.discordId) {
                 return (
-                  <div key="discord" className="flex flex-col items-center p-3 bg-black/40 border border-white/5 rounded-xl min-w-[240px] shadow-lg">
+                  <div key="discord" className="flex flex-col items-center p-3 bg-black/40 border border-white/5 rounded-xl min-w-0 w-full max-w-xs shadow-lg">
                     {discordUser && discordUser.discord_user ? (
                       <div className="flex items-center gap-3">
                         <div className="relative">
@@ -1240,10 +1250,10 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                           <div 
                             key={block.id} 
                             style={blockStyle}
-                            className={`w-full max-w-sm bg-transparent !border-none ${blockClasses}`}
+                            className={`w-full max-w-sm bg-transparent !border-none overflow-x-auto ${blockClasses}`}
                           >
                             <div
-                              className="p-3 text-[11px] font-sans text-white/90 drop-shadow-md"
+                              className="p-3 text-[11px] font-sans text-white/90 drop-shadow-md max-w-full overflow-x-auto"
                               dangerouslySetInnerHTML={{ __html: block.htmlContent || '' }}
                             />
                           </div>
@@ -1296,8 +1306,10 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                             }`}
                           >
                             {block.textboxStyle === 'marquee' ? (
-                              <div className="whitespace-nowrap animate-marquee">
-                                {block.textboxContent || 'КОНТЕНТ НЕ ЗАДАН'}
+                              <div className="overflow-hidden w-full">
+                                <div className="whitespace-nowrap animate-marquee">
+                                  {block.textboxContent || 'КОНТЕНТ НЕ ЗАДАН'}
+                                </div>
                               </div>
                             ) : (
                               <p>{block.textboxContent || 'КОНТЕНТ НЕ ЗАДАН'}</p>
@@ -1321,7 +1333,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                             <Quote className="w-4 h-4 text-white/30 absolute top-4 left-6 mix-blend-screen" />
                             <p className="font-sans leading-relaxed text-[14px] tracking-wide text-white drop-shadow-md italic">"{block.quoteText || 'Код без терминала — как рыцарь без меча.'}"</p>
                             {block.quoteAuthor && (
-                              <span className="block text-center text-[12px] font-sans text-white/60 tracking-wider uppercase mt-3 font-semibold drop-shadow-md text-nowrap">
+                              <span className="block text-center text-[12px] font-sans text-white/60 tracking-wider uppercase mt-3 font-semibold drop-shadow-md break-words">
                                 — {block.quoteAuthor}
                               </span>
                             )}

@@ -1,6 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;700&family=Space+Grotesk:wght@400;700&family=Playfair+Display:ital,wght@0,400;1,400&display=swap');
 @import "tailwindcss";
 
+html,
+body,
+#root {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+body {
+  position: relative;
+  overscroll-behavior-x: none;
+}
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
@@ -162,6 +174,10 @@
 @media (max-width: 640px) {
   .mobile-bio-layout canvas {
     -webkit-touch-callout: none;
+  }
+
+  [class*='name-typewriter-'] {
+    max-width: 100% !important;
   }
 }
 

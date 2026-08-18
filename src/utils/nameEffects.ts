@@ -29,7 +29,7 @@ export function getNameEffectClasses(effect: NameEffect | undefined, displayName
     case 'fuzzy':
       return 'text-white animate-fuzzy inline-block';
     case 'typewriter':
-      return `text-white overflow-hidden whitespace-nowrap border-r-[3px] border-white max-w-fit pr-1 name-typewriter-${len}`;
+      return `text-white overflow-hidden whitespace-nowrap border-r-[3px] border-white max-w-full sm:max-w-fit pr-1 name-typewriter-${len}`;
     case 'rainbow':
       return 'text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-yellow-400 to-blue-400 animate-rainbow bg-[length:200%_auto]';
     case 'flicker':
