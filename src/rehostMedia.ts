@@ -20,6 +20,7 @@ const ALLOWED_HOSTS = new Set([
   'cdn.discordapp.com',
   'media.discordapp.net',
   'i.imgur.com',
+  'cdn.cbios.ru',
 ]);
 
 function isLocalUploadUrl(url: string): boolean {

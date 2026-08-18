@@ -11,6 +11,7 @@ import multer from 'multer';
 import bcrypt from 'bcrypt';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import helmet from 'helmet';
+import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
 import * as db from './src/db';
@@ -51,6 +52,15 @@ import {
   normalizeSlug,
   parseSubdomainSlug,
 } from './src/platformDomain';
+import { getServerMediaCdnUrl } from './src/utils/cdn';
+
+const CBIOS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?cbios\.ru$/;
+
+function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (origin === 'https://cdn.cbios.ru') return true;
+  return CBIOS_ORIGIN_RE.test(origin);
+}
 
 // Establish folders
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -318,6 +328,19 @@ async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
 
+  app.use(cors({
+    origin(origin, callback) {
+      if (!origin || isAllowedCorsOrigin(origin)) {
+        callback(null, origin || true);
+      } else {
+        callback(null, false);
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password'],
+  }));
+
   // Discord OAuth webhook must read raw body for HMAC
   app.post('/api/discord/oauth/webhook', express.raw({ type: 'application/json' }), (req, res) => {
     const secret = process.env.CBIOS_EDGE_SECRET?.trim();
@@ -378,6 +401,7 @@ async function startServer() {
   app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
     hsts: process.env.NODE_ENV === 'production'
       ? { maxAge: 31536000, includeSubDomains: true, preload: false }
       : false,
@@ -891,6 +915,7 @@ async function startServer() {
     res.json({
       ...platform,
       hideAdminPanelLink: site.hideAdminPanelLink,
+      mediaCdnUrl: getServerMediaCdnUrl(),
       ssl: {
         wildcardRequired: true,
         provider: 'coolify-traefik',

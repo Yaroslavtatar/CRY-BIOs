@@ -9,15 +9,15 @@ interface MobileBioLayoutProps {
 }
 
 export default function MobileBioLayout({ config, children, className = '' }: MobileBioLayoutProps) {
-  const isMobile = useMediaQuery('(max-width: 640px)');
-  const mobileOn = config.mobileOptimized !== false && isMobile;
+  const isViewportMobile = useMediaQuery('(max-width: 640px)');
+  const mobileOn = config.mobileOptimized !== false && isViewportMobile;
   const layoutMode = config.layoutMode || 'default';
 
-  if (!mobileOn && layoutMode === 'default') {
+  if (!mobileOn && layoutMode === 'default' && !isViewportMobile) {
     return <div className={className}>{children}</div>;
   }
 
-  const compact = mobileOn || layoutMode === 'compact' || layoutMode === 'sleek';
+  const compact = isViewportMobile || layoutMode === 'compact' || layoutMode === 'sleek';
 
   return (
     <div
@@ -35,21 +35,23 @@ export default function MobileBioLayout({ config, children, className = '' }: Mo
 
 export function useMobileBio(config: BioConfig | null): {
   isMobile: boolean;
+  isViewportMobile: boolean;
   compact: boolean;
   nameSize: string;
   avatarSize: string;
   cardPadding: string;
   cardMaxWidth: string;
 } {
-  const isMobile = useMediaQuery('(max-width: 640px)');
-  const mobileOn = config?.mobileOptimized !== false && isMobile;
+  const isViewportMobile = useMediaQuery('(max-width: 640px)');
+  const mobileOn = config?.mobileOptimized !== false && isViewportMobile;
   const layoutMode = config?.layoutMode || 'default';
-  const compact = mobileOn || layoutMode === 'compact' || layoutMode === 'sleek';
+  const compact = isViewportMobile || layoutMode === 'compact' || layoutMode === 'sleek';
 
   return {
     isMobile: mobileOn,
+    isViewportMobile,
     compact,
-    nameSize: compact ? 'text-[28px] max-sm:break-words' : 'text-[39.5px]',
+    nameSize: compact ? 'text-[28px] max-sm:break-words max-w-full' : 'text-[39.5px]',
     avatarSize: compact ? 'w-[80px] h-[80px]' : 'w-[100px] h-[100px]',
     cardPadding: compact ? 'p-4 max-sm:max-w-full' : 'p-6 max-w-lg',
     cardMaxWidth: compact ? 'max-w-full' : 'max-w-lg',

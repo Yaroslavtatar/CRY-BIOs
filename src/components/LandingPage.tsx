@@ -85,29 +85,31 @@ services:
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white selection:bg-[#00f2ff] selection:text-black antialiased font-sans flex flex-col justify-between overflow-x-hidden">
+    <div className="min-h-screen w-full max-w-[100vw] bg-[#050505] text-white selection:bg-[#00f2ff] selection:text-black antialiased font-sans flex flex-col justify-between overflow-x-hidden relative">
       {/* Absolute Glow Backgrounds */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-[#00f2ff]/5 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-10 right-1/4 w-[400px] h-[400px] bg-[#00f2ff]/3 rounded-full blur-[140px] pointer-events-none" />
+      </div>
 
       {/* Navigation Header */}
-      <header className="border-b border-white/10 bg-[#050505]/95 backdrop-blur-md sticky top-0 z-50 px-6 py-6 font-mono">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-3 cursor-pointer select-none" onClick={() => window.location.reload()}>
-            <div className="w-8 h-8 bg-[#00f2ff] rounded-sm flex items-center justify-center">
+      <header className="border-b border-white/10 bg-[#050505]/95 backdrop-blur-md sticky top-0 z-50 px-4 sm:px-6 py-4 sm:py-6 font-mono">
+        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-3">
+          <div className="flex items-center space-x-3 cursor-pointer select-none min-w-0 shrink" onClick={() => window.location.reload()}>
+            <div className="w-8 h-8 bg-[#00f2ff] rounded-sm flex items-center justify-center shrink-0">
               <span className="text-black font-black text-xl">C</span>
             </div>
-            <div>
-              <span className="font-black text-3xl tracking-tighter uppercase italic text-white block leading-none">
+            <div className="min-w-0">
+              <span className="font-black text-2xl sm:text-3xl tracking-tighter uppercase italic text-white block leading-none">
                 CRY BIOS
               </span>
-              <span className="text-[9px] block text-[#00f2ff] font-mono tracking-widest uppercase mt-0.5 font-bold">
+              <span className="text-[9px] block text-[#00f2ff] font-mono tracking-widest uppercase mt-0.5 font-bold truncate">
                 Свободный аналог Guns.lol с открытым кодом
               </span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-6">
+          <div className="flex items-center gap-3 sm:gap-6 shrink-0">
             <a
               href="#installer"
               className="hidden md:block text-xs font-black tracking-widest uppercase text-neutral-400 hover:text-[#00f2ff] transition"
@@ -117,9 +119,10 @@ services:
             <button
               onClick={onNavigateToDashboard}
               id="header_dashboard_btn"
-              className="px-6 py-3 bg-[#00f2ff] text-black font-black text-xs tracking-widest uppercase italic hover:bg-[#00d0e0] hover:shadow-[0_0_20px_rgba(0,242,255,0.3)] transition-all duration-300 flex items-center space-x-2 rounded-sm cursor-pointer"
+              className="px-3 sm:px-6 py-2.5 sm:py-3 bg-[#00f2ff] text-black font-black text-[10px] sm:text-xs tracking-widest uppercase italic hover:bg-[#00d0e0] hover:shadow-[0_0_20px_rgba(0,242,255,0.3)] transition-all duration-300 flex items-center space-x-2 rounded-sm cursor-pointer whitespace-nowrap"
             >
-              <span>СОЗДАТЬ БИО (БЕСПЛАТНО)</span>
+              <span className="sm:hidden">СОЗДАТЬ БИО</span>
+              <span className="hidden sm:inline">СОЗДАТЬ БИО (БЕСПЛАТНО)</span>
               <ArrowRight className="w-4 h-4 text-black" />
             </button>
           </div>
@@ -162,20 +165,20 @@ services:
           </div>
 
           {/* Micro Stats Banner */}
-          <div className="mt-20 grid grid-cols-2 lg:grid-cols-4 gap-4 p-8 rounded-sm bg-[#0c0c0c] border border-white/10 max-w-4xl mx-auto shadow-2xl font-mono">
+          <div className="mt-20 grid grid-cols-2 lg:grid-cols-4 gap-4 p-4 sm:p-8 rounded-sm bg-[#0c0c0c] border border-white/10 max-w-4xl mx-auto shadow-2xl font-mono">
             <div className="text-center">
               <span className="block text-[10px] font-black tracking-widest text-[#00f2ff] uppercase italic">Селф-хостинг</span>
               <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">В 1 команду</span>
             </div>
-            <div className="text-center border-l border-white/10">
+            <div className="text-center sm:border-l sm:border-white/10">
               <span className="block text-[10px] font-black tracking-widest text-neutral-500 uppercase italic">Создано профилей</span>
               <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">{analyticsStats.totalBios} Активных</span>
             </div>
-            <div className="text-center border-l border-white/10">
+            <div className="text-center sm:border-l sm:border-white/10">
               <span className="block text-[10px] font-black tracking-widest text-[#00f2ff] uppercase italic">Просмотры</span>
               <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">{analyticsStats.totalTraffic} Запросов</span>
             </div>
-            <div className="text-center border-l border-white/10">
+            <div className="text-center sm:border-l sm:border-white/10">
               <span className="block text-[10px] font-black tracking-widest text-neutral-500 uppercase italic">Поддержка кода</span>
               <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">HTML и CSS</span>
             </div>
@@ -238,9 +241,9 @@ services:
                 Выберите пример профиля на нашей запущенной ноде CRY BIOS, чтобы ознакомиться с возможностями глубокой кастомизации.
               </p>
             </div>
-            <div className="mt-4 md:mt-0 flex items-center space-x-2 text-xs font-bold font-mono text-[#00f2ff] bg-white/5 border border-white/10 px-4 py-2.5 rounded-sm uppercase tracking-wider">
-              <Users className="w-4 h-4 text-[#00f2ff]" />
-              <span>ЗАРЕГИСТРИРОВАНО ПРОФИЛЕЙ: {activeBios.length}</span>
+            <div className="mt-4 md:mt-0 flex flex-wrap items-center gap-2 text-xs font-bold font-mono text-[#00f2ff] bg-white/5 border border-white/10 px-4 py-2.5 rounded-sm uppercase tracking-wider max-w-full">
+              <Users className="w-4 h-4 text-[#00f2ff] shrink-0" />
+              <span className="break-words">ЗАРЕГИСТРИРОВАНО ПРОФИЛЕЙ: {activeBios.length}</span>
             </div>
           </div>
 
@@ -309,15 +312,15 @@ services:
                 </div>
               </div>
 
-              <div className="mt-8 flex items-center space-x-4 font-mono">
+              <div className="mt-8 flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 sm:gap-4 font-mono">
                 <a
                   href="/api/install-script"
-                  className="px-6 py-3.5 bg-[#00f2ff] text-black font-black text-xs tracking-widest uppercase italic flex items-center space-x-2 transition hover:bg-[#00d0e0] rounded-sm"
+                  className="px-6 py-3.5 bg-[#00f2ff] text-black font-black text-xs tracking-widest uppercase italic flex items-center space-x-2 transition hover:bg-[#00d0e0] rounded-sm whitespace-nowrap"
                 >
                   <Download className="w-4 h-4" />
                   <span>СКАЧАТЬ INSTALL.SH</span>
                 </a>
-                <span className="text-xs text-neutral-500">или экспортируйте файлы в админ-панели</span>
+                <span className="text-xs text-neutral-500 break-words">или экспортируйте файлы в админ-панели</span>
               </div>
             </div>
 
@@ -374,9 +377,9 @@ services:
       <footer className="bg-[#0c0c0c] border-t border-white/10 p-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 text-left font-mono">
         <div className="flex flex-col gap-3">
           <div className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em] italic">Скрипт установки</div>
-          <div className="bg-black border border-white/10 px-5 py-3.5 rounded-sm flex items-center gap-4 font-mono text-xs text-neutral-300">
-            <span className="text-[#00f2ff] font-bold">$</span>
-            <span className="font-mono">{installScriptCmd}</span>
+          <div className="bg-black border border-white/10 px-5 py-3.5 rounded-sm flex items-center gap-4 font-mono text-xs text-neutral-300 max-w-[calc(100vw-2rem)] overflow-x-auto">
+            <span className="text-[#00f2ff] font-bold shrink-0">$</span>
+            <span className="font-mono break-all">{installScriptCmd}</span>
           </div>
         </div>
         <div className="flex flex-col items-center md:items-end gap-2.5">

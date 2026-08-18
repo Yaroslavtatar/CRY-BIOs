@@ -14,6 +14,7 @@ import {
   parseSubdomainSlug,
   type PlatformDomainConfig,
 } from './platformDomain';
+import { setClientMediaCdnUrl } from './utils/cdn';
 
 const DEFAULT_PLATFORM: PlatformDomainConfig = getPlatformDomainConfig({
   requestHost: typeof window !== 'undefined' ? window.location.host : undefined,
@@ -22,7 +23,7 @@ const DEFAULT_PLATFORM: PlatformDomainConfig = getPlatformDomainConfig({
 export default function App() {
   const [view, setView] = useState<'landing' | 'dashboard' | 'bio' | 'admin'>('landing');
   const [username, setUsername] = useState('');
-  type PublicConfig = PlatformDomainConfig & { hideAdminPanelLink?: boolean };
+  type PublicConfig = PlatformDomainConfig & { hideAdminPanelLink?: boolean; mediaCdnUrl?: string | null };
 
   const [platform, setPlatform] = useState<PublicConfig>(DEFAULT_PLATFORM);
 
@@ -31,6 +32,7 @@ export default function App() {
       .then(res => (res.ok ? res.json() : null))
       .then((data: PublicConfig | null) => {
         if (data) {
+          setClientMediaCdnUrl(data.mediaCdnUrl);
           setPlatform(prev => ({
             ...prev,
             ...data,

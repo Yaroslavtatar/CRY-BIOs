@@ -12,6 +12,10 @@ Edge proxy for CRY BIOS: Discord OAuth, Lanyard presence, guns.lol HTML fetch.
 
 ### 2. Deploy Worker
 
+**Cloudflare Workers (Git):** root path `deploy/cloudflare/cbios-edge`, build command empty, deploy command `npx wrangler deploy`. Project name must match `wrangler.toml` (`cry-bios`).
+
+**Local:**
+
 ```bash
 cd deploy/cloudflare/cbios-edge
 npm install
