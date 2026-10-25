@@ -471,7 +471,11 @@ async function startServer() {
   });
 
   // --- API ROUTING ---
-
+  // CORS for uploads (needed for Web Audio / canvas via CDN)
+  app.use('/uploads', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    next();
+  });
   // AVIF negotiation for WebP uploads
   app.get('/uploads/:folder/:file', (req, res, next) => {
     const { folder, file } = req.params;
