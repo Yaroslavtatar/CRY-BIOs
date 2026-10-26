@@ -6,10 +6,18 @@ on:
   pull_request:
     branches: [ "main" ]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Lint & Build Compilation
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -27,5 +35,27 @@ jobs:
       - name: Code Guideline Verification (Lint)
         run: npm run lint
 
+      - name: Unit tests
+        run: npm test
+
       - name: Compile and Bundle Application (Vite + Esbuild)
         run: npm run build
+
+      - name: Smoke test (запуск собранного сервера)
+        run: ./scripts/smoke.sh
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Информационный: новые CVE в зависимостях не должны блокировать чужие PR
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      - name: npm audit (prod-зависимости, high+)
+        run: npm audit --omit=dev --audit-level=high
