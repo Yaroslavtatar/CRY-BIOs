@@ -39,12 +39,6 @@ import { getStorageStats, runHealthChecks, isUsingDefaultAdminPassword } from '.
 import { getSiteSettings, updateSiteSettings } from './src/siteSettings';
 import { startScheduledBackups } from './src/scheduledBackup';
 import { processMedia, resolveUploadFilePath, optimizeAllMedia } from './src/mediaPipeline';
-import { verifyEdgeSignature, getEdgeUrl, fetchViaEdge } from './src/edgeAuth';
-import {
-  decodeDiscordBadges,
-  mergeBadgesIntoLanyardUser,
-  staticDiscordPresenceFromBio,
-} from './src/discordBadges';
 import {
   getPlatformDomainConfig,
   isReservedSlug,
@@ -53,7 +47,7 @@ import {
   parseSubdomainSlug,
 } from './src/platformDomain';
 import { getServerMediaCdnUrl } from './src/utils/cdn';
-import { registerDiscordDirectOAuth } from './src/discordDirect';
+import { registerDiscord } from './src/discord';
 
 // Разрешённые origin: cbios.ru и cryteam.ru (+ один уровень поддоменов, в т.ч. cdn.*) и CORS_ALLOWED_ORIGINS из окружения
 const CBIOS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?(cbios\.ru|cryteam\.ru)$/;
@@ -349,63 +343,6 @@ async function startServer() {
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password'],
   }));
-
-  // Discord OAuth webhook must read raw body for HMAC
-  app.post('/api/discord/oauth/webhook', express.raw({ type: 'application/json' }), (req, res) => {
-    const secret = process.env.CBIOS_EDGE_SECRET?.trim();
-    if (!secret) {
-      return res.status(503).json({ error: 'Webhook secret not configured' });
-    }
-
-    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : String(req.body || '');
-    const timestamp = req.headers['x-cbios-timestamp'] as string | undefined;
-    const signature = req.headers['x-cbios-signature'] as string | undefined;
-
-    if (!verifyEdgeSignature(secret, rawBody, timestamp, signature)) {
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
-
-    let payload: {
-      state: string;
-      discord: {
-        id: string;
-        username: string;
-        displayName: string;
-        avatarHash: string | null;
-        premiumType: number;
-        publicFlags: number;
-        linkedAt: string;
-      };
-    };
-
-    try {
-      payload = JSON.parse(rawBody);
-    } catch {
-      return res.status(400).json({ error: 'Invalid JSON' });
-    }
-
-    const username = db.consumeOAuthState(payload.state);
-    if (!username) {
-      return res.status(400).json({ error: 'Invalid or expired OAuth state' });
-    }
-
-    const bio = db.getBio(username);
-    if (!bio) {
-      return res.status(404).json({ error: 'Bio not found' });
-    }
-
-    bio.discordConnected = true;
-    bio.discordId = payload.discord.id;
-    bio.discordUsername = payload.discord.username;
-    bio.discordDisplayName = payload.discord.displayName;
-    bio.discordAvatarHash = payload.discord.avatarHash;
-    bio.discordPremiumType = payload.discord.premiumType;
-    bio.discordPublicFlags = payload.discord.publicFlags;
-    bio.discordLinkedAt = payload.discord.linkedAt;
-    db.saveBio(username, bio);
-
-    res.json({ success: true, username });
-  });
 
   app.use(helmet({
     contentSecurityPolicy: false,
@@ -995,101 +932,14 @@ async function startServer() {
     res.json({ success: false });
   });
 
-  // Прямой Discord OAuth (активен при DISCORD_CLIENT_ID + DISCORD_CLIENT_SECRET, иначе работает Worker)
-  registerDiscordDirectOAuth(app, {
+  // Discord: OAuth + disconnect + presence (src/discord.ts)
+  registerDiscord(app, {
     getUsernameFromRequest,
     getBio: (u: string) => db.getBio(u),
     saveBio: (u: string, b: any) => db.saveBio(u, b),
-  });
-
-  // Discord OAuth + Lanyard presence
-  app.get('/api/discord/oauth/start', (req, res) => {
-    const authedUser = getUsernameFromRequest(req);
-    if (!authedUser) {
-      return res.status(401).json({ error: 'Unauthorized Session' });
-    }
-
-    const edgeUrl = getEdgeUrl();
-    if (!edgeUrl) {
-      return res.status(503).json({ error: 'Discord OAuth не настроен. Задайте CBIOS_EDGE_URL и задеployьте cbios-edge Worker.' });
-    }
-
-    const state = db.createOAuthState(authedUser);
-    const url = `${edgeUrl.replace(/\/$/, '')}/oauth/start?state=${encodeURIComponent(state)}`;
-    res.json({ url });
-  });
-
-  app.post('/api/discord/disconnect', (req, res) => {
-    const authedUser = getUsernameFromRequest(req);
-    if (!authedUser) {
-      return res.status(401).json({ error: 'Unauthorized Session' });
-    }
-
-    const bio = db.getBio(authedUser);
-    if (!bio) {
-      return res.status(404).json({ error: 'Bio not found' });
-    }
-
-    bio.discordConnected = false;
-    bio.discordId = undefined;
-    bio.discordUsername = undefined;
-    bio.discordDisplayName = undefined;
-    bio.discordAvatarHash = undefined;
-    bio.discordPremiumType = undefined;
-    bio.discordPublicFlags = undefined;
-    bio.discordLinkedAt = undefined;
-    db.saveBio(authedUser, bio);
-
-    res.json({ success: true });
-  });
-
-  app.get('/api/discord/:userId', async (req, res) => {
-    try {
-      const { userId } = req.params;
-      if (!/^\d{17,19}$/.test(userId)) {
-        return res.status(400).json({ error: 'Invalid Discord user ID' });
-      }
-
-      const bio = db.getAllBios().find(b => b.discordId === userId) || null;
-      const edgeUrl = getEdgeUrl();
-
-      if (edgeUrl) {
-        const lanyardRes = await fetchViaEdge(`/lanyard/${userId}`);
-        if (lanyardRes.ok) {
-          const data = await lanyardRes.json() as { success?: boolean; data?: any };
-          if (data.data?.discord_user && bio) {
-            data.data = mergeBadgesIntoLanyardUser(
-              data.data,
-              bio.discordPublicFlags,
-              bio.discordPremiumType,
-            );
-          } else if (data.data?.discord_user) {
-            data.data.discord_user.badges = decodeDiscordBadges(
-              data.data.discord_user.public_flags ?? 0,
-              0,
-            );
-          }
-          return res.json(data);
-        }
-      } else {
-        const lanyardRes = await fetch(`https://api.lanyard.rest/v1/users/${userId}`);
-        if (lanyardRes.ok) {
-          const data = await lanyardRes.json() as { data?: any };
-          if (data.data && bio) {
-            data.data = mergeBadgesIntoLanyardUser(data.data, bio.discordPublicFlags, bio.discordPremiumType);
-          }
-          return res.json(data);
-        }
-      }
-
-      if (bio?.discordConnected) {
-        return res.json(staticDiscordPresenceFromBio(bio));
-      }
-
-      return res.status(404).json({ success: false, error: 'Discord presence unavailable' });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
+    getAllBios: () => db.getAllBios(),
+    createOAuthState: (u: string) => db.createOAuthState(u),
+    consumeOAuthState: (st: string) => db.consumeOAuthState(st),
   });
 
   // Register or Login endpoint

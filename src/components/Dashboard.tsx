@@ -416,9 +416,17 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       if (username) loadBioConfig(username);
       window.history.replaceState({}, '', '/dashboard');
       setTimeout(() => setDiscordMessage(''), 4000);
-    } else if (discordStatus === 'error') {
-      setDiscordMessage('Не удалось подключить Discord. Проверьте настройки Worker.');
+    } else if (discordStatus) {
+      const messages: Record<string, string> = {
+        denied: 'Подключение Discord отменено.',
+        invalid_state: 'Ссылка устарела. Попробуйте подключить Discord ещё раз.',
+        already_linked: 'Этот Discord-аккаунт уже привязан к другому профилю.',
+        no_profile: 'Профиль не найден. Сохраните био и повторите.',
+        error: 'Не удалось подключить Discord. Попробуйте позже.',
+      };
+      setDiscordMessage(messages[discordStatus] || messages.error);
       window.history.replaceState({}, '', '/dashboard');
+      setTimeout(() => setDiscordMessage(''), 6000);
     }
   }, [username]);
 
