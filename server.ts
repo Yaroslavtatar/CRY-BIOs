@@ -53,13 +53,22 @@ import {
   parseSubdomainSlug,
 } from './src/platformDomain';
 import { getServerMediaCdnUrl } from './src/utils/cdn';
+import { registerDiscordDirectOAuth } from './src/discordDirect';
 
-const CBIOS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?cbios\.ru$/;
+// Разрешённые origin: cbios.ru и cryteam.ru (+ один уровень поддоменов, в т.ч. cdn.*) и CORS_ALLOWED_ORIGINS из окружения
+const CBIOS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?(cbios\.ru|cryteam\.ru)$/;
+const EXTRA_CORS_ORIGINS = new Set(
+  (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase().replace(/\/+$/, ''))
+    .filter(Boolean)
+);
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {
   if (!origin) return true;
-  if (origin === 'https://cdn.cbios.ru') return true;
-  return CBIOS_ORIGIN_RE.test(origin);
+  const o = origin.toLowerCase();
+  if (CBIOS_ORIGIN_RE.test(o)) return true;
+  return EXTRA_CORS_ORIGINS.has(o);
 }
 
 // Establish folders
@@ -984,6 +993,13 @@ async function startServer() {
       return res.json({ success: true, username: matched.username });
     }
     res.json({ success: false });
+  });
+
+  // Прямой Discord OAuth (активен при DISCORD_CLIENT_ID + DISCORD_CLIENT_SECRET, иначе работает Worker)
+  registerDiscordDirectOAuth(app, {
+    getUsernameFromRequest,
+    getBio: (u: string) => db.getBio(u),
+    saveBio: (u: string, b: any) => db.saveBio(u, b),
   });
 
   // Discord OAuth + Lanyard presence
