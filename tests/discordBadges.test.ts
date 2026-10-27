@@ -4,6 +4,8 @@ import {
   discordAvatarUrl,
   mergeBadgesIntoLanyardUser,
   staticDiscordPresenceFromBio,
+  describeActivity,
+  normalizeDiscordStatus,
 } from '../src/discordBadges';
 
 describe('decodeDiscordBadges', () => {
@@ -20,6 +22,51 @@ describe('decodeDiscordBadges', () => {
   it('раскладывает публичные флаги', () => {
     const ids = decodeDiscordBadges((1 << 0) | (1 << 1)).map((b) => b.id);
     expect(ids).toEqual(['staff', 'partner']);
+  });
+});
+
+describe('бейджи разработчика', () => {
+  it('Active Developer (1<<22) не превращается в Verified Developer', () => {
+    expect(decodeDiscordBadges(1 << 22).map((b) => b.id)).toEqual(['active_dev']);
+  });
+
+  it('Verified Developer (1<<17) определяется отдельно', () => {
+    expect(decodeDiscordBadges(1 << 17).map((b) => b.id)).toEqual(['verified_dev']);
+    expect(decodeDiscordBadges((1 << 17) | (1 << 22)).map((b) => b.id)).toEqual(['verified_dev', 'active_dev']);
+  });
+});
+
+describe('describeActivity', () => {
+  it('null без активностей', () => {
+    expect(describeActivity(undefined)).toBeNull();
+    expect(describeActivity([])).toBeNull();
+  });
+
+  it('кастомный статус не выдаётся за игру', () => {
+    expect(describeActivity([{ type: 4, name: 'Custom Status', state: 'coding', emoji: { name: '💻' } }])).toBe('💻 coding');
+    expect(describeActivity([{ type: 4, name: 'Custom Status' }])).toBeNull();
+  });
+
+  it('игра приоритетнее музыки и кастомного статуса', () => {
+    const acts = [
+      { type: 4, state: 'afk' },
+      { type: 2, name: 'Spotify', details: 'Song', state: 'Artist' },
+      { type: 0, name: 'Minecraft' },
+    ];
+    expect(describeActivity(acts)).toBe('Playing Minecraft');
+    expect(describeActivity(acts.slice(0, 2))).toBe('Listening to Song \u2014 Artist');
+  });
+
+  it('стрим', () => {
+    expect(describeActivity([{ type: 1, name: 'Twitch', details: 'Speedrun' }])).toBe('Streaming Speedrun');
+  });
+});
+
+describe('normalizeDiscordStatus', () => {
+  it('неизвестные значения считает offline', () => {
+    expect(normalizeDiscordStatus('dnd')).toBe('dnd');
+    expect(normalizeDiscordStatus('invisible')).toBe('offline');
+    expect(normalizeDiscordStatus(undefined)).toBe('offline');
   });
 });
 
@@ -57,5 +104,6 @@ describe('staticDiscordPresenceFromBio', () => {
     expect(res?.success).toBe(true);
     expect(res?.data.discord_status).toBe('offline');
     expect(res?.data.discord_user.username).toBe('bro');
+    expect(res?.data.source).toBe('oauth');
   });
 });

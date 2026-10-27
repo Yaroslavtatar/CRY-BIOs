@@ -114,6 +114,8 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [googleInput, setGoogleInput] = useState('');
   const [discordLinkLoading, setDiscordLinkLoading] = useState(false);
   const [discordMessage, setDiscordMessage] = useState('');
+  const [discordLiveSource, setDiscordLiveSource] = useState<'lanyard' | 'oauth' | null>(null);
+  const [discordLiveNonce, setDiscordLiveNonce] = useState(0);
 
   const [isNameEffectModalOpen, setIsNameEffectModalOpen] = useState(false);
   const [socialPickerBlockId, setSocialPickerBlockId] = useState<string | null>(null);
@@ -429,6 +431,25 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       setTimeout(() => setDiscordMessage(''), 6000);
     }
   }, [username]);
+
+  useEffect(() => {
+    if (!config.discordConnected || !config.discordId) {
+      setDiscordLiveSource(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/discord/${config.discordId}`)
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled) setDiscordLiveSource(body?.data?.source === 'lanyard' ? 'lanyard' : 'oauth');
+      })
+      .catch(() => {
+        if (!cancelled) setDiscordLiveSource('oauth');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [config.discordConnected, config.discordId, discordLiveNonce]);
 
   const handleConnectDiscord = async () => {
     if (!token) return;
@@ -1536,12 +1557,37 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   </span>
                                 </button>
                               )}
-                              <p className="text-[8px] text-neutral-600 font-sans leading-relaxed">
-                                Для live-статуса (Playing…) подключите{' '}
-                                <a href="https://discord.gg/lanyard" target="_blank" rel="noreferrer" className="text-[#5865f2] underline">
-                                  Lanyard
-                                </a>
-                              </p>
+                              {config.discordConnected && discordLiveSource === 'lanyard' && (
+                                <p className="text-[9px] text-green-400 font-sans leading-relaxed">
+                                  ● Live-статус работает: онлайн и активность обновляются на странице.
+                                </p>
+                              )}
+                              {config.discordConnected && discordLiveSource === 'oauth' && (
+                                <div className="text-[9px] text-amber-300 font-sans leading-relaxed space-y-1">
+                                  <p>
+                                    Live-статус не включён: вступите на сервер{' '}
+                                    <a href="https://discord.gg/lanyard" target="_blank" rel="noreferrer" className="text-[#5865f2] underline">
+                                      Lanyard
+                                    </a>
+                                    , пока он показывает только аватар, имя и бейджи.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDiscordLiveNonce((n) => n + 1)}
+                                    className="text-[9px] font-black uppercase text-[#5865f2] hover:underline cursor-pointer"
+                                  >
+                                    Проверить снова
+                                  </button>
+                                </div>
+                              )}
+                              {!config.discordConnected && (
+                                <p className="text-[8px] text-neutral-600 font-sans leading-relaxed">
+                                  Для live-статуса (Playing…) после подключения вступите на сервер{' '}
+                                  <a href="https://discord.gg/lanyard" target="_blank" rel="noreferrer" className="text-[#5865f2] underline">
+                                    Lanyard
+                                  </a>
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -3318,6 +3364,19 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
                             {block.type === 'status_api' && (
                               <div className="space-y-2.5">
+                                <div>
+                                  <label className="block text-[9px] uppercase text-neutral-500 mb-1 font-bold">Источник статуса</label>
+                                  <select
+                                    value={block.statusProvider || 'custom'}
+                                    onChange={e => updateBlock(block.id, { statusProvider: e.target.value as 'discord' | 'custom' })}
+                                    className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
+                                  >
+                                    <option value="custom">Свой текст</option>
+                                    <option value="discord" disabled={!config.discordConnected}>
+                                      Discord (live){config.discordConnected ? '' : ' — сначала подключите Discord'}
+                                    </option>
+                                  </select>
+                                </div>
                                 <div>
                                   <label className="block text-[9px] uppercase text-neutral-500 mb-1 font-bold">Статус-сообщение для стриминга</label>
                                   <input

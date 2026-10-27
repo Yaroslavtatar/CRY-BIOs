@@ -20,7 +20,8 @@ import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
 import NameSparkOverlay from './NameSparkOverlay';
 import { getSocialIconColor } from '../utils/socialPlatforms';
 import { resolveThemeColor } from '../themeColors';
-import { discordAvatarUrl, type DiscordBadge } from '../discordBadges';
+import { discordAvatarUrl, describeActivity, normalizeDiscordStatus, DISCORD_STATUS_LABEL, type DiscordBadge } from '../discordBadges';
+import { useDiscordPresence } from '../useDiscordPresence';
 import { resolveMediaUrl, isMediaSameOrigin, getClientMediaCdnUrl } from '../utils/cdn';
 
 const renderDiscordBadgeIcon = (badge: DiscordBadge) => {
@@ -97,7 +98,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(211); // default 3:31 (211 sec)
-  const [discordUser, setDiscordUser] = useState<any>(null);
+  const discordUser = useDiscordPresence(config);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [volume, setVolume] = useState(0.8); // 80% default volume
   const mobile = useMobileBio(config);
@@ -447,22 +448,6 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
       window.removeEventListener('resize', handleResize);
     };
   }, [entered, isPlaying, isMuted, volume, config?.playerAccentColor, config?.primaryColor, config?.audioVisualizerEnabled, config?.audioVisualizerStyle]);
-
-  // Load lanyard if available
-  useEffect(() => {
-    if (config?.discordConnected && config.discordId) {
-      fetch(`/api/discord/${config.discordId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.data) {
-            setDiscordUser(data.data);
-          }
-        })
-        .catch(err => console.error("Discord lanyard error", err));
-    } else {
-      setDiscordUser(null); // Reset
-    }
-  }, [config?.discordConnected, config?.discordId]);
 
   // Load config if not in live preview
   useEffect(() => {
@@ -1149,10 +1134,10 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
               if (config.discordConnected && config.discordId) {
                 return (
                   <div key="discord" className="flex flex-col items-center p-3 bg-black/40 border border-white/5 rounded-xl min-w-0 w-full max-w-xs shadow-lg">
-                    {discordUser && discordUser.discord_user ? (
+                    {discordUser && discordUser.discord_user && (
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <img 
+                          <img
                             src={discordAvatarUrl(
                               discordUser.discord_user.id,
                               discordUser.discord_user.avatar,
@@ -1167,7 +1152,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                             discordUser.discord_status === 'online' ? 'bg-green-500' :
                             discordUser.discord_status === 'idle' ? 'bg-yellow-500' :
                             discordUser.discord_status === 'dnd' ? 'bg-red-500' : 'bg-neutral-500'
-                          }`} title={discordUser.discord_status} />
+                          }`} title={DISCORD_STATUS_LABEL[normalizeDiscordStatus(discordUser.discord_status)]} />
                         </div>
                         <div className="flex flex-col text-left">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1183,20 +1168,12 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                           <h3 className="font-mono text-[11px] text-white/50 tracking-wide leading-tight mt-0.5">
                              @{discordUser.discord_user.username}
                           </h3>
-                          {discordUser.activities && discordUser.activities.length > 0 && discordUser.activities[0].name && (
-                            <p className="text-[10px] text-white/70 mt-1 line-clamp-1 max-w-[150px]">
-                              Playing {discordUser.activities[0].name}
+                          {describeActivity(discordUser.activities) && (
+                            <p className="text-[10px] text-white/70 mt-1 line-clamp-1 max-w-[180px]">
+                              {describeActivity(discordUser.activities)}
                             </p>
                           )}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                         <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse" />
-                         <div className="flex flex-col gap-1">
-                           <div className="w-20 h-3 bg-white/10 rounded animate-pulse" />
-                           <div className="w-12 h-2 bg-white/5 rounded animate-pulse" />
-                         </div>
                       </div>
                     )}
                   </div>
@@ -1264,20 +1241,40 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                         );
 
                       // Custom-made guns.lol direct Status profile module!
-                      case 'status_api':
+                      case 'status_api': {
+                        const useDiscord = block.statusProvider === 'discord' && discordUser?.discord_user;
+                        const dStatus = normalizeDiscordStatus(discordUser?.discord_status);
+                        const dActivity = useDiscord ? describeActivity(discordUser.activities) : null;
                         return (
-                          <div 
-                            key={block.id} 
+                          <div
+                            key={block.id}
                             style={blockStyle}
                             className={`max-w-xs text-center font-mono ${blockClasses}`}
                           >
-                            {block.statusCustomText && (
-                              <p className="italic font-sans text-[13px] leading-relaxed drop-shadow-md text-white/80">
-                                "{block.statusCustomText}"
-                              </p>
+                            {useDiscord ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="inline-flex items-center gap-2 text-[12px] text-white/90 drop-shadow-md">
+                                  <span className={`w-2.5 h-2.5 rounded-full ${
+                                    dStatus === 'online' ? 'bg-green-500' :
+                                    dStatus === 'idle' ? 'bg-yellow-500' :
+                                    dStatus === 'dnd' ? 'bg-red-500' : 'bg-neutral-500'
+                                  }`} />
+                                  {DISCORD_STATUS_LABEL[dStatus]}
+                                </span>
+                                {dActivity && (
+                                  <span className="text-[11px] text-white/70 font-sans line-clamp-1">{dActivity}</span>
+                                )}
+                              </div>
+                            ) : (
+                              block.statusCustomText && (
+                                <p className="italic font-sans text-[13px] leading-relaxed drop-shadow-md text-white/80">
+                                  "{block.statusCustomText}"
+                                </p>
+                              )
                             )}
                           </div>
                         );
+                      }
 
                       // Interactive tracking profile View page counter block Minimal
                       case 'views_counter':
