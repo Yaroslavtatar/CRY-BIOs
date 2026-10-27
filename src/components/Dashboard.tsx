@@ -432,13 +432,15 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     }
   }, [username]);
 
+  const discordLinkedId = config?.discordConnected && config.discordId ? config.discordId : null;
+
   useEffect(() => {
-    if (!config.discordConnected || !config.discordId) {
+    if (!discordLinkedId) {
       setDiscordLiveSource(null);
       return;
     }
     let cancelled = false;
-    fetch(`/api/discord/${config.discordId}`)
+    fetch(`/api/discord/${discordLinkedId}`)
       .then((r) => r.json())
       .then((body) => {
         if (!cancelled) setDiscordLiveSource(body?.data?.source === 'lanyard' ? 'lanyard' : 'oauth');
@@ -449,7 +451,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     return () => {
       cancelled = true;
     };
-  }, [config.discordConnected, config.discordId, discordLiveNonce]);
+  }, [discordLinkedId, discordLiveNonce]);
 
   const handleConnectDiscord = async () => {
     if (!token) return;
