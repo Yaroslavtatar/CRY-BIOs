@@ -64,6 +64,13 @@ export const AUDIO_PLAYER_LABELS: Record<string, string> = {
   minimal: 'Минимальная полоска',
   inline: 'Внутри layout',
   floating: 'Плавающий уголок',
+  free: 'Свободное место (перетащить мышкой)',
+};
+
+export const AUDIO_PLAYER_STYLE_LABELS: Record<string, string> = {
+  full: 'Полный плеер',
+  compact: 'Компактный (без прогресс-бара)',
+  button: 'Только кнопка звука',
 };
 
 export const TEXTBOX_STYLE_LABELS: Record<string, string> = {

@@ -20,6 +20,7 @@ import {
   LAYOUT_MODE_LABELS,
   VERIFIED_BADGE_LABELS,
   AUDIO_PLAYER_LABELS,
+  AUDIO_PLAYER_STYLE_LABELS,
   TEXTBOX_STYLE_LABELS,
   ELEMENT_COLOR_LABELS,
   IMPORT_PREVIEW_STATUS_LABELS,
@@ -27,6 +28,7 @@ import {
 import { resolveThemeColor, ELEMENT_COLOR_FIELDS, type ElementColorField } from '../themeColors';
 import { buildProfileUrls, getPlatformDomainConfig, type PlatformDomainConfig } from '../platformDomain';
 import { discordAvatarUrl } from '../discordBadges';
+import { DEFAULT_PLAYER_POS, normalizePlayerPos } from '../playerPosition';
 import { NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
 import NameEffectPickerModal from './NameEffectPickerModal';
 import SocialPlatformPickerModal from './SocialPlatformPickerModal';
@@ -1013,7 +1015,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       </header>
 
       {/* Main Workspace Frame container */}
-      <div className="flex-grow flex flex-col lg:flex-row relative overflow-hidden">
+      <div className="flex-grow flex flex-col lg:flex-row relative overflow-clip">
         
         {/* LOGIN WIDGET CONTAINER */}
         {!token && (
@@ -2700,6 +2702,99 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         </select>
                       </div>
 
+                      <div>
+                        <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Вид плеера</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {Object.entries(AUDIO_PLAYER_STYLE_LABELS).map(([id, label]) => {
+                            const active = (config.audioPlayerStyle || 'full') === id;
+                            return (
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() => updateConfigValue('audioPlayerStyle', id as any)}
+                                className={`py-2 px-1 rounded-sm border text-[9px] font-bold uppercase leading-tight cursor-pointer ${active ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {(config.audioPlayerStyle || 'full') === 'button' && (
+                          <p className="mt-1.5 text-[9px] text-neutral-500 font-sans leading-relaxed">
+                            Одна круглая кнопка: нажатие включает и выключает звук. Включите «Регулятор громкости» выше, чтобы рядом появился ползунок.
+                          </p>
+                        )}
+                      </div>
+
+                      {(config.audioPlayerMode || 'minimal') === 'free' && (
+                        <div className="space-y-2.5 p-3 bg-[#00f2ff]/[0.04] border border-[#00f2ff]/20 rounded-sm">
+                          <p className="text-[10px] text-[#00f2ff] font-sans leading-relaxed">
+                            Перетащите плеер мышкой (или пальцем) прямо в предпросмотре — он встанет куда угодно. Точнее можно ползунками:
+                          </p>
+                          {(['x', 'y'] as const).map((axis) => (
+                            <div key={axis} className="flex items-center gap-3">
+                              <span className="w-24 text-[9px] uppercase text-neutral-500 font-bold">{axis === 'x' ? 'Слева ↔ справа' : 'Сверху ↕ снизу'}</span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={0.5}
+                                value={normalizePlayerPos(config.audioPlayerPos)[axis]}
+                                onChange={(e) => updateConfigValue('audioPlayerPos', { ...normalizePlayerPos(config.audioPlayerPos), [axis]: parseFloat(e.target.value) })}
+                                className="flex-1 accent-[#00f2ff]"
+                              />
+                              <span className="w-9 text-right text-[10px] text-neutral-400">{Math.round(normalizePlayerPos(config.audioPlayerPos)[axis])}%</span>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => updateConfigValue('audioPlayerPos', { ...DEFAULT_PLAYER_POS })}
+                            className="text-[9px] font-black uppercase text-[#00f2ff] hover:underline cursor-pointer"
+                          >
+                            Сбросить позицию
+                          </button>
+                        </div>
+                      )}
+
+                      {(config.audioPlayerStyle || 'full') !== 'button' && (
+                        <div className="grid grid-cols-3 gap-2">
+                          {([
+                            ['audioShowTrackInfo', 'Название'],
+                            ['audioShowProgress', 'Прогресс-бар', (config.audioPlayerStyle || 'full') === 'compact'],
+                            ['audioShowSkip', 'Кнопки ◀ ▶'],
+                          ] as const).map(([key, label, disabled]) => {
+                            const on = config[key] !== false && !disabled;
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                disabled={!!disabled}
+                                onClick={() => updateConfigValue(key, config[key] === false)}
+                                className={`py-2 rounded-sm border text-[9px] font-bold uppercase cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${on ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="flex justify-between text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">
+                          <span>Прозрачность плеера</span>
+                          <span className="text-neutral-400">{Math.round((config.audioPlayerOpacity ?? 1) * 100)}%</span>
+                        </label>
+                        <input
+                          type="range"
+                          min={0.3}
+                          max={1}
+                          step={0.05}
+                          value={config.audioPlayerOpacity ?? 1}
+                          onChange={(e) => updateConfigValue('audioPlayerOpacity', parseFloat(e.target.value))}
+                          className="w-full accent-[#00f2ff]"
+                        />
+                      </div>
+
                       {(config.audioSourceMode || 'single') === 'single' ? (
                         <div className="space-y-3 p-3 bg-white/[0.02] border border-white/10 rounded-sm">
                           <div>
@@ -3814,7 +3909,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
             </div>
 
             {/* Right Sector: Live Interactive Bio Preview Frame */}
-            <div className="hidden lg:flex lg:w-[50%] bg-[#050505] flex-col overflow-hidden relative border-l border-white/10">
+            <div className="hidden lg:flex lg:w-[50%] lg:sticky lg:top-0 lg:self-start lg:h-[calc(100vh-76px)] bg-[#050505] flex-col overflow-hidden relative border-l border-white/10">
               <div className="p-4 bg-[#0c0c0c] border-b border-white/10 flex justify-between items-center px-6">
                 <div>
                   <span className="text-[10px] font-mono text-neutral-400 flex items-center space-x-1.5 uppercase font-bold tracking-wider">
@@ -3829,18 +3924,39 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
               </div>
 
               {/* Bio Page renderer in sandbox state preview config mode */}
-              <div className={`flex-grow overflow-y-auto relative bg-[#040407] flex justify-center ${previewMode === 'mobile' ? 'p-4' : ''}`}>
-                <div
-                  className={previewMode === 'mobile' ? 'w-[390px] h-[844px] max-h-full border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl scale-[0.85] origin-top' : 'w-full h-full'}
-                  style={previewMode === 'mobile' ? { maxHeight: '844px' } : undefined}
-                >
-                <BioPage
-                  username={username}
-                  onExit={() => {}}
-                  previewConfig={{ ...config, mobileOptimized: previewMode === 'mobile' ? true : config.mobileOptimized }}
-                />
-                </div>
-              </div>
+              {(() => {
+                // Страница скроллится внутри собственного контейнера, а «окном» для fixed-элементов (плеер)
+                // служит НЕпрокручиваемая рамка выше него (transform) — плеер остаётся на месте при прокрутке.
+                const page = (
+                  <div className="h-full w-full overflow-y-auto overflow-x-hidden">
+                    <BioPage
+                      username={username}
+                      onExit={() => {}}
+                      forceMobile={previewMode === 'mobile'}
+                      onPlayerMove={(pos) => updateConfigValue('audioPlayerPos', pos)}
+                      previewConfig={{ ...config, mobileOptimized: previewMode === 'mobile' ? true : config.mobileOptimized }}
+                    />
+                  </div>
+                );
+                return (
+                  <div className="flex-grow min-h-0 relative bg-[#040407]">
+                    {previewMode === 'mobile' ? (
+                      <div className="absolute inset-0 overflow-y-auto flex justify-center p-4">
+                        <div
+                          className="w-[390px] h-[844px] max-h-full border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl scale-[0.85] origin-top"
+                          style={{ maxHeight: '844px' }}
+                        >
+                          {page}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="absolute inset-0" style={{ transform: 'translateZ(0)' }}>
+                        {page}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </>
         )}

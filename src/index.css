@@ -8,6 +8,12 @@ body,
   max-width: 100%;
 }
 
+html,
+body {
+  /* тёмная подложка: без неё на краях/при овербаунсе мелькает белый фон */
+  background-color: #050505;
+}
+
 body {
   position: relative;
   overscroll-behavior-x: none;
