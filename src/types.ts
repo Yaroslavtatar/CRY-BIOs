@@ -36,7 +36,14 @@ export type VerifiedBadgeStyle = 'inline' | 'chip' | 'ring' | 'none';
 export type BadgeStyle = 'icon' | 'pill' | 'text' | 'image';
 export type BadgeSize = 'sm' | 'md' | 'lg';
 
-export type AudioPlayerMode = 'hidden' | 'minimal' | 'inline' | 'floating';
+export type AudioPlayerMode = 'hidden' | 'minimal' | 'inline' | 'floating' | 'free';
+/** full — как раньше; compact — без прогресс-бара; button — только круглая кнопка (звук вкл/выкл) + громкость */
+export type AudioPlayerStyle = 'full' | 'compact' | 'button';
+/** Позиция свободного плеера, % свободного места внутри экрана (0 — у левого/верхнего края, 100 — у правого/нижнего) */
+export interface AudioPlayerPos {
+  x: number;
+  y: number;
+}
 export type AudioSourceMode = 'single' | 'playlist';
 export type AudioVisualizerStyle = 'bars' | 'wave' | 'retro' | 'circular' | 'mirror' | 'oscilloscope' | 'particles' | 'aurora' | 'pulse';
 export type NameEffect =
@@ -149,6 +156,12 @@ export interface BioConfig {
   audioArtist: string;
   audioEnabled: boolean;
   audioPlayerMode?: AudioPlayerMode;
+  audioPlayerStyle?: AudioPlayerStyle;
+  audioPlayerPos?: AudioPlayerPos;
+  audioPlayerOpacity?: number;
+  audioShowTrackInfo?: boolean;
+  audioShowProgress?: boolean;
+  audioShowSkip?: boolean;
   audioSourceMode?: AudioSourceMode;
   audioVisualizerEnabled?: boolean;
   audioVisualizerStyle?: AudioVisualizerStyle;

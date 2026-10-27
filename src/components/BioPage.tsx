@@ -5,9 +5,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BioConfig, SocialLink, BlockConfig } from '../types';
+import { BioConfig, SocialLink, BlockConfig, AudioPlayerPos } from '../types';
 import { Volume2, VolumeX, Flame, Play, Eye, Share2, CornerDownRight, Quote, Sparkles, Music, SkipBack, Pause, SkipForward, Crown, Shield, ShieldCheck, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2 } from 'lucide-react';
 import MinimalAudioBar from './MinimalAudioBar';
+import PlayerPositioner from './PlayerPositioner';
 import SparkleCanvas from './SparkleCanvas';
 import BackgroundCanvas from './BackgroundCanvas';
 import LocationLine from './LocationLine';
@@ -86,9 +87,13 @@ interface BioPageProps {
   username: string;
   onExit: () => void;
   previewConfig?: BioConfig; // If passed, renders in live-preview editor mode
+  /** Предпросмотр: явно включить/выключить мобильную раскладку (ширина окна браузера ≠ ширина «телефона») */
+  forceMobile?: boolean;
+  /** Предпросмотр: плеер в режиме «свободное место» можно перетаскивать, итоговая позиция приходит сюда */
+  onPlayerMove?: (pos: AudioPlayerPos) => void;
 }
 
-export default function BioPage({ username, onExit, previewConfig }: BioPageProps) {
+export default function BioPage({ username, onExit, previewConfig, forceMobile, onPlayerMove }: BioPageProps) {
   const [config, setConfig] = useState<BioConfig | null>(previewConfig || null);
   const [loading, setLoading] = useState(!previewConfig);
   const [entered, setEntered] = useState(!!previewConfig);
@@ -101,7 +106,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   const discordUser = useDiscordPresence(config);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [volume, setVolume] = useState(0.8); // 80% default volume
-  const mobile = useMobileBio(config);
+  const mobile = useMobileBio(config, forceMobile);
   const cdnBase = getClientMediaCdnUrl();
   const mediaUrl = (url?: string) => resolveMediaUrl(url, cdnBase);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -837,9 +842,23 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
     }
   });
 
-  const renderAudioBar = (variant: 'minimal' | 'inline' | 'floating') => {
+  // Плеер у нижнего края (полоска/уголок) не должен перекрывать контент и счётчик просмотров
+  const playerDockedBottom = !!(hasAudio && (playerMode === 'minimal' || playerMode === 'floating'));
+  const dockedReserve = config?.audioPlayerStyle === 'button' ? '5rem' : '6.5rem';
+
+  // Счётчик просмотров стоит внизу слева: плеер у нижнего края его перекрывает.
+  // На телефоне уводим счётчик в верхний угол (над контентом ему негде стоять), на десктопе приподнимаем над «уголком».
+  const viewsCounterOffset: React.CSSProperties = !playerDockedBottom
+    ? {}
+    : mobile.isViewportMobile
+      ? { top: 'calc(env(safe-area-inset-top, 0px) + 12px)', bottom: 'auto' }
+      : playerMode === 'floating'
+        ? { bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }
+        : {};
+
+  const renderAudioBar = (variant: 'minimal' | 'inline' | 'floating' | 'free') => {
     if (!hasAudio || playerMode === 'hidden' || playerMode !== variant) return null;
-    return (
+    const bar = (
       <MinimalAudioBar
         currentSong={currentSong || { id: 'v', url: '', title: config?.audioTitle || 'Soundtrack', artist: config?.audioArtist || '' }}
         isPlaying={isPlaying}
@@ -849,6 +868,12 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         songsCount={songs.length}
         primaryColor={resolveThemeColor(config, 'player')}
         variant={variant}
+        style={config?.audioPlayerStyle || 'full'}
+        opacity={config?.audioPlayerOpacity ?? 1}
+        showTrackInfo={config?.audioShowTrackInfo !== false}
+        showProgress={config?.audioShowProgress !== false}
+        showSkip={config?.audioShowSkip !== false}
+        isMobile={mobile.isViewportMobile}
         hideUntilHover={config?.hidePlayerUntilHover}
         showVolume={config?.volumeControlVisible}
         volume={volume}
@@ -865,6 +890,14 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
         formatTime={formatTime}
       />
     );
+    if (variant === 'free') {
+      return (
+        <PlayerPositioner pos={config?.audioPlayerPos} onMove={previewConfig ? onPlayerMove : undefined}>
+          {bar}
+        </PlayerPositioner>
+      );
+    }
+    return bar;
   };
 
   if (loading) {
@@ -898,10 +931,13 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
   }
 
   return (
-    <MobileBioLayout config={config} className="min-h-screen w-full">
+    <MobileBioLayout config={config} forceMobile={forceMobile} className="min-h-screen w-full">
     <div
       className={`min-h-screen relative text-white flex items-center justify-center py-6 p-4 overflow-x-hidden ${config.monochromeMode ? 'grayscale' : ''}`}
-      style={resolveBackgroundCSS()}
+      style={{
+        ...resolveBackgroundCSS(),
+        ...(playerDockedBottom ? { paddingBottom: `max(${dockedReserve}, calc(env(safe-area-inset-bottom, 0px) + ${dockedReserve}))` } : {}),
+      }}
     >
       {config.bgType === 'video' && config.bgValue && (
         <video
@@ -1038,6 +1074,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
 
       {entered && renderAudioBar('minimal')}
       {entered && renderAudioBar('floating')}
+      {entered && renderAudioBar('free')}
 
       {entered && (
         <motion.div
@@ -1234,7 +1271,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                             className={`w-full max-w-sm bg-transparent !border-none overflow-x-auto ${blockClasses}`}
                           >
                             <div
-                              className="p-3 text-[11px] font-sans text-white/90 drop-shadow-md max-w-full overflow-x-auto"
+                              className="p-3 text-[11px] font-sans text-white/90 drop-shadow-md max-w-full overflow-x-auto [&_*]:max-w-full [&_*]:[overflow-wrap:anywhere]"
                               dangerouslySetInnerHTML={{ __html: block.htmlContent || '' }}
                             />
                           </div>
@@ -1281,7 +1318,7 @@ export default function BioPage({ username, onExit, previewConfig }: BioPageProp
                         return (
                           <div 
                             key={block.id} 
-                            style={blockStyle}
+                            style={{ ...blockStyle, ...viewsCounterOffset }}
                             className={`fixed bottom-[12px] left-[15px] flex justify-center items-center font-sans z-50 ${blockClasses}`}
                           >
                             <span className="flex items-center space-x-1.5 text-[14px] text-[#f5f5f5] drop-shadow-lg font-semibold tracking-wide">
