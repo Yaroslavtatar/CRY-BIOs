@@ -14,7 +14,6 @@ const FLAG_HYPESQUAD_BALANCE = 1 << 8;
 const FLAG_EARLY_SUPPORTER = 1 << 9;
 const FLAG_BUG_HUNTER_L2 = 1 << 14;
 const FLAG_VERIFIED_DEV = 1 << 17;
-const FLAG_EARLY_VERIFIED_DEV = 1 << 22;
 const FLAG_MOD = 1 << 18;
 const FLAG_ACTIVE_DEV = 1 << 22;
 
@@ -34,7 +33,7 @@ export function decodeDiscordBadges(publicFlags = 0, premiumType = 0): DiscordBa
   if (publicFlags & FLAG_BUG_HUNTER_L2) badges.push({ id: 'bug_hunter_gold', label: 'Bug Hunter Gold', icon: 'bug_hunter_gold' });
   else if (publicFlags & FLAG_BUG_HUNTER_L1) badges.push({ id: 'bug_hunter', label: 'Bug Hunter', icon: 'bug_hunter' });
   if (publicFlags & FLAG_EARLY_SUPPORTER) badges.push({ id: 'early_supporter', label: 'Early Supporter', icon: 'early_supporter' });
-  if (publicFlags & FLAG_VERIFIED_DEV || publicFlags & FLAG_EARLY_VERIFIED_DEV) {
+  if (publicFlags & FLAG_VERIFIED_DEV) {
     badges.push({ id: 'verified_dev', label: 'Verified Developer', icon: 'verified_dev' });
   }
   if (publicFlags & FLAG_MOD) badges.push({ id: 'mod', label: 'Moderator', icon: 'mod' });
@@ -88,7 +87,49 @@ export function staticDiscordPresenceFromBio(bio: {
       },
       discord_status: 'offline',
       activities: [],
-      source: 'oauth',
+      source: 'oauth' as const,
     },
   };
+}
+
+export type DiscordStatus = 'online' | 'idle' | 'dnd' | 'offline';
+
+export const DISCORD_STATUS_LABEL: Record<DiscordStatus, string> = {
+  online: 'Online',
+  idle: 'Idle',
+  dnd: 'Do Not Disturb',
+  offline: 'Offline',
+};
+
+export function normalizeDiscordStatus(status: unknown): DiscordStatus {
+  return status === 'online' || status === 'idle' || status === 'dnd' ? status : 'offline';
+}
+
+/**
+ * Короткая подпись текущей активности из Lanyard.
+ * Приоритет: игра > Spotify/музыка > стрим > кастомный статус.
+ * Type: 0 Playing, 1 Streaming, 2 Listening, 4 Custom.
+ */
+export function describeActivity(activities: any): string | null {
+  if (!Array.isArray(activities)) return null;
+  const byType = (t: number) => activities.find((a) => a && a.type === t);
+
+  const playing = byType(0);
+  if (playing?.name) return `Playing ${playing.name}`;
+
+  const listening = byType(2);
+  if (listening) {
+    const track = [listening.details, listening.state].filter(Boolean).join(' \u2014 ');
+    return track ? `Listening to ${track}` : listening.name ? `Listening to ${listening.name}` : null;
+  }
+
+  const streaming = byType(1);
+  if (streaming?.name) return `Streaming ${streaming.details || streaming.name}`;
+
+  const custom = byType(4);
+  if (custom) {
+    const text = [custom.emoji?.name, custom.state].filter(Boolean).join(' ').trim();
+    return text || null;
+  }
+  return null;
 }

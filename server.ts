@@ -47,7 +47,7 @@ import {
   parseSubdomainSlug,
 } from './src/platformDomain';
 import { getServerMediaCdnUrl } from './src/utils/cdn';
-import { registerDiscord } from './src/discord';
+import { registerDiscord, preserveDiscordFields } from './src/discord';
 
 // Разрешённые origin: cbios.ru и cryteam.ru (+ один уровень поддоменов, в т.ч. cdn.*) и CORS_ALLOWED_ORIGINS из окружения
 const CBIOS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?(cbios\.ru|cryteam\.ru)$/;
@@ -1283,6 +1283,8 @@ async function startServer() {
     }
 
     const oldConfig = db.getBio(username);
+    // Discord-поля меняет только OAuth (callback/disconnect), клиентские значения игнорируем
+    preserveDiscordFields(payload, oldConfig);
     db.saveBio(username, payload);
 
     const allConfigs = db.getAllBios();

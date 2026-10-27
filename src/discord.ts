@@ -101,6 +101,19 @@ const DISCORD_FIELDS = [
   'discordLinkedAt',
 ] as const;
 
+/**
+ * Discord-поля принадлежат OAuth и не должны приходить от клиента: иначе можно выдать чужой ID за свой,
+ * а устаревшее состояние дашборда при автосохранении затирает привязку.
+ * Переносит их из сохранённого био в payload (или сбрасывает, если привязки не было).
+ */
+export function preserveDiscordFields(payload: any, stored: any | null | undefined): void {
+  for (const f of DISCORD_FIELDS) {
+    if (stored && stored[f] !== undefined) payload[f] = stored[f];
+    else delete payload[f];
+  }
+  payload.discordConnected = Boolean(stored?.discordConnected && stored?.discordId);
+}
+
 export function registerDiscord(app: App, deps: DiscordDeps): void {
   const initial = config();
   console.log(
@@ -124,7 +137,7 @@ export function registerDiscord(app: App, deps: DiscordDeps): void {
       redirect_uri: cfg.redirectUri,
       scope: 'identify',
       state,
-      prompt: 'consent',
+      prompt: 'none', // не показываем экран согласия повторно, если приложение уже авторизовано
     });
     const url = `https://discord.com/oauth2/authorize?${params.toString()}`;
     if (req.query.redirect === '1') return res.redirect(url);
@@ -220,7 +233,10 @@ export function registerDiscord(app: App, deps: DiscordDeps): void {
       if (r.ok && r.data?.data?.discord_user) {
         const body = {
           ...r.data,
-          data: mergeBadgesIntoLanyardUser(r.data.data, bio.discordPublicFlags, bio.discordPremiumType),
+          data: {
+            ...mergeBadgesIntoLanyardUser(r.data.data, bio.discordPublicFlags, bio.discordPremiumType),
+            source: 'lanyard',
+          },
         };
         cachePresence(userId, body);
         return res.json(body);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { registerDiscord, type DiscordDeps } from '../src/discord';
+import { registerDiscord, preserveDiscordFields, type DiscordDeps } from '../src/discord';
 
 type Handler = (req: any, res: any, next: () => void) => unknown;
 
@@ -231,6 +231,7 @@ describe('Discord integration', () => {
       const second = await get(app, '700000000000000001');
 
       expect(first.body.data.discord_status).toBe('online');
+      expect(first.body.data.source).toBe('lanyard');
       expect(first.body.data.discord_user.badges.map((b: any) => b.id)).toEqual(['nitro']);
       expect(second.body).toEqual(first.body);
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -246,6 +247,47 @@ describe('Discord integration', () => {
       expect(res.statusCode).toBe(200);
       expect(res.body.data.discord_status).toBe('offline');
       expect(res.body.data.discord_user.username).toBe('ali');
+      expect(res.body.data.source).toBe('oauth');
     });
+  });
+});
+
+describe('preserveDiscordFields', () => {
+  const stored = {
+    discordConnected: true,
+    discordId: ID,
+    discordUsername: 'ali',
+    discordPremiumType: 2,
+    discordPublicFlags: 64,
+  };
+
+  it('не даёт клиенту подменить чужой discordId и флаги', () => {
+    const payload: any = { displayName: 'x', discordConnected: true, discordId: '999999999999999999', discordPublicFlags: 1 };
+    preserveDiscordFields(payload, stored);
+    expect(payload.discordId).toBe(ID);
+    expect(payload.discordPublicFlags).toBe(64);
+    expect(payload.discordConnected).toBe(true);
+    expect(payload.displayName).toBe('x');
+  });
+
+  it('не затирает привязку устаревшим клиентским состоянием', () => {
+    const payload: any = { displayName: 'x', discordConnected: false };
+    preserveDiscordFields(payload, stored);
+    expect(payload).toMatchObject({ discordConnected: true, discordId: ID, discordUsername: 'ali' });
+  });
+
+  it('без привязки удаляет подложенные поля', () => {
+    const payload: any = { discordConnected: true, discordId: ID, discordPremiumType: 2 };
+    preserveDiscordFields(payload, { username: 'alice' });
+    expect(payload.discordConnected).toBe(false);
+    expect(payload.discordId).toBeUndefined();
+    expect(payload.discordPremiumType).toBeUndefined();
+  });
+
+  it('работает, если сохранённого био ещё нет', () => {
+    const payload: any = { discordConnected: true, discordId: ID };
+    preserveDiscordFields(payload, null);
+    expect(payload.discordConnected).toBe(false);
+    expect(payload.discordId).toBeUndefined();
   });
 });

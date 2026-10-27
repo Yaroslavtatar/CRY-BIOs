@@ -45,4 +45,17 @@ check "discord presence unlinked"  404 "${BASE}/api/discord/123456789012345678"
 check "discord callback bad state" 302 "${BASE}/api/discord/oauth/callback?state=x&code=y"
 check "SPA index"                  200 "${BASE}/"
 
+# Discord-поля нельзя подменить через сохранение био (спуфинг чужого ID)
+REG="$(curl -s -X POST "${BASE}/api/auth/login-register" -H 'Content-Type: application/json' \
+  -d '{"username":"smokeuser","password":"smokepass123"}')"
+TOKEN="$(printf '%s' "$REG" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+if [ -z "$TOKEN" ]; then echo "FAIL регистрация: ${REG}"; cat "$LOG"; exit 1; fi
+curl -s -o /dev/null -X POST "${BASE}/api/bio/smokeuser" \
+  -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+  -d '{"username":"smokeuser","displayName":"smoke","discordConnected":true,"discordId":"999999999999999999","discordPublicFlags":1}'
+BIO="$(curl -s "${BASE}/api/bio/smokeuser")"
+if printf '%s' "$BIO" | grep -q '999999999999999999'; then echo "FAIL: клиент смог задать discordId"; exit 1; fi
+echo "ok   discordId не принимается от клиента"
+check "presence чужого ID не отдаётся" 404 "${BASE}/api/discord/999999999999999999"
+
 echo "Smoke OK"
