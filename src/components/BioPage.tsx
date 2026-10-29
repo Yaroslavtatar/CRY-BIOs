@@ -16,8 +16,10 @@ import MobileBioLayout, { useMobileBio } from './MobileBioLayout';
 import VerifiedBadge, { VerifiedAvatarRing } from './VerifiedBadge';
 import BadgeRow from './BadgeRow';
 import SocialIcon from './SocialIcon';
-import GlowLayer, { getGlowStyle, ProfileGradientWrapper } from './GlowLayer';
-import { getNameEffectClasses, getNameEffectStyle } from '../utils/nameEffects';
+import GlowLayer, { getGlowStyle, getCardGlow, ProfileGradientWrapper } from './GlowLayer';
+import { getNameEffectClasses, getNameEffectStyle, nameEffectOptions } from '../utils/nameEffects';
+import NameText from './NameText';
+import { resolveCard, cardSurfaceStyle, cardGlareStyle, tiltFromPointer, TILT_REST, type TiltState } from '../card';
 import NameSparkOverlay from './NameSparkOverlay';
 import { getSocialIconColor } from '../utils/socialPlatforms';
 import { resolveThemeColor } from '../themeColors';
@@ -101,6 +103,10 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
   const [isMuted, setIsMuted] = useState(false);
   const [visitorCount, setVisitorCount] = useState(137);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
+  // механика карточки (наклон за курсором, блик, подъём) — по желанию, выключена по умолчанию
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [tilt, setTilt] = useState<TiltState>(TILT_REST);
+  const [cardHover, setCardHover] = useState(false);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(211); // default 3:31 (211 sec)
   const discordUser = useDiscordPresence(config);
@@ -856,6 +862,9 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
         ? { bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }
         : {};
 
+  const cardGlow = config ? getCardGlow(config) : { className: '', style: {} };
+  const card = resolveCard(config);
+
   const renderAudioBar = (variant: 'minimal' | 'inline' | 'floating' | 'free') => {
     if (!hasAudio || playerMode === 'hidden' || playerMode !== variant) return null;
     const bar = (
@@ -1078,20 +1087,34 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
 
       {entered && (
         <motion.div
+          ref={cardRef}
           initial={{ opacity: 0, y: 35, scale: 0.95 }}
           animate={{
             opacity: 1,
             y: 0,
-            scale: 1,
-            rotateX: mobile.isViewportMobile ? 0 : parallax.y * 0.4,
-            rotateY: mobile.isViewportMobile ? 0 : parallax.x * 0.4,
+            scale: card.tilt && card.lift && cardHover ? 1.025 : 1,
+            rotateX: card.tilt ? tilt.rx : mobile.isViewportMobile ? 0 : parallax.y * 0.4,
+            rotateY: card.tilt ? tilt.ry : mobile.isViewportMobile ? 0 : parallax.x * 0.4,
           }}
-          transition={{ duration: 0.7, type: 'spring', stiffness: 45 }}
-          style={{ transformPerspective: 800, ...getGlowStyle(config, 'card') }}
-          className={`w-full ${mobile.cardPadding} ${mobile.cardMaxWidth} relative z-10 flex flex-col items-center space-y-3 transition-all duration-300 ${
+          transition={card.tilt ? { type: 'spring', stiffness: 220, damping: 18, mass: 0.6 } : { duration: 0.7, type: 'spring', stiffness: 45 }}
+          onPointerMove={(e) => {
+            if (!card.tilt || e.pointerType === 'touch' || !cardRef.current) return;
+            setTilt(tiltFromPointer(e.clientX, e.clientY, cardRef.current.getBoundingClientRect(), card.tiltStrength));
+            if (!cardHover) setCardHover(true);
+          }}
+          onPointerLeave={() => {
+            if (!card.tilt && !card.glare) return;
+            setTilt(TILT_REST);
+            setCardHover(false);
+          }}
+          style={{ transformPerspective: 800, ...cardSurfaceStyle(card, config.primaryColor), ...cardGlow.style }}
+          className={`w-full ${mobile.cardPadding} ${mobile.cardMaxWidth} relative z-10 flex flex-col items-center space-y-3 ${card.tilt ? '' : 'transition-all duration-300'} ${cardGlow.className} ${
             previewConfig ? 'mt-14' : ''
           }`}
         >
+          {(card.glare || card.tilt) && (
+            <div aria-hidden className="pointer-events-none absolute inset-0 z-20" style={cardGlareStyle(tilt, card.radius, card.glare && cardHover)} />
+          )}
           {visibleLayout.map((section) => {
             if (section === 'avatar') {
               return (
@@ -1107,11 +1130,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
                         loading="eager"
                         decoding="async"
                         className={`${mobile.avatarSize} rounded-full object-cover relative z-10 transition duration-300`}
-                        style={
-                          config.verified || config.avatarGlowEnabled
-                            ? getGlowStyle(config, 'avatar')
-                            : { boxShadow: '0 0 15px rgba(0,0,0,0.5)' }
-                        }
+                        style={{ boxShadow: '0 0 15px rgba(0,0,0,0.5)', ...getGlowStyle(config, 'avatar') }}
                       />
                     </VerifiedAvatarRing>
                   </div>
@@ -1126,17 +1145,22 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
                 <GlowLayer config={config} target="username">
                   <div className="flex flex-col items-center">
                     <div className="group relative flex items-center justify-center gap-1.5 flex-wrap">
-                      <div className="relative inline-block">
+                      <div className="relative inline-block isolate">
+                        <NameSparkOverlay
+                          effect={config.nameEffect}
+                          textLength={(config.displayName || config.username).length}
+                          options={nameEffectOptions(config)}
+                        />
                         <h1
-                          className={`${mobile.nameSize} leading-none font-semibold pb-1 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
+                          aria-label={config.displayName || config.username}
+                          className={`${mobile.nameSize} leading-none font-semibold pb-1 relative z-10 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
                           style={{
-                            ...getNameEffectStyle(config.nameEffect, config.displayName || config.username),
+                            ...getNameEffectStyle(config.nameEffect, config.displayName || config.username, nameEffectOptions(config)),
                             ...getGlowStyle(config, 'username'),
                           }}
                         >
-                          {config.displayName || config.username}
+                          <NameText effect={config.nameEffect} text={config.displayName || config.username} />
                         </h1>
-                        <NameSparkOverlay effect={config.nameEffect} />
                       </div>
                       <VerifiedBadge config={config} />
                     </div>
@@ -1149,7 +1173,9 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
             if (section === 'location') {
               return (
                 <div key="location">
-                  <LocationLine config={config} />
+                  <GlowLayer config={config} target="location">
+                    <LocationLine config={config} />
+                  </GlowLayer>
                 </div>
               );
             }
@@ -1158,10 +1184,12 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
               if (config.badges && config.badges.filter(b => b.enabled).length > 0) {
                 return (
                   <div key="badges" className="w-full flex justify-center">
-                    <BadgeRow
-                      badges={config.badges}
-                      primaryColor={config.primaryColor}
-                    />
+                    <GlowLayer config={config} target="badges">
+                      <BadgeRow
+                        badges={config.badges}
+                        primaryColor={config.primaryColor}
+                      />
+                    </GlowLayer>
                   </div>
                 );
               }
@@ -1230,7 +1258,8 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
 
             if (section === 'blocks') {
               return (
-                <div key="blocks" className="flex flex-col items-center space-y-3 w-full">
+                <div key="blocks" className="w-full">
+                  <GlowLayer config={config} target="links" className="flex flex-col items-center space-y-3 w-full">
                   {config.blocks && config.blocks.filter(b => b.enabled).map((block) => {
                     const blockStyle = getBlockStyle(block);
                     const blockClasses = getBlockClasses(block);
@@ -1457,6 +1486,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
                         return null;
                     }
                   })}
+                </GlowLayer>
                 </div>
               );
             }
