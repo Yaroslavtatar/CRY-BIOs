@@ -1,5 +1,6 @@
 import React from 'react';
 import { BioConfig, GlowTarget } from '../types';
+import { resolveGlow, glowAppliesTo, glowVars, glowClass, glowInlineStyle } from '../glow';
 
 interface GlowLayerProps {
   config: BioConfig;
@@ -8,56 +9,33 @@ interface GlowLayerProps {
   className?: string;
 }
 
-const INTENSITY_SPREAD: Record<string, string> = {
-  low: '8px',
-  medium: '16px',
-  high: '28px',
-};
-
+/**
+ * Подсветка элемента профиля. Работает для всех целей (аватар, ник, локация, бейджи, ссылки):
+ * - avatar/username/location/badges: drop-shadow на обёртке повторяет форму содержимого (круг аватара, буквы, иконки);
+ * - links: свечение получают только ссылки внутри блока, а сама обёртка без filter — иначе fixed-элементы
+ *   внутри блоков (счётчик просмотров) «прилипли» бы к ней.
+ */
 export default function GlowLayer({ config, target, children, className = '' }: GlowLayerProps) {
-  const glowOn = config.glowEnabled || config.avatarGlowEnabled || config.linkHoverGlow;
-  const targets = config.glowTargets || ['avatar', 'username', 'badges', 'links'];
-  const color = config.glowColor || config.primaryColor || '#00f2ff';
-  const intensity = config.glowIntensity || 'medium';
-  const spread = INTENSITY_SPREAD[intensity] || INTENSITY_SPREAD.medium;
-
-  if (!glowOn || !targets.includes(target)) {
-    return <div className={className}>{children}</div>;
-  }
-
+  const g = resolveGlow(config);
+  if (!glowAppliesTo(g, target)) return <div className={className}>{children}</div>;
+  const kind = target === 'links' ? 'links' : 'fx';
   return (
-    <div
-      className={className}
-      style={{
-        ['--glow-color' as string]: color,
-        ['--glow-spread' as string]: spread,
-      }}
-      data-glow-target={target}
-    >
+    <div className={`${className} ${glowClass(g, kind)}`} style={glowVars(g)} data-glow-target={target}>
       {children}
     </div>
   );
 }
 
+/** Подсветка карточки профиля: box-shadow на самой карточке (классы и переменные). */
+export function getCardGlow(config: BioConfig): { className: string; style: React.CSSProperties } {
+  const g = resolveGlow(config);
+  if (!glowAppliesTo(g, 'card')) return { className: '', style: {} };
+  return { className: glowClass(g, 'box'), style: glowVars(g) };
+}
+
+/** Статичные стили элемента (кольцо аватара). Само свечение рисует GlowLayer. */
 export function getGlowStyle(config: BioConfig, target: GlowTarget): React.CSSProperties {
-  const glowOn = config.glowEnabled || config.avatarGlowEnabled;
-  const targets = config.glowTargets || ['avatar', 'username', 'badges', 'links', 'card'];
-  if (!glowOn || !targets.includes(target)) return {};
-
-  const color = config.glowColor || config.primaryColor || '#00f2ff';
-  const intensity = config.glowIntensity || 'medium';
-  const spread = intensity === 'low' ? 8 : intensity === 'high' ? 28 : 16;
-
-  if (target === 'avatar') {
-    return { border: `2px solid ${color}`, boxShadow: `0 0 ${spread}px ${color}88` };
-  }
-  if (target === 'username') {
-    return { textShadow: `0 0 ${spread}px ${color}, 0 0 ${spread * 2}px ${color}44` };
-  }
-  if (target === 'card') {
-    return { boxShadow: `0 0 ${spread}px ${color}33, inset 0 0 ${spread / 2}px ${color}11` };
-  }
-  return {};
+  return glowInlineStyle(resolveGlow(config), target);
 }
 
 export function ProfileGradientWrapper({ config, children }: { config: BioConfig; children: React.ReactNode }) {

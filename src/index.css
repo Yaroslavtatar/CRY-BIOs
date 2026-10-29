@@ -243,8 +243,6 @@ body {
   }
 }
 
-.glow-target-avatar { box-shadow: var(--glow-spread, 16px) var(--glow-color, #00f2ff); }
-.glow-target-username { text-shadow: 0 0 var(--glow-spread, 16px) var(--glow-color, #00f2ff); }
 
 @keyframes blink {
   from, to { border-color: transparent; }
@@ -284,3 +282,153 @@ body {
   }
 }
 
+
+/* =====================================================================
+   Эффекты ника v2
+   Цвета и скорость задаются переменными: --ne-a, --ne-b (цвета), --ne-s (множитель скорости, 1 = норма).
+   Значения по умолчанию ставит каталог (nameEffectCatalog.ts) через inline-style.
+   ===================================================================== */
+@keyframes ne-flow { to { background-position: 200% 0; } }
+@keyframes ne-sweep { from { background-position: 160% 0, 0 0; } to { background-position: -60% 0, 0 0; } }
+@keyframes ne-neon {
+  0%, 100% { filter: drop-shadow(0 0 4px var(--ne-a)) drop-shadow(0 0 14px var(--ne-a)); }
+  50% { filter: drop-shadow(0 0 7px var(--ne-a)) drop-shadow(0 0 28px var(--ne-a)); }
+}
+@keyframes ne-fire {
+  0%, 100% { transform: translateY(0) skewX(0deg); filter: drop-shadow(0 -2px 8px var(--ne-a)) brightness(1); }
+  25% { transform: translateY(-1px) skewX(-1.5deg); filter: drop-shadow(0 -4px 12px var(--ne-a)) brightness(1.15); }
+  50% { transform: translateY(0) skewX(1deg); filter: drop-shadow(0 -2px 10px var(--ne-a)) brightness(0.95); }
+  75% { transform: translateY(-2px) skewX(1.5deg); filter: drop-shadow(0 -5px 14px var(--ne-a)) brightness(1.2); }
+}
+@keyframes ne-rgb {
+  0%, 90%, 100% { text-shadow: -1.5px 0 var(--ne-a), 1.5px 0 var(--ne-b); transform: translateX(0); }
+  92% { text-shadow: -5px 0 var(--ne-a), 5px 0 var(--ne-b); transform: translateX(2px) skewX(-6deg); }
+  94% { text-shadow: 4px 0 var(--ne-a), -4px 0 var(--ne-b); transform: translateX(-2px) skewX(5deg); }
+  96% { text-shadow: -3px 0 var(--ne-a), 3px 0 var(--ne-b); transform: translateX(1px); }
+}
+@keyframes ne-scan { from { background-position: 0 120%; } to { background-position: 0 -20%; } }
+@keyframes ne-ghost {
+  0%, 100% { opacity: 1; filter: blur(0) drop-shadow(0 0 4px var(--ne-a)); }
+  50% { opacity: 0.22; filter: blur(2.2px) drop-shadow(0 0 14px var(--ne-a)); }
+}
+@keyframes ne-electric {
+  0%, 18%, 22%, 62%, 66%, 100% { transform: translate(0, 0); filter: drop-shadow(0 0 3px var(--ne-a)) drop-shadow(0 0 10px var(--ne-a)); }
+  20% { transform: translate(-1px, 1px); filter: drop-shadow(0 0 8px #fff) drop-shadow(0 0 24px var(--ne-a)); }
+  64% { transform: translate(1px, -1px); filter: drop-shadow(0 0 10px #fff) drop-shadow(0 0 30px var(--ne-a)); }
+  30%, 34% { transform: translate(1px, 0); filter: drop-shadow(0 0 2px var(--ne-a)); }
+}
+@keyframes ne-wobble { 0%, 100% { transform: skewX(0deg) scaleY(1); } 25% { transform: skewX(-4deg) scaleY(1.03); } 75% { transform: skewX(4deg) scaleY(0.98); } }
+@keyframes ne-term { 0%, 100% { opacity: 1; } 47% { opacity: 1; } 50% { opacity: 0.55; } 53% { opacity: 1; } 80% { opacity: 0.85; } }
+@keyframes ne-wave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.28em); } }
+@keyframes ne-cascade {
+  0%, 8% { opacity: 0; transform: translateY(-0.6em); }
+  22%, 78% { opacity: 1; transform: translateY(0); }
+  92%, 100% { opacity: 0; transform: translateY(0.4em); }
+}
+@keyframes ne-jelly {
+  0%, 100% { transform: scale(1, 1); }
+  30% { transform: scale(1.22, 0.78); }
+  50% { transform: scale(0.9, 1.12); }
+  70% { transform: scale(1.06, 0.94); }
+}
+@keyframes ne-flip { 0%, 55%, 100% { transform: rotateY(0deg); } 80% { transform: rotateY(180deg); } }
+@keyframes ne-type { 0%, 2% { opacity: 0; } 3%, 84% { opacity: 1; } 94%, 100% { opacity: 0; } }
+@keyframes ne-caret { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+/* --- базовые */
+.ne-glow { color: #fff; filter: drop-shadow(0 0 14px color-mix(in srgb, var(--ne-a) 85%, transparent)); }
+.ne-stroke { color: transparent; -webkit-text-stroke: 1.5px var(--ne-a); }
+.ne-shadow3d { color: #fff; text-shadow: 2px 2px 0 var(--ne-a), 4px 4px 0 var(--ne-b); }
+.ne-underline { color: #fff; text-decoration: underline; text-decoration-color: var(--ne-a); text-decoration-thickness: 2px; text-underline-offset: 4px; filter: drop-shadow(0 0 8px var(--ne-a)); }
+
+/* --- неон */
+.ne-neon { color: color-mix(in srgb, var(--ne-a) 35%, #fff); animation: ne-neon calc(2.6s / var(--ne-s, 1)) ease-in-out infinite; }
+.ne-outline-neon { color: transparent; -webkit-text-stroke: 1.5px var(--ne-a); animation: ne-neon calc(2.6s / var(--ne-s, 1)) ease-in-out infinite; }
+
+/* --- градиенты */
+.ne-grad { color: transparent; -webkit-background-clip: text; background-clip: text; background-image: linear-gradient(90deg, var(--ne-a), var(--ne-b)); }
+.ne-grad-3 { background-image: linear-gradient(90deg, var(--ne-a), color-mix(in srgb, var(--ne-a) 50%, var(--ne-b)), var(--ne-b)); }
+.ne-flow { background-image: linear-gradient(90deg, var(--ne-a), var(--ne-b), var(--ne-a)); background-size: 200% 100%; animation: ne-flow calc(5s / var(--ne-s, 1)) linear infinite; }
+.ne-sunset { background-image: linear-gradient(90deg, var(--ne-a), #ec4899, var(--ne-b), #ec4899, var(--ne-a)); }
+.ne-aurora { background-image: linear-gradient(90deg, var(--ne-a), #22d3ee, var(--ne-b), #22d3ee, var(--ne-a)); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--ne-a) 55%, transparent)); }
+.ne-holo { color: transparent; -webkit-background-clip: text; background-clip: text;
+  background-image: linear-gradient(110deg, #ff9a9e, #fad0c4, #a1c4fd, #c2ffd8, #fbc2eb, #ff9a9e); background-size: 250% 100%;
+  animation: ne-flow calc(4s / var(--ne-s, 1)) linear infinite; filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.35)); }
+
+/* --- металл и свет */
+.ne-metal { color: transparent; -webkit-background-clip: text; background-clip: text; background-size: 260% 100%, 100% 100%; background-repeat: no-repeat;
+  animation: ne-sweep calc(3.4s / var(--ne-s, 1)) ease-in-out infinite; }
+.ne-chrome { background-image: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.95) 50%, transparent 58%), linear-gradient(180deg, #ffffff 0%, #cbd5e1 36%, #64748b 50%, #e2e8f0 62%, #94a3b8 100%);
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4)) drop-shadow(0 2px 7px rgba(148, 163, 184, 0.5)); }
+.ne-gold { background-image: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.95) 50%, transparent 58%), linear-gradient(180deg, #fff7c2 0%, #fbbf24 34%, #b45309 54%, #fde68a 76%, #f59e0b 100%);
+  filter: drop-shadow(0 1px 0 rgba(120, 53, 15, 0.5)) drop-shadow(0 2px 8px rgba(245, 158, 11, 0.45)); }
+.ne-ice { color: transparent; -webkit-background-clip: text; background-clip: text; background-image: linear-gradient(180deg, #ffffff 0%, var(--ne-a) 100%); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--ne-a) 70%, transparent)); }
+.ne-synthwave { color: transparent; -webkit-background-clip: text; background-clip: text; background-image: linear-gradient(180deg, #fef08a 0%, var(--ne-a) 45%, var(--ne-b) 100%); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--ne-a) 65%, transparent)); }
+.ne-fire { color: transparent; -webkit-background-clip: text; background-clip: text; display: inline-block;
+  background-image: linear-gradient(0deg, #dc2626 0%, var(--ne-a) 45%, var(--ne-b) 100%); animation: ne-fire calc(1.2s / var(--ne-s, 1)) ease-in-out infinite; }
+
+/* --- анимации */
+.ne-rgb { color: #fff; display: inline-block; animation: ne-rgb calc(3s / var(--ne-s, 1)) steps(1, end) infinite; }
+.ne-scan { color: transparent; -webkit-background-clip: text; background-clip: text;
+  background-image: linear-gradient(180deg, #fff 0%, #fff 38%, var(--ne-a) 49%, #fff 60%, #fff 100%); background-size: 100% 300%;
+  animation: ne-scan calc(2.4s / var(--ne-s, 1)) linear infinite; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--ne-a) 60%, transparent)); }
+.ne-ghost { color: rgba(255, 255, 255, 0.92); animation: ne-ghost calc(3.2s / var(--ne-s, 1)) ease-in-out infinite; }
+.ne-electric { color: #fff; display: inline-block; animation: ne-electric calc(2.2s / var(--ne-s, 1)) steps(1, end) infinite; }
+.ne-toxic { color: color-mix(in srgb, var(--ne-a) 40%, #fff); display: inline-block; filter: drop-shadow(0 0 8px var(--ne-a)) drop-shadow(0 0 20px var(--ne-a)); animation: ne-wobble calc(2.4s / var(--ne-s, 1)) ease-in-out infinite; }
+.ne-matrix { color: var(--ne-a); font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; letter-spacing: 0.08em; text-shadow: 0 0 8px var(--ne-a), 0 0 18px color-mix(in srgb, var(--ne-a) 60%, transparent); animation: ne-term calc(3s / var(--ne-s, 1)) linear infinite; }
+
+/* --- по буквам (NameText оборачивает каждую букву в .ne-l) */
+.ne-letters .ne-l { display: inline-block; white-space: pre; }
+.ne-wave { color: #fff; }
+.ne-wave .ne-l { animation: ne-wave calc(1.6s / var(--ne-s, 1)) ease-in-out infinite; animation-delay: calc(var(--i) * 0.09s); text-shadow: 0 0 12px var(--ne-a); }
+.ne-cascade { color: var(--ne-a); }
+.ne-cascade .ne-l { animation: ne-cascade calc(4s / var(--ne-s, 1)) ease-in-out infinite; animation-delay: calc(var(--i) * 0.12s); }
+.ne-jelly { color: #fff; }
+.ne-jelly .ne-l { animation: ne-jelly calc(1.8s / var(--ne-s, 1)) ease-in-out infinite; animation-delay: calc(var(--i) * 0.08s); transform-origin: 50% 100%; text-shadow: 0 0 10px var(--ne-a); }
+.ne-flip { color: #fff; perspective: 600px; }
+.ne-flip .ne-l { animation: ne-flip calc(3s / var(--ne-s, 1)) ease-in-out infinite; animation-delay: calc(var(--i) * 0.1s); text-shadow: 0 0 10px var(--ne-a); }
+.ne-type { color: var(--ne-a); }
+.ne-type .ne-l { opacity: 0; animation: ne-type calc(5.5s / var(--ne-s, 1)) linear infinite; animation-delay: calc(var(--i) * 0.16s); }
+.ne-type .ne-caret { display: inline-block; margin-left: 2px; animation: ne-caret 0.8s step-end infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ne-neon, .ne-outline-neon, .ne-flow, .ne-holo, .ne-metal, .ne-fire, .ne-rgb, .ne-scan, .ne-ghost, .ne-electric,
+  .ne-toxic, .ne-matrix, .ne-letters .ne-l, .ne-type .ne-caret { animation: none !important; }
+  .ne-type .ne-l, .ne-cascade .ne-l { opacity: 1 !important; }
+}
+
+/* =====================================================================
+   Подсветка v2 (src/glow.ts, GlowLayer)
+   Анимируются зарегистрированные свойства: --gl-s (радиус) и --gl-c (цвет).
+   --gl-base — радиус из настроек, --gl-c1/--gl-c2 — цвета, --gl-v — множитель скорости.
+   ===================================================================== */
+@property --gl-s { syntax: '<length>'; inherits: true; initial-value: 16px; }
+@property --gl-c { syntax: '<color>'; inherits: true; initial-value: #00f2ff; }
+
+.gl { --gl-s: var(--gl-base, 16px); --gl-c: var(--gl-c1, #00f2ff); }
+.gl-fx { filter: drop-shadow(0 0 calc(var(--gl-s) * 0.45) var(--gl-c)) drop-shadow(0 0 var(--gl-s) var(--gl-c)); }
+.gl-links a { filter: drop-shadow(0 0 calc(var(--gl-s) * 0.45) var(--gl-c)) drop-shadow(0 0 var(--gl-s) var(--gl-c)) !important; }
+.gl-box { box-shadow: 0 0 calc(var(--gl-s) * 0.7) var(--gl-c), 0 0 calc(var(--gl-s) * 1.8) color-mix(in srgb, var(--gl-c) 55%, transparent), inset 0 0 calc(var(--gl-s) * 0.5) color-mix(in srgb, var(--gl-c) 14%, transparent); }
+
+.gl-s-pulse { animation: gl-pulse calc(1.5s / var(--gl-v, 1)) ease-in-out infinite; }
+.gl-s-breathe { animation: gl-breathe calc(4.5s / var(--gl-v, 1)) ease-in-out infinite; }
+.gl-s-flicker { animation: gl-flicker calc(3.2s / var(--gl-v, 1)) steps(1, end) infinite; }
+.gl-s-rainbow { animation: gl-rainbow calc(8s / var(--gl-v, 1)) linear infinite; }
+.gl-s-dual { animation: gl-dual calc(3.6s / var(--gl-v, 1)) ease-in-out infinite; }
+
+@keyframes gl-pulse { 0%, 100% { --gl-s: calc(var(--gl-base) * 0.5); } 50% { --gl-s: calc(var(--gl-base) * 1.35); } }
+@keyframes gl-breathe { 0%, 100% { --gl-s: calc(var(--gl-base) * 0.3); } 50% { --gl-s: calc(var(--gl-base) * 1.6); } }
+@keyframes gl-flicker {
+  0%, 17%, 21%, 23%, 62%, 66%, 100% { --gl-s: var(--gl-base); }
+  18%, 22% { --gl-s: calc(var(--gl-base) * 0.12); }
+  63%, 65% { --gl-s: calc(var(--gl-base) * 0.3); }
+}
+@keyframes gl-rainbow {
+  0%, 100% { --gl-c: #ff3b5c; } 17% { --gl-c: #ff9500; } 33% { --gl-c: #ffe600; }
+  50% { --gl-c: #2ee86b; } 67% { --gl-c: #00c8ff; } 83% { --gl-c: #b266ff; }
+}
+@keyframes gl-dual { 0%, 100% { --gl-c: var(--gl-c1); } 50% { --gl-c: var(--gl-c2); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .gl-s-pulse, .gl-s-breathe, .gl-s-flicker, .gl-s-rainbow, .gl-s-dual { animation: none !important; }
+}

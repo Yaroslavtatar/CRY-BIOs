@@ -31,6 +31,11 @@ import { discordAvatarUrl } from '../discordBadges';
 import { DEFAULT_PLAYER_POS, normalizePlayerPos } from '../playerPosition';
 import { NAME_EFFECT_CATALOG, getNameEffectHint } from '../utils/nameEffectCatalog';
 import NameEffectPickerModal from './NameEffectPickerModal';
+import FxPickerModal from './FxPickerModal';
+import { GlowPanel, CardPanel } from './GlowPanel';
+import { fxFromConfig, fxToConfigPatch } from '../fx/config';
+import { nameEffectOptions } from '../utils/nameEffects';
+import { FX_PRESETS } from '../fx/engine';
 import SocialPlatformPickerModal from './SocialPlatformPickerModal';
 import type { NameEffect } from '../types';
 import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
@@ -120,6 +125,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [discordLiveNonce, setDiscordLiveNonce] = useState(0);
 
   const [isNameEffectModalOpen, setIsNameEffectModalOpen] = useState(false);
+  const [isFxModalOpen, setIsFxModalOpen] = useState(false);
   const [socialPickerBlockId, setSocialPickerBlockId] = useState<string | null>(null);
   
   const [copiedLink, setCopiedLink] = useState<'path' | 'subdomain' | false>(false);
@@ -1676,26 +1682,32 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         </div>
 
                         <div>
-                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Эффекты снегопада (Snow)</label>
+                          <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Частицы на фоне</label>
                           <button
                             type="button"
-                            onClick={() => updateConfigValue('snowEffectsEnabled', !config.snowEffectsEnabled)}
-                            className={`w-full py-2.5 rounded-sm border font-black tracking-widest text-[10px] uppercase transition cursor-pointer ${
-                              config.snowEffectsEnabled ? 'bg-blue-500/10 border-blue-500/40 text-blue-400' : 'bg-black/25 border-white/10 text-neutral-500'
-                            }`}
+                            onClick={() => setIsFxModalOpen(true)}
+                            className="w-full bg-black/50 border border-white/15 hover:border-[#00f2ff] rounded-sm p-3 text-left text-white text-xs cursor-pointer transition flex items-center justify-between gap-2"
                           >
-                            {config.snowEffectsEnabled ? '[ СНЕГОПАД АКТИВЕН ]' : '[ ОТКЛЮЧЕНО ]'}
+                            <span>
+                              {fxFromConfig(config)
+                                ? `${FX_PRESETS[fxFromConfig(config)!.type].emoji} ${FX_PRESETS[fxFromConfig(config)!.type].label}`
+                                : 'Без частиц'}
+                            </span>
+                            <span className="text-[#00f2ff] text-[10px] font-bold uppercase">Выбрать</span>
                           </button>
-                          {config.snowEffectsEnabled && (
-                            <select
-                              value={config.snowIntensity || 'medium'}
-                              onChange={e => updateConfigValue('snowIntensity', e.target.value)}
-                              className="w-full mt-2 bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none cursor-pointer"
+                          <p className="text-[9px] text-neutral-500 mt-1.5 leading-relaxed">
+                            Снег, дождь, листья, лепестки, светлячки и другое: с ветром, реакцией на мышь и своим цветом.
+                          </p>
+                          {fxFromConfig(config) && (
+                            <button
+                              type="button"
+                              onClick={() => updateConfigValue('fxFront', !config.fxFront)}
+                              className={`mt-2 w-full py-2 rounded-sm border font-black tracking-widest text-[10px] uppercase transition cursor-pointer ${
+                                config.fxFront ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' : 'bg-black/25 border-white/10 text-neutral-500'
+                              }`}
                             >
-                              <option value="low">Низкая интенсивность</option>
-                              <option value="medium">Средняя</option>
-                              <option value="high">Высокая</option>
-                            </select>
+                              {config.fxFront ? '[ ПОВЕРХ КОНТЕНТА ]' : '[ ПОД КОНТЕНТОМ ]'}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1714,6 +1726,10 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                               <option value="hearts">Сердечки</option>
                               <option value="crosses">Кресты</option>
                               <option value="neon">Неон</option>
+                              <option value="snow">Снежинки</option>
+                              <option value="petals">Лепестки</option>
+                              <option value="notes">Ноты</option>
+                              <option value="bubbles">Пузыри</option>
                             </select>
                           </div>
                           <div>
@@ -2589,34 +2605,11 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   <div className="space-y-4">
                     <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
                       <Sparkles className="w-4 h-4" />
-                      <span>Настройки свечения</span>
+                      <span>Свечение и карточка</span>
                     </h3>
                     <div className="space-y-4 font-mono text-xs">
-                      <button type="button" onClick={() => updateConfigValue('glowEnabled', !config.glowEnabled)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.glowEnabled ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
-                        Общее свечение: {config.glowEnabled ? 'ВКЛ' : 'ВЫКЛ'}
-                      </button>
-                      <p className="text-[9px] text-neutral-500 -mt-2">Подсветка элементов профиля неоновым свечением.</p>
-                      <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Сила</label>
-                        <select value={config.glowIntensity || 'medium'} onChange={e => updateConfigValue('glowIntensity', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white">
-                          {Object.entries(GLOW_INTENSITY_LABELS).map(([id, label]) => (
-                            <option key={id} value={id}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-neutral-500 uppercase mb-1 font-bold">Где светится</label>
-                        <div className="flex flex-wrap gap-2">
-                          {(['avatar', 'username', 'location', 'badges', 'links', 'card'] as const).map(t => (
-                            <button key={t} type="button" onClick={() => {
-                              const cur = config.glowTargets || ['avatar', 'username', 'badges', 'links'];
-                              updateConfigValue('glowTargets', cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t]);
-                            }} className={`px-2 py-1 rounded-sm border text-[9px] uppercase ${(config.glowTargets || ['avatar', 'username', 'badges', 'links']).includes(t) ? 'bg-[#00f2ff] text-black' : 'bg-black/40 border-white/10 text-neutral-400'}`}>
-                              {GLOW_TARGET_LABELS[t] || t}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      <GlowPanel config={config} update={updateConfigValue} />
+                      <CardPanel config={config} update={updateConfigValue} />
                       <button type="button" onClick={() => updateConfigValue('profileGradientEnabled', !config.profileGradientEnabled)} className={`w-full py-2 rounded-sm border text-[10px] font-bold uppercase ${config.profileGradientEnabled ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' : 'bg-black/20 border-white/10 text-neutral-500'}`}>
                         Градиент карточки: {config.profileGradientEnabled ? 'ВКЛ' : 'ВЫКЛ'}
                       </button>
@@ -4022,12 +4015,25 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         </div>
       )}
 
+      <FxPickerModal
+        open={isFxModalOpen}
+        value={fxFromConfig(config)}
+        onClose={() => setIsFxModalOpen(false)}
+        onSave={(settings) => setConfig((prev) => (prev ? { ...prev, ...fxToConfigPatch(settings) } : prev))}
+      />
       <NameEffectPickerModal
         open={isNameEffectModalOpen}
         value={config?.nameEffect || 'none'}
-        previewText={config?.displayName || username || 'CRYTEAM'}
+        options={nameEffectOptions(config)}
+        previewText={config?.displayName || username}
         onClose={() => setIsNameEffectModalOpen(false)}
-        onSave={(effect: NameEffect) => updateConfigValue('nameEffect', effect)}
+        onSave={(sel) => setConfig((prev) => (prev ? {
+          ...prev,
+          nameEffect: sel.effect,
+          nameEffectColor: sel.color,
+          nameEffectColor2: sel.color2,
+          nameEffectSpeed: sel.speed,
+        } : prev))}
       />
 
       <SocialPlatformPickerModal
