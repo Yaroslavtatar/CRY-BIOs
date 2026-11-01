@@ -156,6 +156,9 @@ curl -fsSL https://cbios.ru/api/install-script | bash
 | `BACKUP_RETAIN` | — | Число хранимых автобэкапов (default: `5`) |
 | `BACKUP_CRON_HOURS` | — | Интервал автобэкапа в часах |
 | `DISABLE_SCHEDULED_BACKUP` | — | `true` — отключить автобэкап |
+| `GITHUB_REPO` | — | Репозиторий для блока «Открытый код» на главной (`owner/name`, default `Yaroslavtatar/CRY-BIOs`); `off` — скрыть |
+| `GITHUB_TOKEN` | — | Токен GitHub, только если упираетесь в лимит API (60 запросов/час на IP) |
+| `SOCIAL_TELEGRAM_URL`, `SOCIAL_DISCORD_URL`, `SOCIAL_YOUTUBE_URL`, `SOCIAL_X_URL`, `SOCIAL_TIKTOK_URL`, `SOCIAL_VK_URL`, `SOCIAL_INSTAGRAM_URL`, `SOCIAL_TWITCH_URL` | — | Соцсети проекта на главной; показываются только заданные |
 
 ---
 
