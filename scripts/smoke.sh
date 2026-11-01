@@ -58,4 +58,15 @@ if printf '%s' "$BIO" | grep -q '999999999999999999'; then echo "FAIL: клие�
 echo "ok   discordId не принимается от клиента"
 check "presence чужого ID не отдаётся" 404 "${BASE}/api/discord/999999999999999999"
 
+# Блок GitHub на главной: 200 с данными или 503 (GitHub недоступен/лимит) — оба варианта штатные, но ответ всегда валидный JSON
+GH_CODE="$(curl -s -o "${WORKDIR}/gh.json" -w '%{http_code}' "${BASE}/api/github" || true)"
+case "$GH_CODE" in
+  200) grep -q '"enabled":true' "${WORKDIR}/gh.json" && grep -q '"stargazers_count"\|"stars"' "${WORKDIR}/gh.json" || { echo "FAIL /api/github: 200, но нет данных репозитория"; cat "${WORKDIR}/gh.json"; exit 1; } ;;
+  503) grep -q '"enabled":true' "${WORKDIR}/gh.json" || { echo "FAIL /api/github: 503 без enabled"; exit 1; } ;;
+  *) echo "FAIL /api/github: неожиданный статус ${GH_CODE}"; cat "$LOG"; exit 1 ;;
+esac
+echo "ok   /api/github (${GH_CODE})"
+curl -s "${BASE}/api/public-config" | grep -q '"socials":\[' || { echo "FAIL: в /api/public-config нет socials"; exit 1; }
+echo "ok   /api/public-config содержит socials"
+
 echo "Smoke OK"

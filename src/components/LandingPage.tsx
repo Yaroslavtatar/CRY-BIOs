@@ -4,9 +4,16 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Sparkles, Code2, Play, Terminal, Download, Copy, Check, ArrowRight, Activity, Users, Globe2, HelpCircle } from 'lucide-react';
+import { Shield, Sparkles, Code2, Play, Terminal, Download, Copy, Check, ArrowRight, Activity, Users, Globe2, HelpCircle, Star } from 'lucide-react';
 import { getThumbUrl } from '../utils/media';
 import { getPlatformDomainConfig, type PlatformDomainConfig } from '../platformDomain';
+import { useGithub } from '../hooks/useGithub';
+import OpenSourceSection from './landing/OpenSourceSection';
+import SocialRow from './landing/SocialRow';
+import SocialIcon from './SocialIcon';
+import { DEFAULT_REPO, dockerImageFor } from '../github';
+import { compactNumber, isVersionTag } from '../utils/format';
+import type { SocialLink } from '../socials';
 
 interface ActiveProfile {
   username: string;
@@ -19,14 +26,14 @@ interface ActiveProfile {
 interface LandingPageProps {
   onNavigateToDashboard: () => void;
   onViewProfile: (username: string) => void;
-  platformConfig?: PlatformDomainConfig & { hideAdminPanelLink?: boolean };
+  platformConfig?: PlatformDomainConfig & { hideAdminPanelLink?: boolean; socials?: SocialLink[] };
 }
 
 export default function LandingPage({ onNavigateToDashboard, onViewProfile, platformConfig }: LandingPageProps) {
   const [activeBios, setActiveBios] = useState<ActiveProfile[]>([]);
   const [copiedScript, setCopiedScript] = useState(false);
   const [copiedDocker, setCopiedDocker] = useState(false);
-  const [analyticsStats, setAnalyticsStats] = useState({ totalBios: 0, totalTraffic: 0 });
+  const github = useGithub();
 
   const runtimePlatform = getPlatformDomainConfig({
     appUrl: platformConfig?.appUrl,
@@ -35,11 +42,17 @@ export default function LandingPage({ onNavigateToDashboard, onViewProfile, plat
   });
   const installOrigin = runtimePlatform.appUrl || (typeof window !== 'undefined' ? window.location.origin : '');
   const installScriptCmd = `curl -sSL ${installOrigin}/api/install-script | bash`;
+  const ghData = github.status === 'ready' ? github.data : null;
+  // GITHUB_REPO=off: владелец инстанса скрыл всё, что связано с репозиторием
+  const showGithub = github.status !== 'disabled';
+  const repoUrl = ghData?.repo.url ?? `https://github.com/${DEFAULT_REPO}`;
+  // образ, который реально публикует .github/workflows/docker.yml (имя репозитория в нижнем регистре)
+  const dockerImage = ghData?.dockerImage ?? dockerImageFor(DEFAULT_REPO);
   const dockerComposeCode = `version: '3.8'
 
 services:
   cry_bios:
-    image: ghcr.io/cryteam/cry-bios:latest
+    image: ${dockerImage}
     container_name: cry_bios_server
     restart: unless-stopped
     ports:
@@ -56,11 +69,6 @@ services:
       .then(res => res.json())
       .then((data: ActiveProfile[]) => {
         setActiveBios(data);
-        // Estimate demo traffic sum to make the directory feel live
-        setAnalyticsStats({
-          totalBios: Math.max(data.length, 1),
-          totalTraffic: data.length * 128 + 482
-        });
       })
       .catch(err => {
         console.error("Error fetching bios index", err);
@@ -69,7 +77,6 @@ services:
           { username: 'cryteam', displayName: 'cryteam', bio: '⚡ elite coding squad • custom HTML developers ⚡', avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80', verified: true }
         ];
         setActiveBios(fallback);
-        setAnalyticsStats({ totalBios: 1, totalTraffic: 812 });
       });
   }, []);
 
@@ -116,6 +123,25 @@ services:
             >
               [ ИНСТРУКЦИЯ СЕЛФХОСТА ]
             </a>
+            {showGithub && (
+            <a
+              href={repoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              id="header_github_link"
+              className="hidden sm:inline-flex items-center gap-2 px-3 py-2.5 border border-white/15 hover:border-[#00f2ff]/60 text-neutral-300 hover:text-[#00f2ff] rounded-sm text-[11px] font-black tracking-widest uppercase transition whitespace-nowrap"
+              title="Открыть репозиторий на GitHub"
+            >
+              <SocialIcon platform="github" className="w-4 h-4" />
+              <span>GitHub</span>
+              {ghData && (
+                <span className="inline-flex items-center gap-1 text-neutral-400 normal-case tracking-normal font-mono" aria-label={`Звёзд: ${ghData.repo.stars}`}>
+                  <Star className="w-3 h-3 fill-current" />
+                  {compactNumber(ghData.repo.stars)}
+                </span>
+              )}
+            </a>
+            )}
             <button
               onClick={onNavigateToDashboard}
               id="header_dashboard_btn"
@@ -133,11 +159,20 @@ services:
       <main className="flex-grow">
         {/* Hero Section */}
         <section className="px-6 pt-20 md:pt-28 pb-16 text-center max-w-5xl mx-auto relative">
-          <div className="inline-block px-4 py-1.5 bg-white/10 border border-white/20 text-[10px] font-bold uppercase tracking-[0.3em] w-fit mx-auto mb-8 font-mono">
+          <a
+            href={showGithub ? '#opensource' : undefined}
+            className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 border border-white/20 hover:border-[#00f2ff]/60 text-[10px] font-bold uppercase tracking-[0.3em] w-fit mx-auto mb-8 font-mono transition"
+          >
             100% Бесплатно & Открытый Исходный Код
-          </div>
+            {ghData && (
+              <span className="inline-flex items-center gap-1 text-[#00f2ff] tracking-normal">
+                <Star className="w-3 h-3 fill-current" />
+                {compactNumber(ghData.repo.stars)}
+              </span>
+            )}
+          </a>
 
-          <h1 className="text-5xl md:text-8xl font-black leading-[0.85] tracking-tighter uppercase italic mb-8">
+          <h1 className="text-[clamp(1.75rem,9vw,3rem)] md:text-7xl lg:text-8xl font-black leading-[0.9] md:leading-[0.85] tracking-tighter uppercase italic mb-8">
             Суверенность<br />
             <span className="text-[#00f2ff] drop-shadow-[0_0_15px_rgba(0,242,255,0.1)]">Личности</span>
           </h1>
@@ -172,15 +207,21 @@ services:
             </div>
             <div className="text-center sm:border-l sm:border-white/10">
               <span className="block text-[10px] font-black tracking-widest text-neutral-500 uppercase italic">Создано профилей</span>
-              <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">{analyticsStats.totalBios} Активных</span>
+              <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">{activeBios.length} Активных</span>
             </div>
             <div className="text-center sm:border-l sm:border-white/10">
-              <span className="block text-[10px] font-black tracking-widest text-[#00f2ff] uppercase italic">Просмотры</span>
-              <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">{analyticsStats.totalTraffic} Запросов</span>
+              <span className="block text-[10px] font-black tracking-widest text-[#00f2ff] uppercase italic">GitHub</span>
+              {showGithub ? (
+                <a href={repoUrl} target="_blank" rel="noopener noreferrer" className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic hover:text-[#00f2ff] transition">
+                  {ghData ? `★ ${compactNumber(ghData.repo.stars)}` : 'Open Source'}
+                </a>
+              ) : (
+                <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">Open Source</span>
+              )}
             </div>
             <div className="text-center sm:border-l sm:border-white/10">
-              <span className="block text-[10px] font-black tracking-widest text-neutral-500 uppercase italic">Поддержка кода</span>
-              <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">HTML и CSS</span>
+              <span className="block text-[10px] font-black tracking-widest text-neutral-500 uppercase italic">Лицензия</span>
+              <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">{ghData?.repo.license || 'MIT'}</span>
             </div>
           </div>
         </section>
@@ -231,6 +272,8 @@ services:
             </div>
           </div>
         </section>
+
+        {showGithub && <OpenSourceSection github={github} />}
 
         {/* Directory Showcase */}
         <section className="px-6 py-20 max-w-7xl mx-auto">
@@ -285,7 +328,7 @@ services:
 
         {/* Installation Setup / Scripts Showcase */}
         <section id="installer" className="px-6 py-20 bg-[#0c0c0c] border-t border-b border-white/10">
-          <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-12 items-center">
+          <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-12 items-center [&>*]:min-w-0">
             <div>
               <div className="inline-block px-3 py-1 bg-white/10 border border-white/20 text-[10px] font-bold uppercase tracking-[0.2em] w-fit mb-4 font-mono">
                 Собственный сервер
@@ -382,12 +425,36 @@ services:
             <span className="font-mono break-all">{installScriptCmd}</span>
           </div>
         </div>
-        <div className="flex flex-col items-center md:items-end gap-2.5">
-          <div className="flex gap-4 text-xs font-black tracking-widest">
-            <span className="text-[#00f2ff]">v1.2.0-STABLE</span>
-            <span className="opacity-30 text-white">OPEN SOURCE MIT</span>
+        <div className="flex flex-col items-center md:items-end gap-4">
+          <SocialRow githubUrl={showGithub ? repoUrl : undefined} socials={platformConfig?.socials} />
+          <div className="flex flex-wrap justify-center md:justify-end gap-x-4 gap-y-1 text-xs font-black tracking-widest">
+            {/* версия берётся из GitHub (последний релиз или коммит), а не придумывается */}
+            {ghData?.latestRelease && isVersionTag(ghData.latestRelease.tag) ? (
+              <a href={ghData.latestRelease.url} target="_blank" rel="noopener noreferrer" className="text-[#00f2ff] hover:underline">
+                {ghData.latestRelease.tag}
+              </a>
+            ) : ghData?.recentCommits[0] ? (
+              <a href={ghData.recentCommits[0].url} target="_blank" rel="noopener noreferrer" className="text-[#00f2ff] hover:underline" title={ghData.recentCommits[0].message}>
+                {ghData.repo.defaultBranch}@{ghData.recentCommits[0].sha}
+              </a>
+            ) : null}
+            {showGithub ? (
+              <a href={`${repoUrl}/blob/${ghData?.repo.defaultBranch ?? 'main'}/LICENSE`} target="_blank" rel="noopener noreferrer" className="opacity-60 hover:opacity-100 text-white">
+                OPEN SOURCE {ghData?.repo.license || 'MIT'}
+              </a>
+            ) : (
+              <span className="opacity-60 text-white">OPEN SOURCE</span>
+            )}
           </div>
-          <div className="text-[9px] text-neutral-600 uppercase tracking-widest font-mono flex items-center gap-2 justify-end">
+          <div className="text-[9px] text-neutral-600 uppercase tracking-widest font-mono flex flex-wrap items-center gap-2 justify-center md:justify-end">
+            {showGithub && (
+              <>
+                <a href={`${repoUrl}/issues`} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-[#00f2ff] transition">ISSUES</a>
+                <span>•</span>
+                <a href={`${repoUrl}/blob/${ghData?.repo.defaultBranch ?? 'main'}/SECURITY.md`} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-[#00f2ff] transition">БЕЗОПАСНОСТЬ</a>
+                <span>•</span>
+              </>
+            )}
             <span>ПАНЕЛЬ УПРАВЛЕНИЯ В КОМПЛЕКТЕ</span>
             {!platformConfig?.hideAdminPanelLink && (
               <>

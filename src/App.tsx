@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { SocialLink } from './socials';
 import { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
@@ -23,7 +24,7 @@ const DEFAULT_PLATFORM: PlatformDomainConfig = getPlatformDomainConfig({
 export default function App() {
   const [view, setView] = useState<'landing' | 'dashboard' | 'bio' | 'admin'>('landing');
   const [username, setUsername] = useState('');
-  type PublicConfig = PlatformDomainConfig & { hideAdminPanelLink?: boolean; mediaCdnUrl?: string | null };
+  type PublicConfig = PlatformDomainConfig & { hideAdminPanelLink?: boolean; mediaCdnUrl?: string | null; socials?: SocialLink[] };
 
   const [platform, setPlatform] = useState<PublicConfig>(DEFAULT_PLATFORM);
 

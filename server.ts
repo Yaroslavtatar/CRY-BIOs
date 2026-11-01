@@ -48,6 +48,8 @@ import {
 } from './src/platformDomain';
 import { getServerMediaCdnUrl } from './src/utils/cdn';
 import { registerDiscord, preserveDiscordFields } from './src/discord';
+import { createGithubService, isValidRepo, DEFAULT_REPO } from './src/github';
+import { getSocialLinks } from './src/socials';
 
 // Разрешённые origin: cbios.ru и cryteam.ru (+ один уровень поддоменов, в т.ч. cdn.*) и CORS_ALLOWED_ORIGINS из окружения
 const CBIOS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?(cbios\.ru|cryteam\.ru)$/;
@@ -858,12 +860,39 @@ async function startServer() {
     res.json(profiles);
   });
 
+  // GitHub-репозиторий проекта для главной страницы: данные кэшируются на сервере (лимиты GitHub, токен не уходит клиенту).
+  // GITHUB_REPO=owner/name меняет репозиторий (форки), GITHUB_REPO=off отключает блок; GITHUB_TOKEN повышает лимит API.
+  const githubRepoEnv = (process.env.GITHUB_REPO ?? DEFAULT_REPO).trim();
+  const githubDisabled = githubRepoEnv === '' || githubRepoEnv.toLowerCase() === 'off';
+  if (!githubDisabled && !isValidRepo(githubRepoEnv)) {
+    console.warn(`[github] GITHUB_REPO="${githubRepoEnv}" некорректен (нужно owner/name), блок GitHub отключён`);
+  }
+  const githubService = !githubDisabled && isValidRepo(githubRepoEnv)
+    ? createGithubService({ repo: githubRepoEnv, token: process.env.GITHUB_TOKEN?.trim() || undefined })
+    : null;
+  const githubLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
+
+  app.get('/api/github', githubLimiter, async (_req, res) => {
+    if (!githubService) return res.json({ enabled: false });
+    const result = await githubService.getSnapshot();
+    if (!result) {
+      res.set('Cache-Control', 'no-store');
+      return res.status(503).json({ enabled: true, error: 'GitHub временно недоступен' });
+    }
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.json({ enabled: true, ...result });
+  });
+
+  // Соцсети проекта задаются переменными SOCIAL_*_URL; невалидные ссылки отбрасываются (один раз пишем в лог)
+  const socialLinks = getSocialLinks(process.env, (msg) => console.warn(`[socials] ${msg}`));
+
   // Public platform config (domain, URLs)
   app.get('/api/public-config', (req, res) => {
     const platform = getPlatformConfig(req);
     const site = getSiteSettings(DATA_DIR);
     res.json({
       ...platform,
+      socials: socialLinks,
       hideAdminPanelLink: site.hideAdminPanelLink,
       mediaCdnUrl: getServerMediaCdnUrl(),
       ssl: {
