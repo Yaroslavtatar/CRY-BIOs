@@ -100,7 +100,7 @@ export function normalizeSnapshot(raw: RawGithub, repoName: string): GithubSnaps
     .filter((c: any) => c && c.type === 'User' && typeof c.login === 'string' && !c.login.endsWith('[bot]'))
     .map((c: any) => ({
       login: text(c.login, 60),
-      avatarUrl: safeUrl(c.avatar_url, AVATAR_HOSTS) || '',
+      avatarUrl: (() => { const u = safeUrl(c.avatar_url, AVATAR_HOSTS); if (!u) return ''; return u + (u.includes('?') ? '&' : '?') + 's=96'; })(),
       url: safeUrl(c.html_url) || `https://github.com/${encodeURIComponent(text(c.login, 60))}`,
       contributions: count(c.contributions),
     }))

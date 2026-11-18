@@ -1515,12 +1515,41 @@ async function startServer() {
   } else {
     // Serve static frontend compiled bundle
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    
+    // Хэшированные ассеты — навсегда в кэш; index.html — всегда ревалидировать
+    app.use(express.static(distPath, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    }));
+
+    // robots.txt и sitemap.xml отдаём настоящими, а не SPA-fallback'ом
+    app.get('/robots.txt', (req, res) => {
+      const origin = `${req.protocol}://${req.get('host')}`;
+      res.type('text/plain').set('Cache-Control', 'public, max-age=3600').send(
+        `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /dashboard\n\nSitemap: ${origin}/sitemap.xml\n`
+      );
+    });
+    app.get('/sitemap.xml', (req, res) => {
+      const origin = `${req.protocol}://${req.get('host')}`;
+      res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(
+        `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/</loc></url></urlset>\n`
+      );
+    });
+    // Неизвестные «файловые» пути не должны возвращать HTML с кодом 200
+    app.get(/\/(llms\.txt|ai-catalog\.json)$|\.(map|txt|json|xml|js|css)$/i, (req, res) => {
+      res.status(404).type('text/plain').send('Not found');
+    });
+
     // Fallback everything else to SPA HTML load
     app.get('*', (req, res, next) => {
       // Avoid intercepting /api endpoints
       if (req.path.startsWith('/api')) return next();
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

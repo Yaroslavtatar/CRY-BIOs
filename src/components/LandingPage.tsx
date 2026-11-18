@@ -206,7 +206,7 @@ services:
               <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">В 1 команду</span>
             </div>
             <div className="text-center sm:border-l sm:border-white/10">
-              <span className="block text-[10px] font-black tracking-widest text-neutral-500 uppercase italic">Создано профилей</span>
+              <span className="block text-[10px] font-black tracking-widest text-neutral-400 uppercase italic">Создано профилей</span>
               <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">{activeBios.length} Активных</span>
             </div>
             <div className="text-center sm:border-l sm:border-white/10">
@@ -220,7 +220,7 @@ services:
               )}
             </div>
             <div className="text-center sm:border-l sm:border-white/10">
-              <span className="block text-[10px] font-black tracking-widest text-neutral-500 uppercase italic">Лицензия</span>
+              <span className="block text-[10px] font-black tracking-widest text-neutral-400 uppercase italic">Лицензия</span>
               <span className="text-2xl font-black tracking-tighter text-white mt-1.5 block uppercase italic">{ghData?.repo.license || 'MIT'}</span>
             </div>
           </div>
@@ -342,9 +342,9 @@ services:
               <div className="p-5 rounded-sm bg-emerald-500/10 border border-emerald-500/20 flex gap-4 items-start font-mono">
                 <Globe2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-xs font-black text-emerald-300 uppercase tracking-widest">
+                  <h3 className="text-xs font-black text-emerald-300 uppercase tracking-widest">
                     Короткие адреса профилей
-                  </h4>
+                  </h3>
                   <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed font-sans">
                     Каждый пользователь получает поддомен{' '}
                     <code className="text-[#00f2ff] font-mono">name.{runtimePlatform.baseDomain || 'yourdomain.com'}</code>{' '}
@@ -363,7 +363,7 @@ services:
                   <Download className="w-4 h-4" />
                   <span>СКАЧАТЬ INSTALL.SH</span>
                 </a>
-                <span className="text-xs text-neutral-500 break-words">или экспортируйте файлы в админ-панели</span>
+                <span className="text-xs text-neutral-400 break-words">или экспортируйте файлы в админ-панели</span>
               </div>
             </div>
 
@@ -381,7 +381,7 @@ services:
 
                 <div className="p-5 font-mono text-xs text-neutral-300 overflow-x-auto space-y-4">
                   <div>
-                    <span className="text-neutral-500"># Установка с помощью стандартного установщика curl</span>
+                    <span className="text-neutral-400"># Установка с помощью стандартного установщика curl</span>
                     <div className="flex justify-between items-center bg-white/5 hover:bg-white/10 p-3 rounded-sm border border-white/10 mt-2">
                        <span className="text-[#00f2ff] break-all select-all font-mono font-medium">{installScriptCmd}</span>
                       <button
@@ -395,7 +395,7 @@ services:
                   </div>
 
                   <div>
-                    <span className="text-neutral-500"># Альтернативный запуск в контейнере docker-compose.yml</span>
+                    <span className="text-neutral-400"># Альтернативный запуск в контейнере docker-compose.yml</span>
                     <div className="relative mt-2">
                       <pre className="text-[10px] bg-white/5 p-4 rounded-sm border border-white/10 leading-normal overflow-x-auto text-neutral-300 font-mono">
                         {dockerComposeCode}
@@ -419,7 +419,7 @@ services:
       {/* Footer */}
       <footer className="bg-[#0c0c0c] border-t border-white/10 p-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-6 text-left font-mono">
         <div className="flex flex-col gap-3">
-          <div className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em] italic">Скрипт установки</div>
+          <div className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] italic">Скрипт установки</div>
           <div className="bg-black border border-white/10 px-5 py-3.5 rounded-sm flex items-center gap-4 font-mono text-xs text-neutral-300 max-w-[calc(100vw-2rem)] overflow-x-auto">
             <span className="text-[#00f2ff] font-bold shrink-0">$</span>
             <span className="font-mono break-all">{installScriptCmd}</span>
@@ -449,9 +449,9 @@ services:
           <div className="text-[9px] text-neutral-600 uppercase tracking-widest font-mono flex flex-wrap items-center gap-2 justify-center md:justify-end">
             {showGithub && (
               <>
-                <a href={`${repoUrl}/issues`} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-[#00f2ff] transition">ISSUES</a>
+                <a href={`${repoUrl}/issues`} target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-[#00f2ff] transition">ISSUES</a>
                 <span>•</span>
-                <a href={`${repoUrl}/blob/${ghData?.repo.defaultBranch ?? 'main'}/SECURITY.md`} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-[#00f2ff] transition">БЕЗОПАСНОСТЬ</a>
+                <a href={`${repoUrl}/blob/${ghData?.repo.defaultBranch ?? 'main'}/SECURITY.md`} target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-[#00f2ff] transition">БЕЗОПАСНОСТЬ</a>
                 <span>•</span>
               </>
             )}
@@ -459,7 +459,7 @@ services:
             {!platformConfig?.hideAdminPanelLink && (
               <>
                 <span>•</span>
-                <a href="/admin" className="text-neutral-500 hover:text-[#00f2ff] underline transition">АДМИН-ПАНЕЛЬ</a>
+                <a href="/admin" className="text-neutral-400 hover:text-[#00f2ff] underline transition">АДМИН-ПАНЕЛЬ</a>
               </>
             )}
             <span>•</span>
