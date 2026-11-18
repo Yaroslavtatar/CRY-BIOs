@@ -4,11 +4,11 @@
  */
 
 import type { SocialLink } from './socials';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import LandingPage from './components/LandingPage';
-import Dashboard from './components/Dashboard';
-import BioPage from './components/BioPage';
-import AdminPanel from './components/AdminPanel';
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const BioPage = lazy(() => import('./components/BioPage'));
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
 import {
   getPlatformDomainConfig,
   parseShortPathSlug,
@@ -146,25 +146,29 @@ export default function App() {
   };
 
   if (view === 'admin') {
-    return <AdminPanel onExit={navigateToLanding} />;
+    return <Suspense fallback={null}><AdminPanel onExit={navigateToLanding} /></Suspense>;
   }
 
   if (view === 'dashboard') {
     return (
-      <Dashboard
-        onExit={navigateToLanding}
-        onViewProfile={navigateToBio}
-        platformConfig={platform}
-      />
+      <Suspense fallback={null}>
+        <Dashboard
+          onExit={navigateToLanding}
+          onViewProfile={navigateToBio}
+          platformConfig={platform}
+        />
+      </Suspense>
     );
   }
 
   if (view === 'bio') {
     return (
-      <BioPage
-        username={username}
-        onExit={navigateToLanding}
-      />
+      <Suspense fallback={null}>
+        <BioPage
+          username={username}
+          onExit={navigateToLanding}
+        />
+      </Suspense>
     );
   }
 
