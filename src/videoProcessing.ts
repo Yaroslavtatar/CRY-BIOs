@@ -6,6 +6,10 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
+export class UnsupportedMediaError extends Error {
+  readonly status = 415;
+}
+
 export async function processUploadedVideo(
   inputPath: string,
   uploadsDir: string
@@ -16,7 +20,9 @@ export async function processUploadedVideo(
 
   try {
     await execFileAsync('ffmpeg', [
+      '-nostdin',
       '-y',
+      '-protocol_whitelist', 'file',
       '-i', inputPath,
       '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease',
       '-c:v', 'libx264',
@@ -30,12 +36,10 @@ export async function processUploadedVideo(
       outputPath,
     ], { timeout: 180000 });
   } catch {
-    // Fallback: copy original if ffmpeg fails
-    const ext = path.extname(inputPath) || '.mp4';
-    const fallbackName = `${id}${ext}`;
-    fs.copyFileSync(inputPath, path.join(uploadsDir, fallbackName));
-    fs.unlinkSync(inputPath);
-    return { filename: fallbackName };
+    // Никогда не сохраняем исходный файл: он мог быть не медиа (например, HTML с чужим расширением)
+    try { fs.unlinkSync(inputPath); } catch { /* ignore */ }
+    try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch { /* ignore */ }
+    throw new UnsupportedMediaError('Файл не является корректным видео');
   }
 
   fs.unlinkSync(inputPath);

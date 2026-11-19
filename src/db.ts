@@ -70,6 +70,57 @@ ensureUserSecurityColumns();
 
 export const SESSION_TTL_DAYS = 30;
 
+/** В БД хранится только sha256(токена); сам токен знает только клиент. */
+export function hashSessionToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+const TOKEN_HASH_RE = /^[a-f0-9]{64}$/;
+
+/** Миграция: открытые токены → sha256, заглушки/мусор → '' (сессия недействительна). */
+function migrateSessionTokens() {
+  const rows = db.prepare('SELECT username, token FROM users').all() as { username: string; token: string }[];
+  const update = db.prepare('UPDATE users SET token = ? WHERE username = ?');
+  db.transaction(() => {
+    for (const r of rows) {
+      const t = r.token || '';
+      if (t === '' || TOKEN_HASH_RE.test(t)) continue;
+      if (t === '[REDACTED]') update.run('', r.username);
+      else update.run(hashSessionToken(t), r.username);
+    }
+  })();
+  // Токен уникален (пустые значения — «нет сессии» — не учитываются)
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_token ON users(token) WHERE token != ''");
+}
+
+migrateSessionTokens();
+
+// Индексируемые копии alias_slug / custom_domain (вместо JSON.parse всех профилей на каждый запрос)
+function ensureBioIndexColumns() {
+  const columns = db.prepare('PRAGMA table_info(bios)').all() as { name: string }[];
+  const names = new Set(columns.map(c => c.name));
+  if (!names.has('alias_slug')) db.exec('ALTER TABLE bios ADD COLUMN alias_slug TEXT');
+  if (!names.has('custom_domain')) db.exec('ALTER TABLE bios ADD COLUMN custom_domain TEXT');
+  const rows = db.prepare('SELECT username, data FROM bios WHERE alias_slug IS NULL AND custom_domain IS NULL').all() as { username: string; data: string }[];
+  const upd = db.prepare('UPDATE bios SET alias_slug = ?, custom_domain = ? WHERE username = ?');
+  db.transaction(() => {
+    for (const r of rows) {
+      try {
+        const b = JSON.parse(r.data);
+        upd.run(normIndexValue(b.aliasSlug), normIndexValue(b.customDomain), r.username);
+      } catch { /* битый JSON не должен ронять запуск */ }
+    }
+  })();
+  db.exec('CREATE INDEX IF NOT EXISTS idx_bios_alias_slug ON bios(alias_slug)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_bios_custom_domain ON bios(custom_domain)');
+}
+
+function normIndexValue(v: unknown): string {
+  return typeof v === 'string' ? v.toLowerCase().trim() : '';
+}
+
+ensureBioIndexColumns();
+
 // MIGRATION FROM JSON IF DB IS EMPTY
 const countUsers = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
 if (countUsers.count === 0) {
@@ -82,7 +133,7 @@ if (countUsers.count === 0) {
     const usersData = JSON.parse(rawUsers);
     const insertUser = db.prepare('INSERT INTO users (username, password_hash, token) VALUES (?, ?, ?)');
     for (const [username, u] of Object.entries<any>(usersData)) {
-      insertUser.run(username, u.passwordHash, u.token || crypto.randomUUID());
+      insertUser.run(username, u.passwordHash, hashSessionToken(u.token || crypto.randomUUID()));
     }
   }
 
@@ -113,8 +164,8 @@ export function getUser(username: string) {
 }
 
 export function getUserByToken(token: string) {
-  if (!token) return null;
-  const user = db.prepare('SELECT * FROM users WHERE token = ?').get(token) as any;
+  if (!token || typeof token !== 'string' || token === '[REDACTED]') return null;
+  const user = db.prepare('SELECT * FROM users WHERE token = ?').get(hashSessionToken(token)) as any;
   if (!user || !user.token) return null;
   if (user.token_expires_at && new Date(user.token_expires_at) < new Date()) {
     return null;
@@ -127,7 +178,7 @@ export function createUser(username: string, passwordHash: string, token: string
   expires.setDate(expires.getDate() + SESSION_TTL_DAYS);
   db.prepare(
     'INSERT INTO users (username, password_hash, token, token_expires_at, failed_login_attempts, locked_until) VALUES (?, ?, ?, ?, 0, NULL)'
-  ).run(username, passwordHash, token, expires.toISOString());
+  ).run(username, passwordHash, hashSessionToken(token), expires.toISOString());
 }
 
 export function updateUserToken(username: string, token: string, expiresInDays = SESSION_TTL_DAYS) {
@@ -135,7 +186,7 @@ export function updateUserToken(username: string, token: string, expiresInDays =
   expires.setDate(expires.getDate() + expiresInDays);
   db.prepare(
     'UPDATE users SET token = ?, token_expires_at = ?, failed_login_attempts = 0, locked_until = NULL WHERE username = ?'
-  ).run(token, expires.toISOString(), username);
+  ).run(hashSessionToken(token), expires.toISOString(), username);
 }
 
 export function clearUserToken(username: string) {
@@ -171,8 +222,9 @@ export function updateUsername(oldUsername: string, newUsername: string) {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(oldUsername) as any;
     if (!user) return;
     
-    // Create new
-    db.prepare('INSERT INTO users (username, password_hash, token) VALUES (?, ?, ?)').run(newUsername, user.password_hash, user.token);
+    // Токен уникален: освобождаем его у старой записи до вставки новой
+    db.prepare("UPDATE users SET token = '' WHERE username = ?").run(oldUsername);
+    db.prepare('INSERT INTO users (username, password_hash, token, token_expires_at) VALUES (?, ?, ?, ?)').run(newUsername, user.password_hash, user.token, user.token_expires_at ?? null);
     
     // Copy bio
     const bioRow = db.prepare('SELECT data FROM bios WHERE username = ?').get(oldUsername) as any;
@@ -182,7 +234,7 @@ export function updateUsername(oldUsername: string, newUsername: string) {
       if (bioObj.displayName === oldUsername) {
         bioObj.displayName = newUsername;
       }
-      db.prepare('INSERT INTO bios (username, data) VALUES (?, ?)').run(newUsername, JSON.stringify(bioObj));
+      db.prepare('INSERT INTO bios (username, data, alias_slug, custom_domain) VALUES (?, ?, ?, ?)').run(newUsername, JSON.stringify(bioObj), normIndexValue(bioObj.aliasSlug), normIndexValue(bioObj.customDomain));
     }
     
     // Update analytics
@@ -206,10 +258,8 @@ export function getBioBySlug(slug: string): BioConfig | null {
   const byUsername = getBio(normalized);
   if (byUsername) return byUsername;
 
-  const bios = getAllBios();
-  return (
-    bios.find(b => b.aliasSlug && b.aliasSlug.toLowerCase().trim() === normalized) || null
-  );
+  const row = db.prepare('SELECT data FROM bios WHERE alias_slug = ? LIMIT 1').get(normalized) as { data: string } | undefined;
+  return row ? JSON.parse(row.data) : null;
 }
 
 export function resolveSlugToUsername(slug: string): string | null {
@@ -220,21 +270,25 @@ export function resolveSlugToUsername(slug: string): string | null {
 export function isAliasSlugTaken(slug: string, excludeUsername?: string): boolean {
   const normalized = slug.toLowerCase().trim();
   if (!normalized) return false;
+  const exclude = (excludeUsername || '').toLowerCase();
 
-  const bios = getAllBios();
-  for (const bio of bios) {
-    if (excludeUsername && bio.username.toLowerCase() === excludeUsername.toLowerCase()) continue;
-    if (bio.username.toLowerCase() === normalized) return true;
-    if (bio.aliasSlug && bio.aliasSlug.toLowerCase().trim() === normalized) return true;
-  }
-  return false;
+  if (normalized !== exclude && db.prepare('SELECT 1 FROM users WHERE username = ?').get(normalized)) return true;
+  const row = db.prepare('SELECT username FROM bios WHERE alias_slug = ? AND username != ? LIMIT 1').get(normalized, exclude) as any;
+  return !!row;
+}
+
+export function isCustomDomainTaken(domain: string, excludeUsername?: string): boolean {
+  const normalized = domain.toLowerCase().trim();
+  if (!normalized) return false;
+  const row = db.prepare('SELECT username FROM bios WHERE custom_domain = ? AND username != ? LIMIT 1').get(normalized, (excludeUsername || '').toLowerCase()) as any;
+  return !!row;
 }
 
 export function getBioByCustomDomain(host: string): BioConfig | null {
   const normalized = host.toLowerCase().trim();
   if (!normalized) return null;
-  const bios = getAllBios();
-  return bios.find(b => b.customDomain && b.customDomain.toLowerCase().trim() === normalized) || null;
+  const row = db.prepare('SELECT data FROM bios WHERE custom_domain = ? ORDER BY rowid LIMIT 1').get(normalized) as { data: string } | undefined;
+  return row ? JSON.parse(row.data) : null;
 }
 
 export function getAllBios(): BioConfig[] {
@@ -259,7 +313,10 @@ export function getAllUsersWithStats() {
 }
 
 export function saveBio(username: string, config: BioConfig) {
-  db.prepare('INSERT INTO bios (username, data) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET data = excluded.data').run(username, JSON.stringify(config));
+  db.prepare(
+    'INSERT INTO bios (username, data, alias_slug, custom_domain) VALUES (?, ?, ?, ?) ' +
+    'ON CONFLICT(username) DO UPDATE SET data = excluded.data, alias_slug = excluded.alias_slug, custom_domain = excluded.custom_domain'
+  ).run(username, JSON.stringify(config), normIndexValue(config.aliasSlug), normIndexValue(config.customDomain));
 }
 
 export function addAnalytic(username: string, record: VisitRecord) {
@@ -298,21 +355,19 @@ export function updateUserPasswordAndInvalidateSessions(username: string, passwo
   ).run(passwordHash, '', username);
 }
 
-export function exportDatabase(options?: { includeAnalytics?: boolean; includeSecrets?: boolean }) {
+export function exportDatabase(options?: { includeAnalytics?: boolean }) {
   const users = db.prepare('SELECT * FROM users').all() as any[];
   const bios = db.prepare('SELECT * FROM bios').all();
   const includeAnalytics = options?.includeAnalytics !== false;
-  const includeSecrets = options?.includeSecrets === true;
   const analytics = includeAnalytics
     ? db.prepare('SELECT * FROM analytics').all()
     : [];
-  const sanitizedUsers = includeSecrets
-    ? users
-    : users.map(u => ({
+  // Токены (даже хэшированные) в экспорт не попадают никогда.
+  const sanitizedUsers = users.map(u => ({
         username: u.username,
         password_hash: u.password_hash,
-        token: '[REDACTED]',
-        token_expires_at: u.token_expires_at ?? null,
+        token: '',
+        token_expires_at: null,
         failed_login_attempts: u.failed_login_attempts ?? 0,
         locked_until: u.locked_until ?? null,
       }));
@@ -323,16 +378,23 @@ export function importDatabase(dump: { users?: any[], bios?: any[], analytics?: 
   const transaction = db.transaction(() => {
     if (dump.users) {
       db.prepare('DELETE FROM users').run();
-      const insertUser = db.prepare('INSERT INTO users (username, password_hash, token) VALUES (?, ?, ?)');
+      // Сессии из бэкапа никогда не восстанавливаются: все входят заново.
+      const insertUser = db.prepare("INSERT INTO users (username, password_hash, token) VALUES (?, ?, '')");
       for (const u of dump.users) {
-        insertUser.run(u.username, u.password_hash, u.token);
+        insertUser.run(u.username, u.password_hash);
       }
     }
     if (dump.bios) {
       db.prepare('DELETE FROM bios').run();
-      const insertBio = db.prepare('INSERT INTO bios (username, data) VALUES (?, ?)');
+      const insertBio = db.prepare('INSERT INTO bios (username, data, alias_slug, custom_domain) VALUES (?, ?, ?, ?)');
       for (const b of dump.bios) {
-        insertBio.run(b.username, b.data);
+        let alias = '', domain = '';
+        try {
+          const parsed = JSON.parse(b.data);
+          alias = normIndexValue(parsed.aliasSlug);
+          domain = normIndexValue(parsed.customDomain);
+        } catch { /* ignore */ }
+        insertBio.run(b.username, b.data, alias, domain);
       }
     }
     if (dump.analytics) {

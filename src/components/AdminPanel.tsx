@@ -40,7 +40,7 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ onExit }: AdminPanelProps) {
   // Authentication states
-  const [adminPassword, setAdminPassword] = useState(sessionStorage.getItem('admin_password') || '');
+  const [adminPassword, setAdminPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -89,6 +89,14 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
   const [incomingLoading, setIncomingLoading] = useState(false);
 
   // Attempt login with stored password on mount
+  // Админ-пароль живёт только в памяти вкладки; старые копии из storage удаляем
+  useEffect(() => {
+    try {
+      localStorage.removeItem('admin_password');
+      sessionStorage.removeItem('admin_password');
+    } catch { /* storage недоступен */ }
+  }, []);
+
   useEffect(() => {
     if (adminPassword) {
       verifyAdmin(adminPassword);
@@ -111,7 +119,6 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       if (!res.ok) {
         throw new Error('Неверный пароль администратора');
       }
-      sessionStorage.setItem('admin_password', passwordToVerify);
       setIsAuthenticated(true);
       fetchUsers(passwordToVerify);
       fetchAdminStatus(passwordToVerify);
@@ -310,7 +317,6 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem('admin_password');
     setAdminPassword('');
     setIsAuthenticated(false);
     setUsers([]);
@@ -622,7 +628,6 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
       }
       setSuccessMessage('Пароль администратора успешно изменен!');
       setAdminPassword(newPass);
-      localStorage.setItem('admin_password', newPass);
       setIsChangingPassword(false);
       setNewPasswordInput('');
     } catch (err: any) {

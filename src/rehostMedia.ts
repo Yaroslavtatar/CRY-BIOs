@@ -48,11 +48,26 @@ async function downloadToTemp(url: string, tmpDir: string): Promise<{ tmpPath: s
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'CRY-BIOS-Rehost/1.0' },
-      redirect: 'follow',
-    });
+    // Редиректы вручную: каждый шаг проверяется по allowlist (защита от SSRF)
+    let currentUrl = url;
+    let response: Response | null = null;
+    for (let hop = 0; hop <= 3; hop++) {
+      if (!isAllowedRemoteUrl(currentUrl)) throw new Error('Redirect target not allowed');
+      response = await fetch(currentUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'CRY-BIOS-Rehost/1.0' },
+        redirect: 'manual',
+      });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) throw new Error('Bad redirect');
+        currentUrl = new URL(location, currentUrl).toString();
+        response = null;
+        continue;
+      }
+      break;
+    }
+    if (!response) throw new Error('Too many redirects');
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -68,8 +83,10 @@ async function downloadToTemp(url: string, tmpDir: string): Promise<{ tmpPath: s
     if (buffer.length > MAX_BYTES) {
       throw new Error('File too large');
     }
+    // Расширение временного файла — только из белого списка
 
-    const extFromUrl = path.extname(new URL(url).pathname) || guessExt(contentType);
+    const urlExt = path.extname(new URL(url).pathname).toLowerCase();
+    const extFromUrl = SAFE_TMP_EXTS.has(urlExt) ? urlExt : guessExt(contentType);
     const tmpPath = path.join(tmpDir, `${crypto.randomUUID()}${extFromUrl}`);
     fs.writeFileSync(tmpPath, buffer);
     return { tmpPath, contentType };
@@ -77,6 +94,8 @@ async function downloadToTemp(url: string, tmpDir: string): Promise<{ tmpPath: s
     clearTimeout(timer);
   }
 }
+
+const SAFE_TMP_EXTS = new Set(['.gif', '.png', '.webp', '.jpg', '.jpeg', '.mp4', '.webm', '.mp3', '.ogg', '.wav', '.m4a']);
 
 function guessExt(contentType: string): string {
   if (contentType.includes('gif')) return '.gif';
@@ -87,14 +106,6 @@ function guessExt(contentType: string): string {
   if (contentType.includes('webm')) return '.webm';
   if (contentType.includes('mpeg') || contentType.includes('mp3')) return '.mp3';
   return '.bin';
-}
-
-function copyRawToUploads(tmpPath: string, uploadsDir: string): string {
-  const ext = path.extname(tmpPath) || '.bin';
-  const filename = `${crypto.randomUUID()}${ext}`;
-  fs.copyFileSync(tmpPath, path.join(uploadsDir, filename));
-  fs.unlinkSync(tmpPath);
-  return `/uploads/${filename}`;
 }
 
 function mapImageType(type: RehostMediaType): ImageUploadType {
@@ -166,9 +177,7 @@ export async function rehostRemoteUrl(
     return result.url;
   } catch (err: any) {
     console.warn(`[rehost] Failed to rehost ${trimmed}: ${err.message}`);
-    if (tmpPath && fs.existsSync(tmpPath)) {
-      return copyRawToUploads(tmpPath, uploadsDir);
-    }
+    // Сырой файл в uploads не сохраняем; остаётся исходная (allowlisted) ссылка
     return trimmed;
   } finally {
     if (tmpPath && fs.existsSync(tmpPath)) {

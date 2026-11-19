@@ -4,6 +4,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { promisify } from 'util';
 
+import { UnsupportedMediaError } from './videoProcessing';
+
 const execFileAsync = promisify(execFile);
 
 /** Transcode uploaded audio to compact MP3 for faster loading. */
@@ -18,7 +20,9 @@ export async function processUploadedAudio(
 
   try {
     await execFileAsync('ffmpeg', [
+      '-nostdin',
       '-y',
+      '-protocol_whitelist', 'file',
       '-i', inputPath,
       '-vn',
       '-c:a', 'libmp3lame',
@@ -28,11 +32,10 @@ export async function processUploadedAudio(
       outputPath,
     ], { timeout: 120000 });
   } catch {
-    const ext = path.extname(inputPath) || '.mp3';
-    const fallbackName = `${id}${ext}`;
-    fs.copyFileSync(inputPath, path.join(uploadsDir, fallbackName));
-    fs.unlinkSync(inputPath);
-    return { filename: fallbackName };
+    // Никогда не сохраняем исходный файл: он мог быть не медиа (например, HTML с чужим расширением)
+    try { fs.unlinkSync(inputPath); } catch { /* ignore */ }
+    try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch { /* ignore */ }
+    throw new UnsupportedMediaError('Файл не является корректным аудио');
   }
 
   fs.unlinkSync(inputPath);

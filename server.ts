@@ -7,6 +7,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { promises as dns } from 'dns';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
@@ -35,13 +36,16 @@ import { rehostImportMedia } from './src/rehostMedia';
 import { getImportPreviewSummary } from './src/gunsImportMap';
 import { parseImportInput } from './src/importHub';
 import { cleanupAllOrphans, deleteUnusedBetweenConfigs } from './src/uploadCleanup';
-import { getStorageStats, runHealthChecks, isUsingDefaultAdminPassword } from './src/storageStats';
+import { getStorageStats, runHealthChecks } from './src/storageStats';
+import { createAdminAuth, FailureLimiter } from './src/adminAuth';
+import { guardProfilePayload, sanitizeVisitHost } from './src/profileGuard';
 import { getSiteSettings, updateSiteSettings } from './src/siteSettings';
 import { startScheduledBackups } from './src/scheduledBackup';
 import { processMedia, resolveUploadFilePath, optimizeAllMedia } from './src/mediaPipeline';
 import {
   getPlatformDomainConfig,
   isReservedSlug,
+  isReservedUsername,
   isValidSlug,
   normalizeSlug,
   parseSubdomainSlug,
@@ -102,31 +106,18 @@ function emitImportJob(jobId: string, event: string, data: unknown) {
   }
 }
 
-const ADMIN_PASSWORD_FILE = path.join(DATA_DIR, 'admin_password.txt');
-
-function getAdminPassword(): string {
-  if (fs.existsSync(ADMIN_PASSWORD_FILE)) {
-    try {
-      return fs.readFileSync(ADMIN_PASSWORD_FILE, 'utf-8').trim();
-    } catch (e) {
-      // Fallback to env or default
-    }
-  }
-  return process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
-}
-
-function saveAdminPassword(newPassword: string) {
-  fs.writeFileSync(ADMIN_PASSWORD_FILE, newPassword.trim(), 'utf-8');
-}
+const adminAuth = createAdminAuth(DATA_DIR);
+const adminFailures = new FailureLimiter(10, 15 * 60 * 1000);
 
 // Multer storage config
 const storage = multer.diskStorage({
+  // Сырая загрузка идёт во временную папку, без расширения из originalname.
+  // В uploads попадают только файлы, перекодированные нашим пайплайном.
   destination: (req, file, cb) => {
-    cb(null, UPLOADS_DIR);
+    cb(null, TMP_DIR);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${crypto.randomUUID()}${ext}`);
+    cb(null, `${crypto.randomUUID()}.upload`);
   }
 });
 
@@ -169,7 +160,6 @@ const chunkUpload = multer({
 });
 
 const BCRYPT_ROUNDS = 10;
-const DEFAULT_ADMIN_PASSWORD = 'admin_secret';
 
 function getRequestHost(req: express.Request): string {
   const forwarded = req.get('x-forwarded-host');
@@ -202,13 +192,6 @@ function verifyPassword(password: string, storedHash: string): { valid: boolean;
     return { valid, needsRehash: valid };
   }
   return { valid: false, needsRehash: false };
-}
-
-function verifyAdminPassword(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
 }
 
 // Seed demo profile only when explicitly enabled
@@ -331,7 +314,12 @@ if (process.env.SEED_DEMO_USER === 'true' && !db.getBio('cryteam') && !db.getUse
 
 async function startServer() {
   const app = express();
-  app.set('trust proxy', 1);
+  // Доверяем X-Forwarded-* только прокси из приватных сетей (Traefik/nginx/Docker),
+  // чтобы клиент из интернета не мог подделать свой IP. Переопределяется TRUST_PROXY.
+  const trustProxyEnv = process.env.TRUST_PROXY;
+  app.set('trust proxy', trustProxyEnv === undefined || trustProxyEnv === ''
+    ? 'loopback, linklocal, uniquelocal'
+    : (/^\d+$/.test(trustProxyEnv) ? Number(trustProxyEnv) : trustProxyEnv));
 
   app.use(cors({
     origin(origin, callback) {
@@ -346,8 +334,26 @@ async function startServer() {
     allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password'],
   }));
 
+  // CSP в dev отключена (Vite HMR использует inline/eval)
+  const cspEnabled = process.env.NODE_ENV === 'production';
   app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: cspEnabled ? {
+      useDefaults: false,
+      directives: {
+        'default-src': ["'self'"],
+        'script-src': ["'self'"],
+        'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+        'media-src': ["'self'", 'data:', 'blob:', 'https:'],
+        'connect-src': ["'self'", 'https:'],
+        'frame-src': ['https:'],
+        'object-src': ["'none'"],
+        'base-uri': ["'self'"],
+        'form-action': ["'self'"],
+        'frame-ancestors': ["'self'"],
+      },
+    } : false,
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     hsts: process.env.NODE_ENV === 'production'
@@ -370,15 +376,60 @@ async function startServer() {
     next();
   });
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Middleware to support simple authentication
+  // Сессия: HttpOnly-cookie (браузер, недоступна из JS) или Bearer-токен (API-клиенты, скрипты)
+  const SESSION_COOKIE = 'cry_session';
+
+  const readCookie = (req: express.Request, name: string): string | null => {
+    const header = req.headers.cookie;
+    if (!header) return null;
+    for (const part of header.split(';')) {
+      const idx = part.indexOf('=');
+      if (idx < 0) continue;
+      if (part.slice(0, idx).trim() === name) {
+        try { return decodeURIComponent(part.slice(idx + 1).trim()); } catch { return null; }
+      }
+    }
+    return null;
+  };
+
+  const setSessionCookie = (req: express.Request, res: express.Response, token: string) => {
+    res.cookie(SESSION_COOKIE, token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: req.secure,
+      path: '/',
+      maxAge: db.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
+    });
+  };
+
+  const clearSessionCookie = (req: express.Request, res: express.Response) => {
+    res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'lax', secure: req.secure, path: '/' });
+  };
+
+  // CSRF для cookie-сессии: у небезопасных запросов Origin (если есть) должен совпадать с Host
+  const isSameOriginRequest = (req: express.Request): boolean => {
+    const origin = req.get('origin');
+    if (!origin) return true;
+    try {
+      return new URL(origin).host.toLowerCase() === getRequestHost(req).toLowerCase();
+    } catch {
+      return false;
+    }
+  };
+
   const getUsernameFromRequest = (req: express.Request): string | null => {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-    const token = authHeader.split(' ')[1];
-    
-    const user = db.getUserByToken(token);
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const user = db.getUserByToken(authHeader.split(' ')[1]);
+      return user ? user.username : null;
+    }
+    const cookieToken = readCookie(req, SESSION_COOKIE);
+    if (!cookieToken) return null;
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !isSameOriginRequest(req)) return null;
+    const user = db.getUserByToken(cookieToken);
     return user ? user.username : null;
   };
 
@@ -392,6 +443,46 @@ async function startServer() {
       const username = typeof req.body?.username === 'string' ? req.body.username.toLowerCase().trim() : '';
       return `${ipKeyGenerator(req.ip)}:${username}`;
     },
+  });
+
+  // Вход: ограничение по IP отдельно от пары ip:username (против spraying по многим логинам)
+  const authIpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: { error: 'Слишком много попыток входа с вашего IP. Попробуйте позже.' },
+    keyGenerator: (req) => ipKeyGenerator(req.ip || ''),
+  });
+  // Регистрация: не больше 5 новых аккаунтов в час с одного IP
+  const registrations = new FailureLimiter(5, 60 * 60 * 1000);
+  // Публичные чтения и аналитика
+  const publicLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Try again later.' },
+    keyGenerator: (req) => ipKeyGenerator(req.ip || ''),
+  });
+  const visitLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false },
+    keyGenerator: (req) => ipKeyGenerator(req.ip || ''),
+  });
+  const visitDedupe = new FailureLimiter(3, 10 * 60 * 1000);
+  // Импорт/rehost запускают скачивание и ffmpeg — лимит на пользователя
+  const importLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Слишком много импортов. Попробуйте позже.' },
+    keyGenerator: (req) => `u:${getUsernameFromRequest(req) || ipKeyGenerator(req.ip || '')}`,
   });
 
   const uploadLimiter = rateLimit({
@@ -428,9 +519,10 @@ async function startServer() {
   app.get('/uploads/:folder/:file', (req, res, next) => {
     const { folder, file } = req.params;
     if (folder === 'thumbs' || !file.endsWith('.webp')) return next();
+    if (file !== path.basename(file) || folder !== path.basename(folder)) return next();
     if (!(req.headers.accept || '').includes('image/avif')) return next();
     const avifPath = path.join(UPLOADS_DIR, file.replace(/\.webp$/i, '.avif'));
-    if (fs.existsSync(avifPath)) {
+    if (path.dirname(avifPath) === UPLOADS_DIR && fs.existsSync(avifPath)) {
       res.setHeader('Content-Type', 'image/avif');
       res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
       return res.sendFile(avifPath);
@@ -441,9 +533,10 @@ async function startServer() {
   app.get('/uploads/:file', (req, res, next) => {
     const { file } = req.params;
     if (!file.endsWith('.webp')) return next();
+    if (file !== path.basename(file)) return next();
     if (!(req.headers.accept || '').includes('image/avif')) return next();
     const avifPath = path.join(UPLOADS_DIR, file.replace(/\.webp$/i, '.avif'));
-    if (fs.existsSync(avifPath)) {
+    if (path.dirname(avifPath) === UPLOADS_DIR && fs.existsSync(avifPath)) {
       res.setHeader('Content-Type', 'image/avif');
       res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
       return res.sendFile(avifPath);
@@ -451,21 +544,61 @@ async function startServer() {
     next();
   });
 
+  const INLINE_UPLOAD_EXTS = new Set([
+    '.webp', '.avif', '.png', '.jpg', '.jpeg', '.gif',
+    '.mp4', '.webm', '.mp3', '.ogg', '.wav', '.m4a', '.aac',
+  ]);
   app.use('/uploads', express.static(UPLOADS_DIR, {
     maxAge: '30d',
     immutable: true,
+    dotfiles: 'deny',
+    index: false,
+    setHeaders: (res, filePath) => {
+      // Пользовательский контент не должен исполняться на нашем origin
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+      if (!INLINE_UPLOAD_EXTS.has(path.extname(filePath).toLowerCase())) {
+        res.setHeader('Content-Disposition', 'attachment');
+        res.setHeader('Content-Type', 'application/octet-stream');
+      }
+    },
   }));
 
-  // Upload endpoint
-  app.post('/api/upload', uploadLimiter, upload.single('file'), async (req, res) => {
+  // Upload endpoint: сначала авторизация, и только потом multer пишет файл на диск
+  const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const user = getUsernameFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'Unauthorized Session' });
+    next();
+  };
+
+  const uploadUserLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 40,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many uploads. Try again later.' },
+    keyGenerator: (req) => `u:${getUsernameFromRequest(req) || ipKeyGenerator(req.ip || '')}`,
+  });
+
+  const singleUpload = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    upload.single('file')(req, res, (err: any) => {
+      if (!err) return next();
+      const status = err instanceof multer.MulterError ? 413 : 400;
+      return res.status(status).json({ error: err.message || 'Upload failed' });
+    });
+  };
+
+  app.post('/api/upload', uploadLimiter, requireAuth, uploadUserLimiter, singleUpload, async (req, res) => {
     const authedUser = getUsernameFromRequest(req);
     if (!authedUser) {
+      if (req.file?.path) fs.rmSync(req.file.path, { force: true });
       return res.status(401).json({ error: 'Unauthorized Session' });
     }
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
+    const tempPath = req.file.path;
 
     try {
       const uploadTypeRaw = (req.body.uploadType as string) || 'bg';
@@ -477,7 +610,7 @@ async function startServer() {
         const result = await processMedia({
           dataDir: DATA_DIR,
           uploadsDir: UPLOADS_DIR,
-          inputPath: req.file.path,
+          inputPath: tempPath,
           kind: 'image',
           imageType: uploadType,
         });
@@ -493,7 +626,7 @@ async function startServer() {
         const result = await processMedia({
           dataDir: DATA_DIR,
           uploadsDir: UPLOADS_DIR,
-          inputPath: req.file.path,
+          inputPath: tempPath,
           kind: 'video',
         });
         return res.json({ url: result.url, deduplicated: result.deduplicated });
@@ -503,20 +636,19 @@ async function startServer() {
         const result = await processMedia({
           dataDir: DATA_DIR,
           uploadsDir: UPLOADS_DIR,
-          inputPath: req.file.path,
+          inputPath: tempPath,
           kind: 'audio',
           audioBitrate: '128k',
         });
         return res.json({ url: result.url, deduplicated: result.deduplicated });
       }
 
-      const fileUrl = `/uploads/${req.file.filename}`;
-      res.json({ url: fileUrl });
+      return res.status(415).json({ error: 'Unsupported file type' });
     } catch (err: any) {
-      if (req.file?.path && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      res.status(500).json({ error: err.message || 'Upload processing failed' });
+      const status = err?.status === 415 ? 415 : (err?.name === 'Error' && /unsupported image format|Input .*(corrupt|unsupported)/i.test(err?.message || '') ? 415 : 500);
+      res.status(status).json({ error: status === 415 ? 'Unsupported or corrupt media file' : (err.message || 'Upload processing failed') });
+    } finally {
+      fs.rmSync(tempPath, { force: true });
     }
   });
 
@@ -524,8 +656,14 @@ async function startServer() {
   app.use('/api/admin', adminLimiter);
 
   const checkAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const adminKey = ipKeyGenerator(req.ip || '');
+    if (adminFailures.isBlocked(adminKey)) {
+      res.setHeader('Retry-After', '900');
+      return res.status(429).json({ error: 'Too many failed admin logins. Try again later.' });
+    }
     const raw = req.headers['x-admin-password'];
     if (!raw || typeof raw !== 'string') {
+      adminFailures.fail(adminKey);
       return res.status(401).json({ error: 'Unauthorized Admin Session. Invalid Admin Password.' });
     }
     let secret = raw;
@@ -534,10 +672,11 @@ async function startServer() {
     } catch {
       secret = raw;
     }
-    const adminPass = getAdminPassword();
-    if (!verifyAdminPassword(secret, adminPass)) {
+    if (!adminAuth.verify(secret)) {
+      adminFailures.fail(adminKey);
       return res.status(401).json({ error: 'Unauthorized Admin Session. Invalid Admin Password.' });
     }
+    adminFailures.reset(adminKey);
     next();
   };
 
@@ -548,7 +687,7 @@ async function startServer() {
   app.get('/api/admin/status', checkAdminAuth, (_req, res) => {
     const site = getSiteSettings(DATA_DIR);
     res.json({
-      usingDefaultPassword: isUsingDefaultAdminPassword(DATA_DIR),
+      usingDefaultPassword: false,
       hideAdminPanelLink: site.hideAdminPanelLink,
     });
   });
@@ -640,7 +779,7 @@ async function startServer() {
     if (!policy.valid) {
       return res.status(400).json({ error: policy.error });
     }
-    saveAdminPassword(newPassword);
+    adminAuth.setPassword(newPassword);
     res.json({ success: true, message: 'Пароль администратора успешно изменен' });
   });
 
@@ -703,8 +842,7 @@ async function startServer() {
 
   app.get('/api/admin/export-db', checkAdminAuth, (req, res) => {
     const includeAnalytics = req.query.includeAnalytics !== 'false';
-    const includeSecrets = req.query.includeSecrets === 'true';
-    const dump = db.exportDatabase({ includeAnalytics, includeSecrets });
+    const dump = db.exportDatabase({ includeAnalytics });
     res.json(dump);
   });
 
@@ -904,7 +1042,7 @@ async function startServer() {
   });
 
   // Get singular page bio data (username or alias slug)
-  app.get('/api/bio/:slug', (req, res) => {
+  app.get('/api/bio/:slug', publicLimiter, (req, res) => {
     const slug = req.params.slug.toLowerCase();
     const bio = db.getBioBySlug(slug);
     if (!bio) {
@@ -914,7 +1052,7 @@ async function startServer() {
   });
 
   // Resolve hostname → username (wildcard subdomain or custom domain)
-  app.get('/api/resolve-host', (req, res) => {
+  app.get('/api/resolve-host', publicLimiter, (req, res) => {
     const host = (req.query.host as string || getRequestHost(req)).toLowerCase().trim().split(':')[0];
     if (!host) {
       return res.status(400).json({ error: 'Missing host parameter' });
@@ -939,7 +1077,7 @@ async function startServer() {
   });
 
   // Legacy: custom domain lookup
-  app.get('/api/bio-by-host', (req, res) => {
+  app.get('/api/bio-by-host', publicLimiter, (req, res) => {
     const host = (req.query.host as string || '').toLowerCase().trim().split(':')[0];
     if (!host) {
       return res.status(400).json({ error: 'Missing host parameter' });
@@ -962,6 +1100,7 @@ async function startServer() {
   });
 
   // Discord: OAuth + disconnect + presence (src/discord.ts)
+  app.use('/api/discord', publicLimiter);
   registerDiscord(app, {
     getUsernameFromRequest,
     getBio: (u: string) => db.getBio(u),
@@ -972,7 +1111,7 @@ async function startServer() {
   });
 
   // Register or Login endpoint
-  app.post('/api/auth/login-register', authLimiter, (req, res) => {
+  app.post('/api/auth/login-register', authIpLimiter, authLimiter, (req, res) => {
     const { username, password } = req.body;
     if (!username || !password || username.trim() === '' || password.trim() === '') {
       return res.status(400).json({ error: 'Укажите имя пользователя и пароль' });
@@ -999,6 +1138,7 @@ async function startServer() {
         }
         const sessionToken = crypto.randomUUID();
         db.updateUserToken(normUsername, sessionToken);
+        setSessionCookie(req, res, sessionToken);
         return res.json({ token: sessionToken, username: normUsername, isNew: false });
       }
 
@@ -1010,6 +1150,17 @@ async function startServer() {
     if (!policy.valid) {
       return res.status(400).json({ error: policy.error });
     }
+
+    if (isReservedUsername(normUsername) || db.isAliasSlugTaken(normUsername)) {
+      return res.status(400).json({ error: 'Это имя недоступно' });
+    }
+
+    const regKey = ipKeyGenerator(req.ip || '');
+    if (registrations.isBlocked(regKey)) {
+      res.setHeader('Retry-After', '3600');
+      return res.status(429).json({ error: 'Слишком много регистраций с вашего IP. Попробуйте позже.' });
+    }
+    registrations.fail(regKey);
 
     const sessionToken = crypto.randomUUID();
     db.createUser(normUsername, hashPassword(password), sessionToken);
@@ -1054,6 +1205,7 @@ async function startServer() {
 
     db.saveBio(normUsername, defaultBio);
 
+    setSessionCookie(req, res, sessionToken);
     res.status(201).json({ token: sessionToken, username: normUsername, isNew: true });
   });
 
@@ -1062,6 +1214,7 @@ async function startServer() {
     if (authedUser) {
       db.clearUserToken(authedUser);
     }
+    clearSessionCookie(req, res);
     res.json({ success: true });
   });
 
@@ -1095,6 +1248,7 @@ async function startServer() {
     const sessionToken = crypto.randomUUID();
     db.updateUserPassword(authedUser, hashPassword(newPassword));
     db.updateUserToken(authedUser, sessionToken);
+    setSessionCookie(req, res, sessionToken);
     res.json({ success: true, token: sessionToken, message: 'Пароль успешно изменён' });
   });
 
@@ -1103,6 +1257,11 @@ async function startServer() {
     const authedUser = getUsernameFromRequest(req);
     if (!authedUser) {
       return res.status(401).json({ error: 'Invalid token' });
+    }
+    // Миграция старых клиентов: валидный Bearer обмениваем на HttpOnly-cookie
+    const bearer = req.headers.authorization;
+    if (bearer && bearer.startsWith('Bearer ') && !readCookie(req, SESSION_COOKIE)) {
+      setSessionCookie(req, res, bearer.split(' ')[1]);
     }
     res.json({ username: authedUser });
   });
@@ -1124,7 +1283,7 @@ async function startServer() {
       return res.status(400).json({ error: 'Username must be 3-15 alphanumeric characters, dashes, or underscores' });
     }
 
-    if (db.getUser(normNewUsername)) {
+    if (db.getUser(normNewUsername) || isReservedUsername(normNewUsername) || db.isAliasSlugTaken(normNewUsername, authedUser)) {
       return res.status(400).json({ error: 'Username slug is already reserved by another creator' });
     }
 
@@ -1134,7 +1293,7 @@ async function startServer() {
   });
 
   // Unified import hub (guns.lol URL or HTML)
-  app.post('/api/import-profile', async (req, res) => {
+  app.post('/api/import-profile', importLimiter, async (req, res) => {
     const authedUser = getUsernameFromRequest(req);
     if (!authedUser) {
       return res.status(401).json({ error: 'Unauthorized Session' });
@@ -1228,7 +1387,7 @@ async function startServer() {
   });
 
   // Legacy import endpoint (deprecated, uses import hub)
-  app.post('/api/import-gunslol', async (req, res) => {
+  app.post('/api/import-gunslol', importLimiter, async (req, res) => {
     const authedUser = getUsernameFromRequest(req);
     if (!authedUser) {
       return res.status(401).json({ error: 'Unauthorized Session' });
@@ -1256,7 +1415,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/rehost-import-media', async (req, res) => {
+  app.post('/api/rehost-import-media', importLimiter, async (req, res) => {
     const authedUser = getUsernameFromRequest(req);
     if (!authedUser) {
       return res.status(401).json({ error: 'Unauthorized Session' });
@@ -1281,7 +1440,7 @@ async function startServer() {
   });
 
   // Save/Update Bio Config
-  app.post('/api/bio/:username', (req, res) => {
+  app.post('/api/bio/:username', async (req, res) => {
     const username = req.params.username.toLowerCase();
     const authedUser = getUsernameFromRequest(req);
 
@@ -1303,7 +1462,7 @@ async function startServer() {
       if (!isValidSlug(alias)) {
         return res.status(400).json({ error: 'Alias slug: только a-z, 0-9, _ и - (1–32 символа)' });
       }
-      if (isReservedSlug(alias)) {
+      if (isReservedSlug(alias) || isReservedUsername(alias)) {
         return res.status(400).json({ error: 'Этот alias зарезервирован системой' });
       }
       if (db.isAliasSlugTaken(alias, username)) {
@@ -1314,6 +1473,36 @@ async function startServer() {
     const oldConfig = db.getBio(username);
     // Discord-поля меняет только OAuth (callback/disconnect), клиентские значения игнорируем
     preserveDiscordFields(payload, oldConfig);
+    // verified / uid / customDomain / служебные бейджи — только серверные значения
+    const requestedDomain = typeof (payload as any).customDomain === 'string'
+      ? (payload as any).customDomain.toLowerCase().trim().replace(/\.$/, '')
+      : '';
+    const guard = guardProfilePayload(payload as any, oldConfig);
+    if (!guard.ok) {
+      return res.status(400).json({ error: guard.error });
+    }
+    // customDomain: только после подтверждения владения (TXT `_crybios.<домен>` = `cry-bios-verify=<username>`)
+    if (requestedDomain !== (oldConfig?.customDomain || '').toLowerCase()) {
+      if (!requestedDomain) {
+        delete (payload as any).customDomain;
+      } else {
+        if (!/^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/.test(requestedDomain) || requestedDomain === (process.env.BIO_BASE_DOMAIN || 'cbios.ru').toLowerCase() || requestedDomain.endsWith('.' + (process.env.BIO_BASE_DOMAIN || 'cbios.ru').toLowerCase())) {
+          return res.status(400).json({ error: 'Некорректный домен' });
+        }
+        if (db.isCustomDomainTaken(requestedDomain, username) || db.getUser(requestedDomain)) {
+          return res.status(400).json({ error: 'Этот домен уже подключён к другому профилю' });
+        }
+        let verified = false;
+        try {
+          const records = await dns.resolveTxt(`_crybios.${requestedDomain}`);
+          verified = records.some(r => r.join('') === `cry-bios-verify=${username}`);
+        } catch { /* нет записи */ }
+        if (!verified) {
+          return res.status(400).json({ error: `Подтвердите владение доменом: добавьте TXT-запись _crybios.${requestedDomain} со значением cry-bios-verify=${username}` });
+        }
+        (payload as any).customDomain = requestedDomain;
+      }
+    }
     db.saveBio(username, payload);
 
     const allConfigs = db.getAllBios();
@@ -1325,7 +1514,7 @@ async function startServer() {
   });
 
   // Track visit (anonymous, fast increment)
-  app.post('/api/bio/:slug/visit', (req, res) => {
+  app.post('/api/bio/:slug/visit', visitLimiter, (req, res) => {
     const slug = req.params.slug.toLowerCase();
     const bio = db.getBioBySlug(slug);
     if (!bio) {
@@ -1333,8 +1522,13 @@ async function startServer() {
     }
     const username = bio.username;
 
+    // Накрутка: не больше 3 визитов за 10 минут с одного IP на профиль
+    const visitKey = `${ipKeyGenerator(req.ip || '')}:${username}`;
+    if (visitDedupe.isBlocked(visitKey)) return res.json({ ok: true });
+    visitDedupe.fail(visitKey);
+
     // Capture analytic headers
-    const rawReferrer = req.body.referrer || req.get('Referer') || 'Direct Link';
+    const rawReferrer = String(req.body?.referrer || req.get('Referer') || 'Direct Link').slice(0, 300);
     let referrer = 'Direct Link';
     if (rawReferrer && typeof rawReferrer === 'string') {
       if (rawReferrer.includes('google.com')) referrer = 'Google';
@@ -1395,7 +1589,7 @@ async function startServer() {
       device,
       browser,
       country,
-      host: req.body.host || req.get('host') || 'Unknown'
+      host: sanitizeVisitHost(req.body?.host, req.get('host') || '')
     };
 
     db.addAnalytic(username, visit);
@@ -1557,10 +1751,6 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Open-Source CRY BIOS Server started on http://0.0.0.0:${PORT}`);
     console.log(`Persisted database synchronized successfully.`);
-
-    if (isUsingDefaultAdminPassword(DATA_DIR)) {
-      console.warn('[security] WARNING: Using default admin password. Set ADMIN_PASSWORD env or change via admin panel.');
-    }
 
     if (process.env.DISABLE_SCHEDULED_BACKUP !== 'true') {
       startScheduledBackups({

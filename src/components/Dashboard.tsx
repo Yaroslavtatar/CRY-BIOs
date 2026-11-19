@@ -91,10 +91,16 @@ const PROFILE_PRESETS: Partial<BioConfig>[] = [
   { layoutMode: 'sleek', primaryColor: '#00ffcc', glowColor: '#00ffcc', bgType: 'matrix', bgValue: '#050505', profileGradientEnabled: true, profileGradientCss: 'linear-gradient(135deg, #00ffcc, #8b5cf6)' },
 ];
 
+const SESSION_MARKER = 'cookie-session';
+
 export default function Dashboard({ onExit, onViewProfile, platformConfig }: DashboardProps) {
   // Authentication States
+  // Сессия — HttpOnly-cookie (недоступна из JS). В localStorage хранится только имя пользователя
+  // (не секрет); `token` — лишь признак активной cookie-сессии.
   const [username, setUsername] = useState(localStorage.getItem('biogun_username') || '');
-  const [token, setToken] = useState(localStorage.getItem('biogun_token') || '');
+  const [token, setToken] = useState(
+    localStorage.getItem('biogun_username') || localStorage.getItem('biogun_token') ? SESSION_MARKER : '',
+  );
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -289,9 +295,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     try {
       const response = await fetch('/api/upload', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('biogun_token')}`,
-        },
         body: formData,
       });
 
@@ -398,18 +401,24 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
   // Checks and loads active sessions
   useEffect(() => {
-    if (token && username) {
-      // Validate session
-      fetch('/api/auth/verify', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+    if (token) {
+      // Validate session. Старый токен из localStorage (до перехода на cookie) обмениваем на cookie один раз.
+      let legacyToken: string | null = null;
+      try { legacyToken = localStorage.getItem('biogun_token'); } catch { /* storage недоступен */ }
+      fetch('/api/auth/verify', legacyToken ? { headers: { Authorization: `Bearer ${legacyToken}` } } : undefined)
         .then(res => {
           if (!res.ok) throw new Error('Session expired');
           return res.json();
         })
-        .then(() => {
-          loadBioConfig(username);
-          loadAnalytics(username);
+        .then((data) => {
+          try { localStorage.removeItem('biogun_token'); } catch { /* ignore */ }
+          if (data?.username && data.username !== username) {
+            localStorage.setItem('biogun_username', data.username);
+            setUsername(data.username);
+          }
+          const activeUser = data?.username || username;
+          loadBioConfig(activeUser);
+          loadAnalytics(activeUser);
         })
         .catch(() => {
           // expired
@@ -466,9 +475,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     setDiscordLinkLoading(true);
     setDiscordMessage('');
     try {
-      const res = await fetch('/api/discord/oauth/start', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch('/api/discord/oauth/start');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'OAuth start failed');
       window.location.href = data.url;
@@ -485,7 +492,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     try {
       const res = await fetch('/api/discord/disconnect', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
         const data = await res.json();
@@ -524,9 +530,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
   // Load analytics logs
   const loadAnalytics = (uname: string) => {
-    fetch(`/api/bio/${uname}/analytics`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
+    fetch(`/api/bio/${uname}/analytics`)
       .then(res => {
         if (!res.ok) return null;
         return res.json();
@@ -584,7 +588,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ input: importInput.trim() }),
       });
@@ -592,9 +595,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       if (!res.ok) throw new Error(body.error || 'Import failed');
 
       const jobId = body.jobId as string;
-      const progRes = await fetch(`/api/import-profile/progress/${jobId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const progRes = await fetch(`/api/import-profile/progress/${jobId}`);
       if (!progRes.ok) throw new Error('Progress stream failed');
 
       const reader = progRes.body?.getReader();
@@ -665,9 +666,9 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         return body;
       })
       .then(data => {
-        localStorage.setItem('biogun_token', data.token);
+        // Токен в JS не сохраняем: сервер выставил HttpOnly-cookie
         localStorage.setItem('biogun_username', data.username);
-        setToken(data.token);
+        setToken(SESSION_MARKER);
         setUsername(data.username);
         
         loadBioConfig(data.username);
@@ -682,11 +683,9 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   };
 
   const handleLogout = () => {
-    const sessionToken = token || localStorage.getItem('biogun_token');
-    if (sessionToken) {
+    if (token) {
       fetch('/api/auth/logout', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${sessionToken}` },
       }).catch(() => {});
     }
     localStorage.removeItem('biogun_token');
@@ -708,17 +707,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ currentPassword, newPassword }),
     })
       .then(async res => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Ошибка смены пароля');
-        if (data.token) {
-          localStorage.setItem('biogun_token', data.token);
-          setToken(data.token);
-        }
+        // Новая cookie-сессия выставлена сервером
+        setToken(SESSION_MARKER);
         setCurrentPassword('');
         setNewPassword('');
         alert('Пароль успешно изменён');
@@ -736,7 +732,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(config)
     })
@@ -768,7 +763,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({ newUsername: renameInput })
     })

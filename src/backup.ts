@@ -1,6 +1,6 @@
 import { ZipArchive } from 'archiver';
 import type { Archiver } from 'archiver';
-import extract from 'extract-zip';
+import { safeExtractZip } from './safeUnzip';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -211,9 +211,6 @@ export function streamFullBackup(
   archive.append(JSON.stringify(dump, null, 2), { name: 'dump.json' });
   addDirectoryToArchive(archive, options.uploadsDir, 'uploads');
 
-  if (fs.existsSync(path.join(options.dataDir, 'admin_password.txt'))) {
-    archive.file(path.join(options.dataDir, 'admin_password.txt'), { name: 'admin_password.txt' });
-  }
   if (fs.existsSync(path.join(options.dataDir, 'site_settings.json'))) {
     archive.file(path.join(options.dataDir, 'site_settings.json'), { name: 'site_settings.json' });
   }
@@ -243,9 +240,6 @@ export function writeBackupToFile(
     archive.append(JSON.stringify(dump, null, 2), { name: 'dump.json' });
     addDirectoryToArchive(archive, options.uploadsDir, 'uploads');
 
-    if (fs.existsSync(path.join(options.dataDir, 'admin_password.txt'))) {
-      archive.file(path.join(options.dataDir, 'admin_password.txt'), { name: 'admin_password.txt' });
-    }
     if (fs.existsSync(path.join(options.dataDir, 'site_settings.json'))) {
       archive.file(path.join(options.dataDir, 'site_settings.json'), { name: 'site_settings.json' });
     }
@@ -281,7 +275,7 @@ export async function importFullBackup(
   fs.mkdirSync(tmpDir, { recursive: true });
 
   try {
-    await extract(zipPath, { dir: tmpDir });
+    await safeExtractZip(zipPath, tmpDir);
 
     const metaPath = path.join(tmpDir, 'meta.json');
     const dumpPath = path.join(tmpDir, 'dump.json');
@@ -315,10 +309,7 @@ export async function importFullBackup(
       }
     }
 
-    const adminPasswordSrc = path.join(tmpDir, 'admin_password.txt');
-    if (fs.existsSync(adminPasswordSrc)) {
-      fs.copyFileSync(adminPasswordSrc, path.join(options.dataDir, 'admin_password.txt'));
-    }
+    // admin_password.txt из бэкапов не восстанавливается (и больше не попадает в архивы)
 
     const siteSettingsSrc = path.join(tmpDir, 'site_settings.json');
     if (fs.existsSync(siteSettingsSrc)) {
@@ -370,7 +361,7 @@ export function streamUserBackup(
   archive.pipe(res);
   archive.append(JSON.stringify(meta, null, 2), { name: 'meta.json' });
   archive.append(JSON.stringify({
-    user: { username: user.username, password_hash: user.password_hash, token: user.token },
+    user: { username: user.username, password_hash: user.password_hash },
     bio,
   }, null, 2), { name: 'user.json' });
   addFilesToArchive(archive, options.uploadsDir, paths);
@@ -386,7 +377,7 @@ export async function importUserBackup(
   fs.mkdirSync(tmpDir, { recursive: true });
 
   try {
-    await extract(zipPath, { dir: tmpDir });
+    await safeExtractZip(zipPath, tmpDir);
 
     const userJsonPath = path.join(tmpDir, 'user.json');
     if (!fs.existsSync(userJsonPath)) {
@@ -436,14 +427,11 @@ export async function importUserBackup(
       if (userRow.password_hash) {
         db.updateUserPassword(normUsername, userRow.password_hash);
       }
-      if (userRow.token) {
-        db.updateUserToken(normUsername, userRow.token);
-      }
     } else {
       if (!userRow.password_hash) {
         throw new Error('Invalid user backup: missing password_hash for new user');
       }
-      db.createUser(normUsername, userRow.password_hash, userRow.token || crypto.randomUUID());
+      db.createUser(normUsername, userRow.password_hash, crypto.randomUUID());
     }
 
     db.saveBio(normUsername, bio);
