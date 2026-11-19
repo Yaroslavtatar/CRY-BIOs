@@ -3,14 +3,34 @@ import path from 'path';
 
 export interface SiteSettings {
   hideAdminPanelLink: boolean;
+  /** false — новые аккаунты создавать нельзя (вход существующих работает) */
+  registrationOpen: boolean;
+  /** true — сайт в режиме обслуживания: запись для пользователей закрыта, на главной видна плашка */
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
 }
 
 const DEFAULT_SETTINGS: SiteSettings = {
   hideAdminPanelLink: false,
+  registrationOpen: true,
+  maintenanceMode: false,
+  maintenanceMessage: 'Идут технические работы. Скоро вернёмся.',
 };
 
 function settingsFilePath(dataDir: string): string {
   return path.join(dataDir, 'site_settings.json');
+}
+
+function normalize(parsed: Partial<SiteSettings>): SiteSettings {
+  return {
+    hideAdminPanelLink: Boolean(parsed.hideAdminPanelLink),
+    registrationOpen: parsed.registrationOpen !== false,
+    maintenanceMode: Boolean(parsed.maintenanceMode),
+    maintenanceMessage:
+      typeof parsed.maintenanceMessage === 'string' && parsed.maintenanceMessage.trim()
+        ? parsed.maintenanceMessage.trim().slice(0, 300)
+        : DEFAULT_SETTINGS.maintenanceMessage,
+  };
 }
 
 export function getSiteSettings(dataDir: string): SiteSettings {
@@ -19,10 +39,7 @@ export function getSiteSettings(dataDir: string): SiteSettings {
     return { ...DEFAULT_SETTINGS };
   }
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Partial<SiteSettings>;
-    return {
-      hideAdminPanelLink: Boolean(parsed.hideAdminPanelLink),
-    };
+    return normalize(JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Partial<SiteSettings>);
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -30,7 +47,7 @@ export function getSiteSettings(dataDir: string): SiteSettings {
 
 export function updateSiteSettings(dataDir: string, patch: Partial<SiteSettings>): SiteSettings {
   const current = getSiteSettings(dataDir);
-  const next: SiteSettings = { ...current, ...patch };
+  const next = normalize({ ...current, ...patch });
   fs.writeFileSync(settingsFilePath(dataDir), JSON.stringify(next, null, 2), 'utf-8');
   return next;
 }
