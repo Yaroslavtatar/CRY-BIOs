@@ -48,8 +48,7 @@ jobs:
     name: Dependency audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Информационный: новые CVE в зависимостях не должны блокировать чужие PR
-    continue-on-error: true
+    # Блокирует сборку при critical в prod-зависимостях; high без доступного фикса выводятся в лог
 
     steps:
       - uses: actions/checkout@v4
@@ -57,5 +56,7 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
-      - name: npm audit (prod-зависимости, high+)
-        run: npm audit --omit=dev --audit-level=high
+      - name: npm audit (prod-зависимости, блокируем critical)
+        run: |
+          npm audit --omit=dev --audit-level=high || echo "::warning::npm audit нашёл high-уязвимости (см. лог)"
+          npm audit --omit=dev --audit-level=critical

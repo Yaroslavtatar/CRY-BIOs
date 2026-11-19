@@ -23,6 +23,7 @@ PORT="${PORT:-3000}"
 APP_URL="${APP_URL:-http://localhost:${PORT}}"
 BIO_BASE_DOMAIN="${BIO_BASE_DOMAIN:-localhost}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+GENERATED_ADMIN_PASSWORD=0
 
 log() { echo -e "${BLUE}[cry-bios]${NC} $*"; }
 ok() { echo -e "${GREEN}[ok]${NC} $*"; }
@@ -33,18 +34,26 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Команда '$1' не найдена. Установите её и повторите."
 }
 
+generate_password() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -base64 18 | tr -d '/+=' | cut -c1-20
+  else
+    head -c 24 /dev/urandom | base64 | tr -d '/+=' | cut -c1-20
+  fi
+}
+
 prompt_admin_password() {
   if [[ -n "$ADMIN_PASSWORD" ]]; then
     return
   fi
-  if [[ ! -t 0 ]]; then
-    ADMIN_PASSWORD="admin_secret"
-    warn "ADMIN_PASSWORD не задан — используется admin_secret (смените после установки!)"
-    return
+  if [[ -t 0 ]]; then
+    read -r -s -p "Пароль админ-панели (Enter = сгенерировать случайный): " ADMIN_PASSWORD
+    echo
   fi
-  read -r -s -p "Пароль админ-панели (Enter = admin_secret): " ADMIN_PASSWORD
-  echo
-  ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin_secret}"
+  if [[ -z "$ADMIN_PASSWORD" ]]; then
+    ADMIN_PASSWORD="$(generate_password)"
+    GENERATED_ADMIN_PASSWORD=1
+  fi
 }
 
 clone_or_update() {
@@ -57,8 +66,8 @@ clone_or_update() {
     need_cmd git
     log "Клонирование $REPO → $INSTALL_DIR ..."
     sudo mkdir -p "$(dirname "$INSTALL_DIR")"
-    if [[ -d "$INSTALL_DIR" ]]; then
-      sudo rm -rf "$INSTALL_DIR"
+    if [[ -d "$INSTALL_DIR" ]] && [[ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
+      fail "Каталог $INSTALL_DIR уже существует, не пуст и не является git-репозиторием. Удалите его вручную или задайте другой CRY_BIOS_DIR."
     fi
     sudo git clone --depth 1 --branch "$BRANCH" "$REPO" "$INSTALL_DIR"
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR" 2>/dev/null || true
@@ -80,6 +89,9 @@ BACKUP_CRON_HOURS=24
 EOF
   chmod 600 "$env_file"
   ok ".env создан"
+  if [[ "${GENERATED_ADMIN_PASSWORD:-0}" == "1" ]]; then
+    echo -e "${GREEN}Пароль админ-панели (сохраните, показывается один раз):${NC} ${ADMIN_PASSWORD}"
+  fi
 }
 
 install_docker() {

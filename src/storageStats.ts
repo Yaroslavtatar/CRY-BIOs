@@ -126,10 +126,3 @@ export function runHealthChecks(dataDir: string) {
     },
   };
 }
-
-export function isUsingDefaultAdminPassword(dataDir: string): boolean {
-  const adminFile = path.join(dataDir, 'admin_password.txt');
-  if (fs.existsSync(adminFile)) return false;
-  if (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD !== 'admin_secret') return false;
-  return !process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'admin_secret';
-}

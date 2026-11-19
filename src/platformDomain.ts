@@ -18,6 +18,15 @@ export const RESERVED_SLUGS = new Set([
   'bio',
 ]);
 
+/** Имена, которые нельзя занять при регистрации/смене имени/alias (бренд и служебные). */
+export const RESERVED_USERNAMES = new Set<string>([
+  ...RESERVED_SLUGS,
+  'support', 'staff', 'cryteam', 'official', 'root', 'administrator', 'moderator', 'mod',
+  'help', 'security', 'abuse', 'login', 'register', 'signup', 'signin', 'logout', 'settings',
+  'about', 'terms', 'privacy', 'status', 'billing', 'team', 'owner', 'system', 'cbios', 'crybios',
+  'verify', 'verified', 'null', 'undefined',
+]);
+
 export type ProfileUrlMode = 'subdomain' | 'path';
 
 export interface PlatformDomainConfig {
@@ -38,6 +47,10 @@ export function isValidSlug(slug: string): boolean {
 
 export function isReservedSlug(slug: string): boolean {
   return RESERVED_SLUGS.has(slug.toLowerCase());
+}
+
+export function isReservedUsername(name: string): boolean {
+  return RESERVED_USERNAMES.has(name.toLowerCase());
 }
 
 export function hostnameFromUrl(url: string): string {

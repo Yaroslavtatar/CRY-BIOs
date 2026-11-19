@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { sanitizeUserHtml, isSafeEmbedUrl, safeHref } from '../utils/safeContent';
 import { motion, AnimatePresence } from 'motion/react';
 import { BioConfig, SocialLink, BlockConfig, AudioPlayerPos } from '../types';
 import { Volume2, VolumeX, Flame, Play, Eye, Share2, CornerDownRight, Quote, Sparkles, Music, SkipBack, Pause, SkipForward, Crown, Shield, ShieldCheck, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2 } from 'lucide-react';
@@ -1278,7 +1279,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
                               return (
                               <a
                                 key={soc.id}
-                                href={soc.url}
+                                href={safeHref(soc.url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center justify-center text-[22px] transition-all duration-300 hover:scale-110 active:scale-95"
@@ -1301,7 +1302,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
                           >
                             <div
                               className="p-3 text-[11px] font-sans text-white/90 drop-shadow-md max-w-full overflow-x-auto [&_*]:max-w-full [&_*]:[overflow-wrap:anywhere]"
-                              dangerouslySetInnerHTML={{ __html: block.htmlContent || '' }}
+                              dangerouslySetInnerHTML={{ __html: sanitizeUserHtml(block.htmlContent || '') }}
                             />
                           </div>
                         );
@@ -1465,9 +1466,12 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
                               </div>
                             )}
                             <div className="p-2 justify-center flex">
-                              {embedSrc ? (
+                              {embedSrc && isSafeEmbedUrl(embedSrc) ? (
                                 <iframe
                                   src={embedSrc}
+                                  sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                                  referrerPolicy="strict-origin-when-cross-origin"
+                                  loading="lazy"
                                   width="100%"
                                   height={block.embedType === 'spotify' ? '80' : block.embedType === 'soundcloud' ? '150' : '220'}
                                   frameBorder="0"

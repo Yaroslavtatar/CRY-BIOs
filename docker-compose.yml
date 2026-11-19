@@ -8,7 +8,9 @@ services:
     container_name: cry_bios_app
     restart: always
     ports:
-      - "3000:3000"
+      # Только локальный интерфейс: наружу — через обратный прокси (Traefik/nginx).
+      # Чтобы открыть порт напрямую, задайте BIND_ADDRESS=0.0.0.0 (тогда IP-лимиты зависят от TRUST_PROXY).
+      - "${BIND_ADDRESS:-127.0.0.1}:3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -16,7 +18,9 @@ services:
       # - GEMINI_API_KEY=your_key_here
       - APP_URL=https://cbios.ru
       - BIO_BASE_DOMAIN=cbios.ru
-      # - ADMIN_PASSWORD=your_secure_password
+      # Пароль админ-панели. Если не задан и нет сохранённого пароля, при первом запуске
+      # генерируется случайный и печатается в логах контейнера (docker logs cry_bios_app).
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
     volumes:
       - cry_bios_data:/app/data
 
