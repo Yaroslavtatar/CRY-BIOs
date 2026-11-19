@@ -16,7 +16,7 @@ import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
 import * as db from './src/db';
-import { streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup, importUserBackup, getMaxBackupBytes } from './src/backup';
+import { writeBackupToFile, streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup, importUserBackup, getMaxBackupBytes } from './src/backup';
 import {
   initChunkedUpload,
   saveUploadChunk,
@@ -40,6 +40,7 @@ import { getStorageStats, runHealthChecks } from './src/storageStats';
 import { createAdminAuth, FailureLimiter } from './src/adminAuth';
 import { guardProfilePayload, sanitizeVisitHost } from './src/profileGuard';
 import { getSiteSettings, updateSiteSettings } from './src/siteSettings';
+import { installLogCapture, readLogs, clearLogs, writeAudit, readAudit, getSystemInfo, readHomeLayout, writeHomeLayout, resetHomeLayout } from './src/adminOps';
 import { startScheduledBackups } from './src/scheduledBackup';
 import { processMedia, resolveUploadFilePath, optimizeAllMedia } from './src/mediaPipeline';
 import {
@@ -76,6 +77,8 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+
+installLogCapture();
 
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -564,6 +567,17 @@ async function startServer() {
     },
   }));
 
+  // Режим обслуживания: пользовательская запись закрыта, чтение и вход работают
+  app.use((req, res, next) => {
+    if (req.method !== 'POST') return next();
+    const p = req.path;
+    const writes = /^\/api\/(upload|import-profile|import-gunslol|rehost-import-media)$/.test(p) || /^\/api\/bio\/[^/]+$/.test(p);
+    if (!writes) return next();
+    const site = getSiteSettings(DATA_DIR);
+    if (!site.maintenanceMode) return next();
+    return res.status(503).json({ error: site.maintenanceMessage, maintenance: true });
+  });
+
   // Upload endpoint: сначала авторизация, и только потом multer пишет файл на диск
   const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const user = getUsernameFromRequest(req);
@@ -685,20 +699,173 @@ async function startServer() {
   });
 
   app.get('/api/admin/status', checkAdminAuth, (_req, res) => {
-    const site = getSiteSettings(DATA_DIR);
-    res.json({
-      usingDefaultPassword: false,
-      hideAdminPanelLink: site.hideAdminPanelLink,
-    });
+    res.json({ usingDefaultPassword: false, ...getSiteSettings(DATA_DIR) });
   });
 
   app.post('/api/admin/site-settings', checkAdminAuth, (req, res) => {
-    const { hideAdminPanelLink } = req.body ?? {};
-    if (typeof hideAdminPanelLink !== 'boolean') {
-      return res.status(400).json({ error: 'hideAdminPanelLink must be a boolean' });
+    const body = req.body ?? {};
+    const patch: Partial<ReturnType<typeof getSiteSettings>> = {};
+    for (const key of ['hideAdminPanelLink', 'registrationOpen', 'maintenanceMode'] as const) {
+      if (key in body) {
+        if (typeof body[key] !== 'boolean') return res.status(400).json({ error: `${key} must be a boolean` });
+        patch[key] = body[key];
+      }
     }
-    const settings = updateSiteSettings(DATA_DIR, { hideAdminPanelLink });
+    if ('maintenanceMessage' in body) {
+      if (typeof body.maintenanceMessage !== 'string') return res.status(400).json({ error: 'maintenanceMessage must be a string' });
+      patch.maintenanceMessage = body.maintenanceMessage;
+    }
+    if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'No settings provided' });
+    const settings = updateSiteSettings(DATA_DIR, patch);
     res.json({ success: true, ...settings });
+  });
+
+  // --- Журнал: все успешные изменяющие запросы админа ---
+  app.use('/api/admin', (req, res, next) => {
+    if (req.method !== 'GET' && !req.path.startsWith('/import-full/chunk')) {
+      res.on('finish', () => {
+        if (res.statusCode < 400) {
+          writeAudit(DATA_DIR, { ip: ipKeyGenerator(req.ip || ''), action: `${req.method} ${req.path}` });
+        }
+      });
+    }
+    next();
+  });
+
+  app.get('/api/admin/overview', checkAdminAuth, (_req, res) => {
+    const site = getSiteSettings(DATA_DIR);
+    res.json({
+      counts: db.getOverviewCounts(),
+      system: getSystemInfo(DATA_DIR),
+      storage: getStorageStats(DATA_DIR),
+      health: runHealthChecks(DATA_DIR),
+      settings: site,
+    });
+  });
+
+  app.get('/api/admin/home-layout', checkAdminAuth, (_req, res) => {
+    res.json(readHomeLayout(DATA_DIR));
+  });
+
+  app.put('/api/admin/home-layout', checkAdminAuth, (req, res) => {
+    if (!req.body || typeof req.body !== 'object' || !Array.isArray(req.body.blocks)) {
+      return res.status(400).json({ error: 'Layout must contain a blocks array' });
+    }
+    res.json(writeHomeLayout(DATA_DIR, req.body));
+  });
+
+  app.post('/api/admin/home-layout/reset', checkAdminAuth, (_req, res) => {
+    res.json(resetHomeLayout(DATA_DIR));
+  });
+
+  app.get('/api/admin/audit', checkAdminAuth, (req, res) => {
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? '100'), 10) || 100));
+    res.json({ entries: readAudit(DATA_DIR, limit) });
+  });
+
+  app.get('/api/admin/logs', checkAdminAuth, (req, res) => {
+    const limit = parseInt(String(req.query.limit ?? '200'), 10) || 200;
+    res.json({ entries: readLogs({ level: String(req.query.level ?? 'all'), limit }) });
+  });
+
+  app.delete('/api/admin/logs', checkAdminAuth, (_req, res) => {
+    clearLogs();
+    res.json({ success: true });
+  });
+
+  const USERNAME_RE = /^[a-zA-Z0-9_-]{3,15}$/;
+
+  app.post('/api/admin/user/:username/ban', checkAdminAuth, (req, res) => {
+    const username = req.params.username.toLowerCase();
+    if (!db.getUser(username)) return res.status(404).json({ error: 'Пользователь не найден' });
+    const banned = req.body?.banned !== false;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : '';
+    db.setUserBanned(username, banned, reason);
+    res.json({ success: true, banned });
+  });
+
+  app.post('/api/admin/user/:username/reset-sessions', checkAdminAuth, (req, res) => {
+    const username = req.params.username.toLowerCase();
+    if (!db.getUser(username)) return res.status(404).json({ error: 'Пользователь не найден' });
+    db.invalidateUserSessions(username);
+    res.json({ success: true });
+  });
+
+  app.post('/api/admin/users/bulk', checkAdminAuth, (req, res) => {
+    const { action, usernames, reason } = req.body ?? {};
+    const allowed = ['verify', 'unverify', 'ban', 'unban', 'reset-sessions', 'delete'];
+    if (!allowed.includes(action)) return res.status(400).json({ error: 'Unknown action' });
+    if (!Array.isArray(usernames) || usernames.length === 0 || usernames.length > 200) {
+      return res.status(400).json({ error: 'usernames must be a list of 1-200 items' });
+    }
+    let done = 0;
+    for (const raw of usernames) {
+      if (typeof raw !== 'string' || !USERNAME_RE.test(raw)) continue;
+      const username = raw.toLowerCase();
+      if (!db.getUser(username)) continue;
+      if (action === 'delete') db.deleteUser(username);
+      else if (action === 'ban') db.setUserBanned(username, true, typeof reason === 'string' ? reason : '');
+      else if (action === 'unban') db.setUserBanned(username, false);
+      else if (action === 'reset-sessions') db.invalidateUserSessions(username);
+      else {
+        const bio = db.getBio(username);
+        if (!bio) continue;
+        bio.verified = action === 'verify';
+        db.saveBio(username, bio);
+      }
+      done += 1;
+    }
+    res.json({ success: true, processed: done });
+  });
+
+  app.post('/api/admin/analytics/clear', checkAdminAuth, (req, res) => {
+    const raw = req.body?.username;
+    const username = typeof raw === 'string' && raw ? raw.toLowerCase() : undefined;
+    if (username && !USERNAME_RE.test(username)) return res.status(400).json({ error: 'Invalid username' });
+    res.json({ success: true, deleted: db.clearAnalytics(username) });
+  });
+
+  // --- Бэкапы на диске сервера ---
+  const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+  const BACKUP_NAME_RE = /^[A-Za-z0-9._-]{1,80}\.zip$/;
+
+  app.get('/api/admin/backups', checkAdminAuth, (_req, res) => {
+    if (!fs.existsSync(BACKUPS_DIR)) return res.json({ files: [] });
+    const files = fs
+      .readdirSync(BACKUPS_DIR)
+      .filter((f) => BACKUP_NAME_RE.test(f))
+      .map((f) => {
+        const st = fs.statSync(path.join(BACKUPS_DIR, f));
+        return { filename: f, size: st.size, mtime: st.mtime.toISOString() };
+      })
+      .sort((a, b) => b.mtime.localeCompare(a.mtime));
+    res.json({ files });
+  });
+
+  app.post('/api/admin/backups/run', checkAdminAuth, async (_req, res) => {
+    try {
+      fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const outPath = path.join(BACKUPS_DIR, `backup-manual-${stamp}.zip`);
+      const result = await writeBackupToFile(outPath, { includeAnalytics: true, uploadsDir: UPLOADS_DIR, dataDir: DATA_DIR });
+      res.json({ success: true, filename: path.basename(outPath), size: result.size });
+    } catch (err: any) {
+      console.error('[backup] Manual backup failed:', err);
+      res.status(500).json({ error: err.message || 'Backup failed' });
+    }
+  });
+
+  app.get('/api/admin/backups/:name', checkAdminAuth, (req, res) => {
+    if (!BACKUP_NAME_RE.test(req.params.name)) return res.status(400).json({ error: 'Invalid file name' });
+    const full = path.join(BACKUPS_DIR, req.params.name);
+    if (!fs.existsSync(full)) return res.status(404).json({ error: 'Not found' });
+    res.download(full, req.params.name);
+  });
+
+  app.delete('/api/admin/backups/:name', checkAdminAuth, (req, res) => {
+    if (!BACKUP_NAME_RE.test(req.params.name)) return res.status(400).json({ error: 'Invalid file name' });
+    fs.rmSync(path.join(BACKUPS_DIR, req.params.name), { force: true });
+    res.json({ success: true });
   });
 
   app.get('/api/admin/storage-stats', checkAdminAuth, (_req, res) => {
@@ -987,7 +1154,8 @@ async function startServer() {
 
   // Get active Bio directories listing
   app.get('/api/all-bios', (req, res) => {
-    const bios = db.getAllBios();
+    const banned = db.getBannedUsernames();
+    const bios = db.getAllBios().filter(bio => !banned.has(bio.username));
     const profiles = bios.map(bio => ({
       username: bio.username,
       displayName: bio.displayName,
@@ -1024,6 +1192,12 @@ async function startServer() {
   // Соцсети проекта задаются переменными SOCIAL_*_URL; невалидные ссылки отбрасываются (один раз пишем в лог)
   const socialLinks = getSocialLinks(process.env, (msg) => console.warn(`[socials] ${msg}`));
 
+  // Макет главной страницы (публичный, кэш короткий)
+  app.get('/api/home-layout', (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json(readHomeLayout(DATA_DIR));
+  });
+
   // Public platform config (domain, URLs)
   app.get('/api/public-config', (req, res) => {
     const platform = getPlatformConfig(req);
@@ -1032,6 +1206,9 @@ async function startServer() {
       ...platform,
       socials: socialLinks,
       hideAdminPanelLink: site.hideAdminPanelLink,
+      registrationOpen: site.registrationOpen,
+      maintenanceMode: site.maintenanceMode,
+      maintenanceMessage: site.maintenanceMode ? site.maintenanceMessage : '',
       mediaCdnUrl: getServerMediaCdnUrl(),
       ssl: {
         wildcardRequired: true,
@@ -1045,7 +1222,7 @@ async function startServer() {
   app.get('/api/bio/:slug', publicLimiter, (req, res) => {
     const slug = req.params.slug.toLowerCase();
     const bio = db.getBioBySlug(slug);
-    if (!bio) {
+    if (!bio || db.isUserBanned(bio.username)) {
       return res.status(404).json({ error: 'Profile not found' });
     }
     res.json(bio);
@@ -1131,6 +1308,9 @@ async function startServer() {
       }
 
       const { valid, needsRehash } = verifyPassword(password, existingUser.password_hash);
+      if (valid && existingUser.banned) {
+        return res.status(403).json({ error: 'Аккаунт заблокирован администратором' });
+      }
       if (valid) {
         clearLoginAttempts(normUsername);
         if (needsRehash) {
@@ -1144,6 +1324,10 @@ async function startServer() {
 
       recordFailedLogin(normUsername);
       return res.status(401).json({ error: authFailMessage });
+    }
+
+    if (!getSiteSettings(DATA_DIR).registrationOpen) {
+      return res.status(403).json({ error: 'Регистрация новых аккаунтов временно закрыта администратором' });
     }
 
     const policy = validateUserPassword(password, { isRegistration: true });

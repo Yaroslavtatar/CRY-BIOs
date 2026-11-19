@@ -64,6 +64,12 @@ function ensureUserSecurityColumns() {
   if (!names.has('locked_until')) {
     db.exec('ALTER TABLE users ADD COLUMN locked_until TEXT');
   }
+  if (!names.has('banned')) {
+    db.exec('ALTER TABLE users ADD COLUMN banned INTEGER DEFAULT 0');
+  }
+  if (!names.has('ban_reason')) {
+    db.exec("ALTER TABLE users ADD COLUMN ban_reason TEXT DEFAULT ''");
+  }
 }
 
 ensureUserSecurityColumns();
@@ -167,6 +173,7 @@ export function getUserByToken(token: string) {
   if (!token || typeof token !== 'string' || token === '[REDACTED]') return null;
   const user = db.prepare('SELECT * FROM users WHERE token = ?').get(hashSessionToken(token)) as any;
   if (!user || !user.token) return null;
+  if (user.banned) return null;
   if (user.token_expires_at && new Date(user.token_expires_at) < new Date()) {
     return null;
   }
@@ -297,7 +304,7 @@ export function getAllBios(): BioConfig[] {
 }
 
 export function getAllUsersWithStats() {
-  const users = db.prepare('SELECT username FROM users').all() as { username: string }[];
+  const users = db.prepare('SELECT username, banned, ban_reason FROM users').all() as { username: string; banned: number | null; ban_reason: string | null }[];
   return users.map(u => {
     const bioRow = db.prepare('SELECT data FROM bios WHERE username = ?').get(u.username) as any;
     const bio = bioRow ? JSON.parse(bioRow.data) : null;
@@ -307,9 +314,54 @@ export function getAllUsersWithStats() {
       displayName: bio?.displayName || u.username,
       avatarUrl: bio?.avatarUrl || '',
       verified: bio?.verified || false,
-      visitsCount
+      visitsCount,
+      banned: Boolean(u.banned),
+      banReason: u.ban_reason || '',
     };
   });
+}
+
+export function isUserBanned(username: string): boolean {
+  const row = db.prepare('SELECT banned FROM users WHERE username = ?').get(username.toLowerCase()) as { banned: number | null } | undefined;
+  return Boolean(row?.banned);
+}
+
+export function getBannedUsernames(): Set<string> {
+  const rows = db.prepare('SELECT username FROM users WHERE banned = 1').all() as { username: string }[];
+  return new Set(rows.map(r => r.username));
+}
+
+/** Бан закрывает все сессии пользователя и скрывает профиль с публичных страниц. */
+export function setUserBanned(username: string, banned: boolean, reason = '') {
+  db.prepare(
+    banned
+      ? "UPDATE users SET banned = 1, ban_reason = ?, token = '', token_expires_at = NULL WHERE username = ?"
+      : "UPDATE users SET banned = 0, ban_reason = '' WHERE username = ?"
+  ).run(...(banned ? [reason.slice(0, 200), username] : [username]));
+}
+
+export function clearAnalytics(username?: string): number {
+  const res = username
+    ? db.prepare('DELETE FROM analytics WHERE username = ?').run(username)
+    : db.prepare('DELETE FROM analytics').run();
+  return res.changes;
+}
+
+export function getOverviewCounts() {
+  const count = (sql: string, ...args: unknown[]) => (db.prepare(sql).get(...args) as { c: number }).c;
+  const since = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const topRows = db
+    .prepare('SELECT username, COUNT(*) AS visits FROM analytics GROUP BY username ORDER BY visits DESC LIMIT 5')
+    .all() as { username: string; visits: number }[];
+  return {
+    users: count('SELECT COUNT(*) AS c FROM users'),
+    banned: count('SELECT COUNT(*) AS c FROM users WHERE banned = 1'),
+    bios: count('SELECT COUNT(*) AS c FROM bios'),
+    visitsTotal: count('SELECT COUNT(*) AS c FROM analytics'),
+    visits24h: count('SELECT COUNT(*) AS c FROM analytics WHERE timestamp >= ?', since(24 * 3600e3)),
+    visits7d: count('SELECT COUNT(*) AS c FROM analytics WHERE timestamp >= ?', since(7 * 24 * 3600e3)),
+    topProfiles: topRows,
+  };
 }
 
 export function saveBio(username: string, config: BioConfig) {
@@ -370,6 +422,8 @@ export function exportDatabase(options?: { includeAnalytics?: boolean }) {
         token_expires_at: null,
         failed_login_attempts: u.failed_login_attempts ?? 0,
         locked_until: u.locked_until ?? null,
+        banned: u.banned ? 1 : 0,
+        ban_reason: u.ban_reason ?? '',
       }));
   return { users: sanitizedUsers, bios, analytics };
 }
@@ -379,9 +433,9 @@ export function importDatabase(dump: { users?: any[], bios?: any[], analytics?: 
     if (dump.users) {
       db.prepare('DELETE FROM users').run();
       // Сессии из бэкапа никогда не восстанавливаются: все входят заново.
-      const insertUser = db.prepare("INSERT INTO users (username, password_hash, token) VALUES (?, ?, '')");
+      const insertUser = db.prepare("INSERT INTO users (username, password_hash, token, banned, ban_reason) VALUES (?, ?, '', ?, ?)");
       for (const u of dump.users) {
-        insertUser.run(u.username, u.password_hash);
+        insertUser.run(u.username, u.password_hash, u.banned ? 1 : 0, typeof u.ban_reason === 'string' ? u.ban_reason.slice(0, 200) : '');
       }
     }
     if (dump.bios) {
