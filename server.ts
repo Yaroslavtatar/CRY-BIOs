@@ -40,6 +40,8 @@ import { getStorageStats, runHealthChecks } from './src/storageStats';
 import { createAdminAuth, FailureLimiter } from './src/adminAuth';
 import { guardProfilePayload, sanitizeVisitHost } from './src/profileGuard';
 import { getSiteSettings, updateSiteSettings } from './src/siteSettings';
+import { buildThemeCss } from './src/theme';
+import { saveAsset, listAssets, deleteAsset, MAX_ASSET_BYTES } from './src/themeAssets';
 import { installLogCapture, readLogs, clearLogs, writeAudit, readAudit, getSystemInfo, readHomeLayout, writeHomeLayout, resetHomeLayout } from './src/adminOps';
 import { startScheduledBackups } from './src/scheduledBackup';
 import { processMedia, resolveUploadFilePath, optimizeAllMedia } from './src/mediaPipeline';
@@ -80,6 +82,7 @@ if (!fs.existsSync(DATA_DIR)) {
 
 installLogCapture();
 
+const THEME_DIR = path.join(DATA_DIR, 'theme-assets');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -363,11 +366,14 @@ async function startServer() {
       ? { maxAge: 31536000, includeSubDomains: true, preload: false }
       : false,
   }));
-  app.use(express.json());
+  // Макет главной вместе со своим CSS может быть крупнее стандартного лимита; остальным маршрутам лимит прежний
+  const jsonDefault = express.json();
+  const jsonLayout = express.json({ limit: '512kb' });
+  app.use((req, res, next) => (req.path === '/api/admin/home-layout' && req.method === 'PUT' ? jsonLayout(req, res, next) : jsonDefault(req, res, next)));
 
   // Канонический URL: name.cbios.ru → cbios.ru/name (когда Traefik уже проксирует поддомен)
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path.startsWith('/theme-assets')) return next();
     if (req.path.startsWith('/dashboard') || req.path.startsWith('/admin')) return next();
     const platform = getPlatformConfig(req);
     const host = getRequestHost(req).toLowerCase().split(':')[0];
@@ -752,6 +758,29 @@ async function startServer() {
       return res.status(400).json({ error: 'Layout must contain a blocks array' });
     }
     res.json(writeHomeLayout(DATA_DIR, req.body));
+  });
+
+  const themeUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ASSET_BYTES, files: 1 } });
+
+  app.post('/api/admin/theme/asset', checkAdminAuth, (req, res) => {
+    themeUpload.single('file')(req, res, (err: any) => {
+      if (err) return res.status(err instanceof multer.MulterError ? 413 : 400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Файл больше 8 МБ' : (err.message || 'Upload failed') });
+      if (!req.file) return res.status(400).json({ error: 'Файл не передан' });
+      try {
+        res.json({ success: true, ...saveAsset(THEME_DIR, req.file.buffer) });
+      } catch (e: any) {
+        res.status(e.status || 500).json({ error: e.message || 'Не удалось сохранить файл' });
+      }
+    });
+  });
+
+  app.get('/api/admin/theme/assets', checkAdminAuth, (_req, res) => {
+    res.json({ files: listAssets(THEME_DIR) });
+  });
+
+  app.delete('/api/admin/theme/asset/:name', checkAdminAuth, (req, res) => {
+    if (!deleteAsset(THEME_DIR, req.params.name)) return res.status(404).json({ error: 'Файл не найден' });
+    res.json({ success: true });
   });
 
   app.post('/api/admin/home-layout/reset', checkAdminAuth, (_req, res) => {
@@ -1192,11 +1221,33 @@ async function startServer() {
   // Соцсети проекта задаются переменными SOCIAL_*_URL; невалидные ссылки отбрасываются (один раз пишем в лог)
   const socialLinks = getSocialLinks(process.env, (msg) => console.warn(`[socials] ${msg}`));
 
-  // Макет главной страницы (публичный, кэш короткий)
+  // Макет главной страницы (публичный, кэш короткий). Тема отдаётся отдельно, как /api/theme.css
   app.get('/api/home-layout', (_req, res) => {
     res.set('Cache-Control', 'public, max-age=30');
-    res.json(readHomeLayout(DATA_DIR));
+    const { theme: _theme, ...layout } = readHomeLayout(DATA_DIR);
+    res.json(layout);
   });
+
+  // Тема платформы как таблица стилей: подключается <link> в index.html (CSP style-src 'self' её разрешает)
+  app.get('/api/theme.css', (_req, res) => {
+    res.type('text/css; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=30');
+    try {
+      res.send(buildThemeCss(readHomeLayout(DATA_DIR).theme));
+    } catch (err) {
+      console.error('[theme] build failed:', err);
+      res.send('');
+    }
+  });
+
+  // Загруженные администратором шрифты и картинки темы
+  app.use('/theme-assets', express.static(THEME_DIR, {
+    index: false,
+    dotfiles: 'ignore',
+    maxAge: '7d',
+    immutable: true,
+    setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+  }));
 
   // Public platform config (domain, URLs)
   app.get('/api/public-config', (req, res) => {

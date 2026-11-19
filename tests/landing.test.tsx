@@ -245,8 +245,25 @@ describe('LandingPage с данными GitHub', () => {
     await flush();
     expect(container.querySelector('#opensource')).toBeNull();
     expect(container.querySelector('#header_github_link')).toBeNull();
-    expect(links().some((a) => a.href.includes('github.com'))).toBe(false);
+    // подпись разработчиков (CRYTEAM) — не ссылка на репозиторий инстанса и остаётся всегда
+    expect(links().filter((a) => a.id !== 'crediting_cryteam_link').some((a) => a.href.includes('github.com'))).toBe(false);
     expect(container.textContent).not.toMatch(/NaN|undefined/);
+  });
+
+  it('кнопка «Разработано CRYTEAM» есть всегда, ведёт на GitHub команды и стоит последней', async () => {
+    for (const payload of [{ enabled: false }, snapshot()]) {
+      mockApi(payload);
+      await render(page());
+      await flush();
+      const credit = container.querySelector('#crediting_cryteam_link') as HTMLAnchorElement;
+      expect(credit).not.toBeNull();
+      expect(credit.textContent).toContain('Разработано CRYTEAM');
+      expect(credit.href).toBe('https://github.com/CRYTEAM-RU');
+      expect(credit.rel).toContain('noopener');
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.lastElementChild!.contains(credit)).toBe(true);
+      vi.restoreAllMocks();
+    }
   });
 });
 

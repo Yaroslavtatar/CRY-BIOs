@@ -1,0 +1,14 @@
+CRY BIOS
+Copyright (c) 2026 Cryteamrut
+
+Developed by CRYTEAM — https://github.com/CRYTEAM-RU
+
+Attribution notice
+------------------
+The public landing page of this software displays a "Разработано CRYTEAM"
+("Developed by CRYTEAM") button in the very bottom of the footer, linking to
+https://github.com/CRYTEAM-RU. This credit is part of the software's attribution
+notice and is intentionally not configurable from the admin panel or the
+home page builder. Please keep it when you deploy or redistribute the software.
+
+The software is distributed under the license stated in the LICENSE file.

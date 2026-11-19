@@ -1,3 +1,5 @@
+import { getDefaultTheme, sanitizeTheme, type Theme } from './theme';
+
 /**
  * Конструктор главной страницы: типы, дефолтный макет и санитайзер.
  * Модуль общий для сервера (валидация перед записью) и клиента (безопасный разбор ответа API).
@@ -79,6 +81,8 @@ export interface HomeLayout {
   updatedAt: string | null;
   settings: HomeLayoutSettings;
   blocks: HomeBlock[];
+  /** Тема всей платформы: палитра, фон, шрифты, эффекты, свой CSS */
+  theme: Theme;
 }
 
 export const BLOCK_META: Record<HomeBlockType, { label: string; description: string; unique: boolean }> = {
@@ -193,6 +197,7 @@ export function getDefaultHomeLayout(): HomeLayout {
     version: 1,
     updatedAt: null,
     settings: { ...DEFAULT_SETTINGS },
+    theme: getDefaultTheme(),
     blocks: order.map((type) => ({ id: `default-${type}`, type, enabled: true, props: defaultBlockProps(type) })),
   };
 }
@@ -346,5 +351,6 @@ export function sanitizeHomeLayout(input: unknown): HomeLayout {
       footerNote: str(s.footerNote, 200),
     },
     blocks,
+    theme: sanitizeTheme(src.theme),
   };
 }

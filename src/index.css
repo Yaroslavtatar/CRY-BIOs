@@ -7,15 +7,47 @@ body,
   max-width: 100%;
 }
 
+/* Токены темы. Значения по умолчанию = вид платформы без кастомизации.
+   Тема из админки (/api/theme.css) переопределяет их; см. src/theme.ts */
+:root {
+  --cb-accent: #00f2ff;
+  --cb-accent-hover: #00d0e0;
+  --cb-on-accent: #000000;
+  --cb-bg: #050505;
+  --cb-surface: #0c0c0c;
+  --cb-deep: #000000;
+  --cb-text: #ffffff;
+  --cb-muted: #a3a3a3;
+  --cb-success: #34d399;
+  --cb-warning: #fbbf24;
+  --cb-danger: #f87171;
+  --cb-speed: 1;
+}
+
 html,
 body {
   /* тёмная подложка: без неё на краях/при овербаунсе мелькает белый фон */
-  background-color: #050505;
+  background-color: var(--cb-bg);
 }
 
 body {
   position: relative;
   overscroll-behavior-x: none;
+}
+
+/* inline: утилиты ссылаются на var(--cb-*) прямо на элементе, поэтому тема работает и в изолированном предпросмотре */
+@theme inline {
+  --color-cb-accent: var(--cb-accent);
+  --color-cb-accent-hover: var(--cb-accent-hover);
+  --color-cb-on-accent: var(--cb-on-accent);
+  --color-cb-bg: var(--cb-bg);
+  --color-cb-surface: var(--cb-surface);
+  --color-cb-deep: var(--cb-deep);
+  --color-cb-text: var(--cb-text);
+  --color-cb-muted: var(--cb-muted);
+  --color-cb-success: var(--cb-success);
+  --color-cb-warning: var(--cb-warning);
+  --color-cb-danger: var(--cb-danger);
 }
 
 @theme {
