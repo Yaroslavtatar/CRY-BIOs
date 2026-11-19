@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, ArrowDown, Copy, Trash2, Plus, Eye, EyeOff, Save, RotateCcw, Monitor, Smartphone, GripVertical, Undo2, Settings2, ExternalLink } from 'lucide-react';
+import { ArrowUp, ArrowDown, Copy, Trash2, Plus, Eye, EyeOff, Save, RotateCcw, Monitor, Smartphone, GripVertical, Undo2, Settings2, ExternalLink, Palette } from 'lucide-react';
 import LandingPage from '../../LandingPage';
+import ThemeEditor from './ThemeEditor';
+import { buildThemeCss, type Theme } from '../../../theme';
 import {
   BLOCK_META, BLOCK_TYPES, FEATURE_ICONS, createBlock, newBlockId, sanitizeHomeLayout,
   type HomeBlock, type HomeBlockType, type HomeLayout,
@@ -13,7 +15,7 @@ const noop = () => {};
 export default function HomeBuilder({ api, notify }: SectionProps) {
   const [layout, setLayout] = useState<HomeLayout | null>(null);
   const [saved, setSaved] = useState('');
-  const [selectedId, setSelectedId] = useState<string | 'settings' | null>('settings');
+  const [selectedId, setSelectedId] = useState<string | 'settings' | 'theme' | null>('settings');
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
@@ -122,7 +124,7 @@ export default function HomeBuilder({ api, notify }: SectionProps) {
   };
 
   const reset = async () => {
-    if (!window.confirm('Сбросить главную к стандартному виду? Все ваши блоки будут потеряны.')) return;
+    if (!window.confirm('Сбросить главную к стандартному виду? Блоки и тема (цвета, фон, шрифты, CSS) будут потеряны. Загруженные файлы останутся.')) return;
     try {
       const res = sanitizeHomeLayout(await api.send('POST', '/api/admin/home-layout/reset'));
       setLayout(res);
@@ -155,7 +157,7 @@ export default function HomeBuilder({ api, notify }: SectionProps) {
         <Button variant="primary" size="sm" onClick={save} loading={saving} disabled={!dirty} icon={<Save className="h-3.5 w-3.5" />}>Опубликовать</Button>
       </div>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[300px_minmax(0,1fr)_340px]">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(0,1fr)_400px]">
         {/* список блоков */}
         <aside className="min-h-0 overflow-y-auto border-b border-white/[0.07] p-4 lg:border-b-0 lg:border-r">
           <button
@@ -163,6 +165,13 @@ export default function HomeBuilder({ api, notify }: SectionProps) {
             className={cx('mb-3 flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm cursor-pointer', selectedId === 'settings' ? 'border-[#00f2ff]/40 bg-[#00f2ff]/[0.06] text-white' : 'border-white/[0.07] text-neutral-300 hover:bg-white/[0.04]')}
           >
             <Settings2 className="h-4 w-4 text-[#00f2ff]" /> Шапка и подвал
+          </button>
+          <button
+            onClick={() => setSelectedId('theme')}
+            className={cx('mb-3 flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm cursor-pointer', selectedId === 'theme' ? 'border-[#00f2ff]/40 bg-[#00f2ff]/[0.06] text-white' : 'border-white/[0.07] text-neutral-300 hover:bg-white/[0.04]')}
+          >
+            <Palette className="h-4 w-4 text-[#00f2ff]" /> Тема и стиль
+            {layout.theme.enabled && <span className="ml-auto rounded-md bg-[#00f2ff]/10 px-1.5 py-0.5 text-[10px] text-[#00f2ff]">вкл</span>}
           </button>
           <ul className="space-y-2">
             {layout.blocks.map((b, i) => (
@@ -195,7 +204,7 @@ export default function HomeBuilder({ api, notify }: SectionProps) {
 
         {/* живой предпросмотр */}
         <main className="min-h-0 overflow-auto bg-[#050505] p-4">
-          <ScaledPreview width={device === 'mobile' ? 390 : 1280}>
+          <ScaledPreview width={device === 'mobile' ? 390 : 1280} theme={layout.theme}>
             <LandingPage layout={layout} onNavigateToDashboard={noop} onViewProfile={noop} />
           </ScaledPreview>
         </main>
@@ -213,6 +222,17 @@ export default function HomeBuilder({ api, notify }: SectionProps) {
               </div>
             </Card>
           )}
+          {selectedId === 'theme' && (
+            <Card title="Тема и стиль" description="Влияет на весь сайт: лендинг, личный кабинет и страницы профилей. Предпросмотр слева обновляется сразу.">
+              <ThemeEditor
+                theme={layout.theme}
+                api={api}
+                notify={notify}
+                setEnabled={(v) => update((l) => ({ ...l, theme: { ...l.theme, enabled: v } }))}
+                edit={(fn) => update((l) => ({ ...l, theme: { ...fn(l.theme), enabled: true } }))}
+              />
+            </Card>
+          )}
           {selected && (
             <Card
               title={<span className="flex items-center gap-2">{BLOCK_META[selected.type].label}{!selected.enabled && <Badge tone="warning">скрыт</Badge>}</span>}
@@ -224,7 +244,7 @@ export default function HomeBuilder({ api, notify }: SectionProps) {
               <BlockEditor block={selected} patch={(props) => patchBlock(selected.id, props)} />
             </Card>
           )}
-          {!selected && selectedId !== 'settings' && <p className="px-2 py-8 text-center text-sm text-neutral-500">Выберите блок слева, чтобы изменить его содержимое.</p>}
+          {!selected && selectedId !== 'settings' && selectedId !== 'theme' && <p className="px-2 py-8 text-center text-sm text-neutral-500">Выберите блок слева, чтобы изменить его содержимое.</p>}
         </aside>
       </div>
 
@@ -246,7 +266,8 @@ export default function HomeBuilder({ api, notify }: SectionProps) {
 }
 
 /** Рисует страницу в виртуальном окне фиксированной ширины и масштабирует его под доступное место. */
-function ScaledPreview({ width, children }: { width: number; children: React.ReactNode }) {
+function ScaledPreview({ width, theme, children }: { width: number; theme: Theme; children: React.ReactNode }) {
+  const css = useMemo(() => buildThemeCss(theme, { scope: '.cb-preview-scope' }), [theme]);
   const outer = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ scale: 0.4, height: 600 });
@@ -266,7 +287,8 @@ function ScaledPreview({ width, children }: { width: number; children: React.Rea
 
   return (
     <div ref={outer} className="mx-auto w-full overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl" style={{ maxWidth: width, height: box.height }}>
-      <div ref={inner} inert className="pointer-events-none origin-top-left select-none" style={{ width, transform: `scale(${box.scale})` }} aria-hidden>
+      <div ref={inner} inert className="cb-preview-scope pointer-events-none origin-top-left select-none" style={{ width, transform: `scale(${box.scale})` }} aria-hidden>
+        {css && <style>{css}</style>}
         {children}
       </div>
     </div>

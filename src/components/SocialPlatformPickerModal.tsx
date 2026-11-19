@@ -20,7 +20,7 @@ export default function SocialPlatformPickerModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="w-full max-w-3xl bg-[#0a0a0a] border border-white/10 rounded-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+      <div className="w-full max-w-3xl bg-cb-surface border border-white/10 rounded-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 flex-shrink-0">
           <div>
             <h3 className="text-sm font-black font-mono text-white uppercase tracking-wider italic">
@@ -40,7 +40,7 @@ export default function SocialPlatformPickerModal({
               type="button"
               onClick={() => { onSelect(platform.id); onClose(); }}
               title={platform.label}
-              className="aspect-square rounded-lg bg-white/[0.03] border border-white/10 hover:border-[#00f2ff]/40 hover:bg-white/[0.06] flex items-center justify-center transition cursor-pointer p-2.5"
+              className="aspect-square rounded-lg bg-white/[0.03] border border-white/10 hover:border-cb-accent/40 hover:bg-white/[0.06] flex items-center justify-center transition cursor-pointer p-2.5"
               style={{ color: platform.brandColor }}
             >
               <SocialIcon platform={platform.id} className="w-6 h-6" />
@@ -52,9 +52,9 @@ export default function SocialPlatformPickerModal({
           <button
             type="button"
             onClick={() => { onSelect('website'); onClose(); }}
-            className="w-full flex items-center gap-3 p-3 rounded-lg bg-white/[0.03] border border-white/10 hover:border-[#00f2ff]/40 text-left cursor-pointer transition"
+            className="w-full flex items-center gap-3 p-3 rounded-lg bg-white/[0.03] border border-white/10 hover:border-cb-accent/40 text-left cursor-pointer transition"
           >
-            <Globe2 className="w-5 h-5 text-[#00f2ff] flex-shrink-0" />
+            <Globe2 className="w-5 h-5 text-cb-accent flex-shrink-0" />
             <div>
               <p className="text-xs font-bold text-white">Добавить пользовательский URL</p>
               <p className="text-[10px] text-neutral-500 mt-0.5">Используйте свой URL и выберите подходящую иконку.</p>

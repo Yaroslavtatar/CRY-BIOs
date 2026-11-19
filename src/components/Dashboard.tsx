@@ -54,7 +54,7 @@ const renderDashboardBadgeIcon = (iconName: string) => {
     case 'heart': return <Heart {...iconProps} />;
     case 'zap': return <Zap {...iconProps} />;
     case 'code': return <Code2 {...iconProps} />;
-    case 'flame': return <Sparkles className="w-3.5 h-3.5 text-[#00f2ff] flex-shrink-0" />;
+    case 'flame': return <Sparkles className="w-3.5 h-3.5 text-cb-accent flex-shrink-0" />;
     case 'skull': return <Skull {...iconProps} />;
     case 'gamepad': return <Gamepad2 {...iconProps} />;
     case 'music': return <Music {...iconProps} />;
@@ -963,7 +963,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   // --- RENDERS ---
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans antialiased flex flex-col">
+    <div className="cb-root min-h-screen bg-cb-bg text-white font-sans antialiased flex flex-col">
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -978,14 +978,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         }
       />
       {/* Header Panel */}
-      <header className="border-b border-white/10 bg-[#050505] px-6 py-5 flex justify-between items-center z-20">
+      <header className="border-b border-white/10 bg-cb-bg px-6 py-5 flex justify-between items-center z-20">
         <div className="flex items-center space-x-3 cursor-pointer" onClick={onExit}>
-          <ArrowLeft className="w-5 h-5 text-neutral-400 hover:text-[#00f2ff] transition" />
+          <ArrowLeft className="w-5 h-5 text-neutral-400 hover:text-cb-accent transition" />
           <div>
             <span className="font-black text-sm tracking-widest uppercase italic text-white">
               CRY BIOS CONTROL PANEL
             </span>
-            <span className="text-[9px] block text-[#00f2ff] font-mono leading-none tracking-widest uppercase mt-0.5 font-bold">
+            <span className="text-[9px] block text-cb-accent font-mono leading-none tracking-widest uppercase mt-0.5 font-bold">
               Management & Bio Editing
             </span>
           </div>
@@ -994,11 +994,11 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         {token && username && (
           <div className="flex items-center space-x-2 sm:space-x-4">
             <span className="text-xs font-mono text-neutral-400 hidden sm:inline-block">
-              User: <strong className="text-[#00f2ff]">@{username}</strong>
+              User: <strong className="text-cb-accent">@{username}</strong>
             </span>
             <button
               onClick={() => onViewProfile(username)}
-              className="px-3 py-2 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[10px] text-[#00f2ff] font-bold uppercase tracking-widest rounded-sm flex items-center space-x-1.5 cursor-pointer transition-all"
+              className="px-3 py-2 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-[10px] text-cb-accent font-bold uppercase tracking-widest rounded-sm flex items-center space-x-1.5 cursor-pointer transition-all"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Перейти в свой био</span>
@@ -1019,16 +1019,16 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         
         {/* LOGIN WIDGET CONTAINER */}
         {!token && (
-          <div className="flex-grow flex items-center justify-center p-6 bg-[#050505] relative">
-            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[350px] h-[350px] bg-[#00f2ff]/4 rounded-full blur-[100px] pointer-events-none" />
+          <div className="flex-grow flex items-center justify-center p-6 bg-cb-bg relative">
+            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[350px] h-[350px] bg-cb-accent/4 rounded-full blur-[100px] pointer-events-none" />
             
-            <div className="w-full max-w-md bg-[#0c0c0c] border border-white/10 p-8 rounded-sm shadow-2xl relative z-10">
+            <div className="w-full max-w-md bg-cb-surface border border-white/10 p-8 rounded-sm shadow-2xl relative z-10">
               <div className="text-center mb-6">
-                <span className="bg-[#00f2ff] rounded-sm p-3 inline-block text-black mb-4">
-                  <User className="w-6 h-6 text-black" />
+                <span className="bg-cb-accent rounded-sm p-3 inline-block text-cb-on-accent mb-4">
+                  <User className="w-6 h-6 text-cb-on-accent" />
                 </span>
                 <h2 className="text-2xl font-black uppercase tracking-tight italic">CRY BIOS PORTAL</h2>
-                <p className="text-[10px] text-[#00f2ff] mt-1.5 uppercase tracking-[0.2em] font-mono font-bold">
+                <p className="text-[10px] text-cb-accent mt-1.5 uppercase tracking-[0.2em] font-mono font-bold">
                   Register or login instantly with a password
                 </p>
               </div>
@@ -1050,7 +1050,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       placeholder="cryteam_dev"
                       value={loginUsername}
                       onChange={e => setLoginUsername(e.target.value)}
-                      className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff]/80 focus:outline-none p-3.5 pl-8 rounded-sm font-mono text-white placeholder-neutral-700"
+                      className="w-full bg-black/50 border border-white/15 focus:border-cb-accent/80 focus:outline-none p-3.5 pl-8 rounded-sm font-mono text-white placeholder-neutral-700"
                     />
                   </div>
                 </div>
@@ -1064,7 +1064,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       placeholder="Your secret passcode"
                       value={loginPassword}
                       onChange={e => setLoginPassword(e.target.value)}
-                      className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff]/80 focus:outline-none p-3.5 pl-8 rounded-sm font-mono text-white placeholder-neutral-700"
+                      className="w-full bg-black/50 border border-white/15 focus:border-cb-accent/80 focus:outline-none p-3.5 pl-8 rounded-sm font-mono text-white placeholder-neutral-700"
                     />
                   </div>
                 </div>
@@ -1076,7 +1076,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 <button
                   type="submit"
                   disabled={authLoading}
-                  className="w-full bg-[#00f2ff] text-black font-black py-4 rounded-sm uppercase tracking-widest text-xs transition-all duration-300 hover:bg-[#00d0e0] flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_20px_rgba(0,242,255,0.2)]"
+                  className="w-full bg-cb-accent text-cb-on-accent font-black py-4 rounded-sm uppercase tracking-widest text-xs transition-all duration-300 hover:bg-cb-accent-hover flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_20px_color-mix(in_srgb,var(--cb-accent)_20%,transparent)]"
                 >
                   {authLoading ? (
                     <span className="w-4 h-4 border-2 border-t-black border-transparent animate-spin rounded-full" />
@@ -1095,10 +1095,10 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         {token && username && config && (
           <>
             {/* Left Sector: Accordion Workspace Options */}
-            <div className="w-full lg:w-[50%] border-r border-white/10 flex flex-col justify-between overflow-y-auto bg-[#050505]">
+            <div className="w-full lg:w-[50%] border-r border-white/10 flex flex-col justify-between overflow-y-auto bg-cb-bg">
               
               {/* Navigation Tabs Options */}
-              <div className="p-4 border-b border-white/10 bg-[#0c0c0c] grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
+              <div className="p-4 border-b border-white/10 bg-cb-surface grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
                 {(['overview', 'profile', 'layout', 'background', 'visuals', 'glow', 'audio', 'blocks', 'analytics', 'selfhost', 'qr'] as const).map(tab => {
                   let tabName = '';
                   switch (tab) {
@@ -1120,7 +1120,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       key={tab}
                       onClick={() => setActiveTab(tab)}
                       className={`p-2 py-2.5 rounded-sm transition font-black uppercase tracking-widest cursor-pointer text-[8px] sm:text-[9px] ${
-                        activeTab === tab ? 'bg-[#00f2ff] text-black shadow-[0_0_15px_rgba(0,242,255,0.3)]' : 'bg-white/5 text-neutral-400 hover:text-white'
+                        activeTab === tab ? 'bg-cb-accent text-cb-on-accent shadow-[0_0_15px_color-mix(in_srgb,var(--cb-accent)_30%,transparent)]' : 'bg-white/5 text-neutral-400 hover:text-white'
                       }`}
                     >
                       {tabName}
@@ -1165,7 +1165,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                     <div className="space-y-6">
                       {/* Top Welcome Panel / Bio Link Banner */}
                       <div className="p-5 bg-white/5 border border-white/10 rounded-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#00f2ff]/5 rounded-full blur-2xl pointer-events-none" />
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-cb-accent/5 rounded-full blur-2xl pointer-events-none" />
                         
                         <div className="flex items-center space-x-3">
                           <img
@@ -1179,7 +1179,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             <div className="flex items-center space-x-1.5">
                               <span className="font-extrabold text-white text-base">Welcome, @{username}!</span>
                               {config.verified && (
-                                <span className="bg-[#00f2ff] text-black text-[8px] font-black px-1 rounded-sm uppercase tracking-widest italic" title="Verified Badge">
+                                <span className="bg-cb-accent text-cb-on-accent text-[8px] font-black px-1 rounded-sm uppercase tracking-widest italic" title="Verified Badge">
                                   ✓
                                 </span>
                               )}
@@ -1194,20 +1194,20 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           <span className="block text-[8px] uppercase text-neutral-500 font-bold mb-1 font-mono">Ваш короткий URL</span>
                           <div className="space-y-2">
                             <div className="flex items-center border border-white/10 bg-black/50 rounded-sm overflow-hidden select-all max-w-full">
-                              <span className="px-2.5 py-1 text-[10px] text-[#00f2ff] font-mono break-all line-clamp-1 flex-grow">
+                              <span className="px-2.5 py-1 text-[10px] text-cb-accent font-mono break-all line-clamp-1 flex-grow">
                                 {pathDisplay}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleCopyBioURL('path')}
-                                className="px-2.5 py-1.5 bg-[#00f2ff] text-black text-[8px] uppercase font-black tracking-wider hover:bg-[#00d0e0] transition cursor-pointer flex-shrink-0 border-l border-black/20"
+                                className="px-2.5 py-1.5 bg-cb-accent text-cb-on-accent text-[8px] uppercase font-black tracking-wider hover:bg-cb-accent-hover transition cursor-pointer flex-shrink-0 border-l border-black/20"
                               >
                                 {copiedLink === 'path' ? '✓' : 'Path'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => onViewProfile(profileLinks.slug)}
-                                className="px-2.5 py-1.5 bg-white/10 text-[#00f2ff] text-[8px] uppercase font-black tracking-wider hover:bg-white/20 transition cursor-pointer flex-shrink-0 border-l border-white/10"
+                                className="px-2.5 py-1.5 bg-white/10 text-cb-accent text-[8px] uppercase font-black tracking-wider hover:bg-white/20 transition cursor-pointer flex-shrink-0 border-l border-white/10"
                               >
                                 Открыть
                               </button>
@@ -1236,9 +1236,9 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           </div>
                           {runtimePlatform.baseDomain && runtimePlatform.baseDomain !== 'localhost' && (
                             <span className="text-[7.5px] text-neutral-500 block mt-1.5 font-sans">
-                              Основной формат: <code className="text-[#00f2ff]">{runtimePlatform.baseDomain}/name</code>
+                              Основной формат: <code className="text-cb-accent">{runtimePlatform.baseDomain}/name</code>
                               {subdomainDisplay && (
-                                <> · альтернатива: <code className="text-[#00f2ff]">name.{runtimePlatform.baseDomain}</code></>
+                                <> · альтернатива: <code className="text-cb-accent">name.{runtimePlatform.baseDomain}</code></>
                               )}
                             </span>
                           )}
@@ -1249,7 +1249,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
                         <div className="p-3 bg-white/5 border border-white/10 rounded-sm">
                           <span className="block text-[8px] uppercase font-bold text-neutral-500 font-mono leading-none">Имя пользователя</span>
-                          <span className="text-base font-extrabold text-[#00f2ff] mt-2 block break-all font-mono">@{username}</span>
+                          <span className="text-base font-extrabold text-cb-accent mt-2 block break-all font-mono">@{username}</span>
                         </div>
                         <div className="p-3 bg-white/5 border border-white/10 rounded-sm">
                           <span className="block text-[8px] uppercase font-bold text-neutral-500 font-mono leading-none">Использовано алиасов</span>
@@ -1284,21 +1284,21 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             placeholder="Текущий пароль"
                             value={currentPassword}
                             onChange={e => setCurrentPassword(e.target.value)}
-                            className="bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none focus:border-[#00f2ff]"
+                            className="bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none focus:border-cb-accent"
                           />
                           <input
                             type="password"
                             placeholder="Новый пароль (8+ символов, буквы и цифры)"
                             value={newPassword}
                             onChange={e => setNewPassword(e.target.value)}
-                            className="bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none focus:border-[#00f2ff]"
+                            className="bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none focus:border-cb-accent"
                           />
                         </div>
                         <button
                           type="button"
                           onClick={handleChangePassword}
                           disabled={passwordChangeLoading}
-                          className="px-4 py-2 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[10px] text-[#00f2ff] font-bold uppercase tracking-wider rounded-sm cursor-pointer disabled:opacity-50"
+                          className="px-4 py-2 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-[10px] text-cb-accent font-bold uppercase tracking-wider rounded-sm cursor-pointer disabled:opacity-50"
                         >
                           {passwordChangeLoading ? 'Сохранение...' : 'Сменить пароль'}
                         </button>
@@ -1306,7 +1306,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
                       {/* --- GUNS.LOL MODERN PROFILE IMPORTER --- */}
                       <div className="p-5 bg-gradient-to-r from-purple-950/30 to-black border border-purple-500/20 rounded-sm relative overflow-hidden space-y-4">
-                        <div className="absolute top-0 right-0 w-44 h-44 bg-[#00f2ff]/5 rounded-full blur-3xl pointer-events-none" />
+                        <div className="absolute top-0 right-0 w-44 h-44 bg-cb-accent/5 rounded-full blur-3xl pointer-events-none" />
                         
                         <div className="flex items-center space-x-2.5">
                           <span className="text-lg">📥</span>
@@ -1335,7 +1335,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 value={importInput}
                                 onChange={e => setImportInput(e.target.value)}
                                 rows={4}
-                                className="w-full bg-black/50 border border-white/10 focus:border-[#00f2ff] rounded-sm p-3 text-xs text-neutral-300 font-mono outline-none placeholder-neutral-800"
+                                className="w-full bg-black/50 border border-white/10 focus:border-cb-accent rounded-sm p-3 text-xs text-neutral-300 font-mono outline-none placeholder-neutral-800"
                               />
                               <div className="flex justify-between items-center gap-4">
                                 <span className="text-[9.5px] leading-snug text-neutral-500">
@@ -1344,7 +1344,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 <button
                                   type="submit"
                                   disabled={importLoading || !!pendingImport}
-                                  className="px-6 py-2.5 bg-[#00f2ff] text-black font-black text-[10px] uppercase tracking-wider rounded-sm hover:bg-[#00d0e0] active:scale-95 transition-all text-center flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_15px_rgba(0,242,255,0.25)] flex-shrink-0"
+                                  className="px-6 py-2.5 bg-cb-accent text-cb-on-accent font-black text-[10px] uppercase tracking-wider rounded-sm hover:bg-cb-accent-hover active:scale-95 transition-all text-center flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_15px_color-mix(in_srgb,var(--cb-accent)_25%,transparent)] flex-shrink-0"
                                 >
                                   {importLoading ? (
                                     <span className="w-3.5 h-3.5 border-2 border-t-black border-transparent animate-spin rounded-full" />
@@ -1356,7 +1356,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                               {importLoading && importProgressPct > 0 && (
                                 <div className="space-y-1">
                                   <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                                    <div className="h-full bg-[#00f2ff]/70 transition-all" style={{ width: `${importProgressPct}%` }} />
+                                    <div className="h-full bg-cb-accent/70 transition-all" style={{ width: `${importProgressPct}%` }} />
                                   </div>
                                   <span className="text-[8px] text-neutral-500">{importProgress}</span>
                                 </div>
@@ -1372,9 +1372,9 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           )}
 
                           {pendingImport && importPreviewItems.length > 0 && (
-                            <div className="p-3.5 bg-black/60 border border-[#00f2ff]/25 rounded-sm space-y-3">
+                            <div className="p-3.5 bg-black/60 border border-cb-accent/25 rounded-sm space-y-3">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-[10px] font-black uppercase text-[#00f2ff] tracking-wider">Предпросмотр импорта</span>
+                                <span className="text-[10px] font-black uppercase text-cb-accent tracking-wider">Предпросмотр импорта</span>
                                 <span className="text-[9px] text-neutral-500">{pendingImport.displayName}</span>
                               </div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
@@ -1412,7 +1412,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 <button
                                   type="button"
                                   onClick={handleApplyImport}
-                                  className="flex-1 py-2 bg-[#00f2ff] text-black font-black text-[10px] uppercase rounded-sm hover:bg-[#00d0e0] transition"
+                                  className="flex-1 py-2 bg-cb-accent text-cb-on-accent font-black text-[10px] uppercase rounded-sm hover:bg-cb-accent-hover transition"
                                 >
                                   Применить к профилю
                                 </button>
@@ -1466,14 +1466,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   setRenameInput(username);
                                   setIsRenameModalOpen(true);
                                 }}
-                                className="w-full text-left p-3.5 bg-black/45 border border-white/10 hover:border-[#00f2ff]/30 text-neutral-300 hover:text-white rounded-sm transition font-bold"
+                                className="w-full text-left p-3.5 bg-black/45 border border-white/10 hover:border-cb-accent/30 text-neutral-300 hover:text-white rounded-sm transition font-bold"
                               >
                                 [ Изменить имя пользователя ]
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setActiveTab('profile')}
-                                className="w-full text-left p-3.5 bg-black/45 border border-white/10 hover:border-[#00f2ff]/30 text-neutral-300 hover:text-white rounded-sm transition font-bold"
+                                className="w-full text-left p-3.5 bg-black/45 border border-white/10 hover:border-cb-accent/30 text-neutral-300 hover:text-white rounded-sm transition font-bold"
                               >
                                 [ Настройка шапки страницы ]
                               </button>
@@ -1487,7 +1487,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     placeholder="cryteam_super"
                                     value={config.aliasSlug || ''}
                                     onChange={e => updateConfigValue('aliasSlug', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                                    className="bg-black/80 border border-white/10 rounded-sm p-1.5 text-[10px] text-white flex-grow focus:border-[#00f2ff] outline-none"
+                                    className="bg-black/80 border border-white/10 rounded-sm p-1.5 text-[10px] text-white flex-grow focus:border-cb-accent outline-none"
                                   />
                                   <button
                                     type="button"
@@ -1603,7 +1603,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {/* 1. PROFILE SECTOR */}
                 {activeTab === 'profile' && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                    <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                       <User className="w-4 h-4" />
                       <span>Настройка шапки профиля</span>
                     </h3>
@@ -1615,7 +1615,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           type="text"
                           value={config.displayName}
                           onChange={e => updateConfigValue('displayName', e.target.value)}
-                          className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none text-white text-xs font-semibold"
+                          className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 focus:outline-none text-white text-xs font-semibold"
                         />
                       </div>
 
@@ -1626,7 +1626,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           onChange={e => updateConfigValue('bio', e.target.value)}
                           rows={3}
                           placeholder="Несколько слов о себе или роде вашей деятельности"
-                          className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none text-sans text-sm font-sans text-white"
+                          className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 focus:outline-none text-sans text-sm font-sans text-white"
                         />
                       </div>
 
@@ -1637,12 +1637,12 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             type="text"
                             value={config.avatarUrl}
                             onChange={e => updateConfigValue('avatarUrl', e.target.value)}
-                            className="flex-grow bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none text-xs text-white"
+                            className="flex-grow bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 focus:outline-none text-xs text-white"
                           />
                           <button 
                             type="button" 
                             onClick={() => { setUploadTarget('avatarUrl'); fileInputRef.current?.click(); }} 
-                            className="px-4 py-3 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[10px] text-[#00f2ff] font-bold uppercase tracking-wider rounded-sm flex items-center justify-center cursor-pointer transition-all"
+                            className="px-4 py-3 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-[10px] text-cb-accent font-bold uppercase tracking-wider rounded-sm flex items-center justify-center cursor-pointer transition-all"
                           >
                             <Upload className="w-3.5 h-3.5 mr-1" /> ФАЙЛ
                           </button>
@@ -1654,7 +1654,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1.5 font-bold">Верификация</label>
                           <div
                             className={`w-full py-2.5 rounded-sm border font-black tracking-widest text-[10px] uppercase text-center ${
-                              config.verified ? 'bg-[#00f2ff]/10 border-[#00f2ff]/50 text-[#00f2ff]' : 'bg-black/25 border-white/5 text-neutral-600'
+                              config.verified ? 'bg-cb-accent/10 border-cb-accent/50 text-cb-accent' : 'bg-black/25 border-white/5 text-neutral-600'
                             }`}
                           >
                             {config.verified ? '[ ВЕРИФИЦИРОВАН АДМИНОМ ]' : '[ НЕТ ВЕРИФИКАЦИИ ]'}
@@ -1668,7 +1668,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             type="button"
                             onClick={() => updateConfigValue('sparkles', !config.sparkles)}
                             className={`w-full py-2.5 rounded-sm border font-black tracking-widest text-[10px] uppercase transition cursor-pointer ${
-                              config.sparkles ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' : 'bg-black/25 border-white/10 text-neutral-500'
+                              config.sparkles ? 'bg-cb-accent/10 border-cb-accent/40 text-cb-accent' : 'bg-black/25 border-white/10 text-neutral-500'
                             }`}
                           >
                             {config.sparkles ? '[ ЭФФЕКТ ИСКР АКТИВЕН ]' : '[ ОТКЛЮЧЕН ]'}
@@ -1680,14 +1680,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           <button
                             type="button"
                             onClick={() => setIsFxModalOpen(true)}
-                            className="w-full bg-black/50 border border-white/15 hover:border-[#00f2ff] rounded-sm p-3 text-left text-white text-xs cursor-pointer transition flex items-center justify-between gap-2"
+                            className="w-full bg-black/50 border border-white/15 hover:border-cb-accent rounded-sm p-3 text-left text-white text-xs cursor-pointer transition flex items-center justify-between gap-2"
                           >
                             <span>
                               {fxFromConfig(config)
                                 ? `${FX_PRESETS[fxFromConfig(config)!.type].emoji} ${FX_PRESETS[fxFromConfig(config)!.type].label}`
                                 : 'Без частиц'}
                             </span>
-                            <span className="text-[#00f2ff] text-[10px] font-bold uppercase">Выбрать</span>
+                            <span className="text-cb-accent text-[10px] font-bold uppercase">Выбрать</span>
                           </button>
                           <p className="text-[9px] text-neutral-500 mt-1.5 leading-relaxed">
                             Снег, дождь, листья, лепестки, светлячки и другое: с ветром, реакцией на мышь и своим цветом.
@@ -1697,7 +1697,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                               type="button"
                               onClick={() => updateConfigValue('fxFront', !config.fxFront)}
                               className={`mt-2 w-full py-2 rounded-sm border font-black tracking-widest text-[10px] uppercase transition cursor-pointer ${
-                                config.fxFront ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' : 'bg-black/25 border-white/10 text-neutral-500'
+                                config.fxFront ? 'bg-cb-accent/10 border-cb-accent/40 text-cb-accent' : 'bg-black/25 border-white/10 text-neutral-500'
                               }`}
                             >
                               {config.fxFront ? '[ ПОВЕРХ КОНТЕНТА ]' : '[ ПОД КОНТЕНТОМ ]'}
@@ -1747,10 +1747,10 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           <button
                             type="button"
                             onClick={() => setIsNameEffectModalOpen(true)}
-                            className="w-full bg-black/50 border border-white/15 hover:border-[#00f2ff] rounded-sm p-3 text-left text-white text-xs cursor-pointer transition flex items-center justify-between gap-2"
+                            className="w-full bg-black/50 border border-white/15 hover:border-cb-accent rounded-sm p-3 text-left text-white text-xs cursor-pointer transition flex items-center justify-between gap-2"
                           >
                             <span>{NAME_EFFECT_CATALOG.find(e => e.id === (config.nameEffect || 'none'))?.label || 'Без эффекта'}</span>
-                            <span className="text-[#00f2ff] text-[10px] font-bold uppercase">Выбрать</span>
+                            <span className="text-cb-accent text-[10px] font-bold uppercase">Выбрать</span>
                           </button>
                           <p className="text-[9px] text-neutral-500 mt-1.5 leading-relaxed">{getNameEffectHint(config.nameEffect)}</p>
                         </div>
@@ -1762,7 +1762,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           type="text"
                           value={config.customBadge}
                           onChange={e => updateConfigValue('customBadge', e.target.value)}
-                          className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
+                          className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
                         />
                       </div>
 
@@ -1773,7 +1773,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           value={config.enterText}
                           onChange={e => updateConfigValue('enterText', e.target.value)}
                           placeholder="Войти"
-                          className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
+                          className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
                         />
                         <p className="text-[9px] text-neutral-500 mt-1">Экран перед входом на профиль. Всегда включён — настройте только текст.</p>
                       </div>
@@ -1785,7 +1785,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             type="button"
                             onClick={() => updateConfigValue('locationEnabled', !config.locationEnabled)}
                             className={`px-3 py-1 rounded-sm border text-[9px] font-bold uppercase cursor-pointer ${
-                              config.locationEnabled ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' : 'bg-black/25 border-white/10 text-neutral-500'
+                              config.locationEnabled ? 'bg-cb-accent/10 border-cb-accent/40 text-cb-accent' : 'bg-black/25 border-white/10 text-neutral-500'
                             }`}
                           >
                             {config.locationEnabled ? 'ВКЛ' : 'ВЫКЛ'}
@@ -1839,7 +1839,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 type="button"
                                 onClick={() => updateConfigValue(key, !config[key])}
                                 className={`w-full py-2 px-2 rounded-sm border text-[8px] font-bold uppercase cursor-pointer ${
-                                  config[key] ? 'bg-[#00f2ff]/10 border-[#00f2ff]/30 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
+                                  config[key] ? 'bg-cb-accent/10 border-cb-accent/30 text-cb-accent' : 'bg-black/20 border-white/10 text-neutral-500'
                                 }`}
                               >
                                 {meta.label}
@@ -1874,7 +1874,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             <button
                               type="button"
                               onClick={() => { setUploadTarget('customCursorUrl'); fileInputRef.current?.click(); }}
-                              className="px-3 py-2 bg-[#00f2ff]/10 border border-[#00f2ff]/30 text-[#00f2ff] text-[9px] font-bold uppercase rounded-sm cursor-pointer"
+                              className="px-3 py-2 bg-cb-accent/10 border border-cb-accent/30 text-cb-accent text-[9px] font-bold uppercase rounded-sm cursor-pointer"
                             >
                               ФАЙЛ
                             </button>
@@ -1897,7 +1897,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       <div className="flex justify-between items-center bg-black/30 p-2.5 border border-white/5 rounded-sm">
                         <div>
                           <h4 className="text-xs font-black font-mono text-white uppercase tracking-wider flex items-center gap-1.5 italic">
-                            <Sparkles className="w-3.5 h-3.5 text-[#00f2ff]" />
+                            <Sparkles className="w-3.5 h-3.5 text-cb-accent" />
                             <span>Прозрачные бейджи профиля</span>
                           </h4>
                           <p className="text-[10px] text-neutral-500 font-sans mt-0.5 leading-relaxed">
@@ -1927,7 +1927,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             };
                             updateConfigValue('badges', [...currentBadges, newBadge]);
                           }}
-                          className="px-3 py-1.5 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[#00f2ff] text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1 cursor-pointer transition-all active:scale-95 flex-shrink-0"
+                          className="px-3 py-1.5 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-cb-accent text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1 cursor-pointer transition-all active:scale-95 flex-shrink-0"
                         >
                           + Добавить бейдж
                         </button>
@@ -1997,7 +1997,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                         <span className="text-[11px] font-bold text-white uppercase italic tracking-wider">{badge.label || 'Без названия'}</span>
                                         <span className="text-[8px] px-1 bg-white/10 text-neutral-400 rounded-sm font-light select-none">№{idx + 1}</span>
                                       </div>
-                                      <span className="text-[9px] text-[#00f2ff]/60 block tracking-normal lowercase">{badge.description || 'нет подсказки'}</span>
+                                      <span className="text-[9px] text-cb-accent/60 block tracking-normal lowercase">{badge.description || 'нет подсказки'}</span>
                                     </div>
                                   </div>
 
@@ -2073,7 +2073,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                         }
                                         e.target.value = ''; // Reset
                                       }}
-                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1 px-2 text-[10px] text-[#00f2ff] focus:outline-none cursor-pointer"
+                                      className="w-full bg-black border border-white/10 focus:border-cb-accent rounded-sm py-1 px-2 text-[10px] text-cb-accent focus:outline-none cursor-pointer"
                                     >
                                       <option value="">-- Выберите шаблон для автозаполнения --</option>
                                       <option value="verified">✅ Верифицирован (Verified)</option>
@@ -2093,7 +2093,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       type="text"
                                       value={badge.label}
                                       onChange={e => handleUpdateBadge(badge.id, { label: e.target.value })}
-                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1 px-2 text-[10px] text-white focus:outline-none"
+                                      className="w-full bg-black border border-white/10 focus:border-cb-accent rounded-sm py-1 px-2 text-[10px] text-white focus:outline-none"
                                     />
                                   </div>
 
@@ -2105,7 +2105,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       value={badge.description || ''}
                                       onChange={e => handleUpdateBadge(badge.id, { description: e.target.value })}
                                       placeholder="Показывается на наведении"
-                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1 px-2 text-[10px] text-white placeholder-neutral-700 focus:outline-none"
+                                      className="w-full bg-black border border-white/10 focus:border-cb-accent rounded-sm py-1 px-2 text-[10px] text-white placeholder-neutral-700 focus:outline-none"
                                     />
                                   </div>
 
@@ -2115,7 +2115,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     <select
                                       value={badge.icon}
                                       onChange={e => handleUpdateBadge(badge.id, { icon: e.target.value })}
-                                      className="w-full bg-black border border-white/10 focus:border-[#00f2ff] rounded-sm py-1 px-1.5 text-[10px] text-white focus:outline-none"
+                                      className="w-full bg-black border border-white/10 focus:border-cb-accent rounded-sm py-1 px-1.5 text-[10px] text-white focus:outline-none"
                                     >
                                       <option value="crown">👑 Корона (Crown)</option>
                                       <option value="shield">🛡️ Щит (Shield)</option>
@@ -2145,7 +2145,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                         onClick={() => handleUpdateBadge(badge.id, { glow: !badge.glow })}
                                         className={`flex-grow py-1 border rounded-sm font-bold uppercase transition duration-150 cursor-pointer text-[9px] ${
                                           badge.glow 
-                                            ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' 
+                                            ? 'bg-cb-accent/10 border-cb-accent/40 text-cb-accent' 
                                             : 'bg-black border-white/10 text-neutral-500'
                                         }`}
                                       >
@@ -2170,7 +2170,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                         type="text"
                                         value={badge.bgColor || 'rgba(0,0,0,0.45)'}
                                         onChange={e => handleUpdateBadge(badge.id, { bgColor: e.target.value })}
-                                        className="w-full bg-black border border-white/10 rounded-sm py-0.5 px-1.5 text-[9px] text-white font-mono focus:outline-none focus:border-[#00f2ff]"
+                                        className="w-full bg-black border border-white/10 rounded-sm py-0.5 px-1.5 text-[9px] text-white font-mono focus:outline-none focus:border-cb-accent"
                                       />
                                     </div>
                                     <div>
@@ -2179,7 +2179,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                         type="text"
                                         value={badge.textColor || '#ffffff'}
                                         onChange={e => handleUpdateBadge(badge.id, { textColor: e.target.value })}
-                                        className="w-full bg-black border border-white/10 rounded-sm py-0.5 px-1.5 text-[9px] text-white font-mono focus:outline-none focus:border-[#00f2ff]"
+                                        className="w-full bg-black border border-white/10 rounded-sm py-0.5 px-1.5 text-[9px] text-white font-mono focus:outline-none focus:border-cb-accent"
                                       />
                                     </div>
                                     <div>
@@ -2188,7 +2188,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                         type="text"
                                         value={badge.borderColor || 'rgba(255,255,255,0.08)'}
                                         onChange={e => handleUpdateBadge(badge.id, { borderColor: e.target.value })}
-                                        className="w-full bg-black border border-white/10 rounded-sm py-0.5 px-1.5 text-[9px] text-white font-mono focus:outline-none focus:border-[#00f2ff]"
+                                        className="w-full bg-black border border-white/10 rounded-sm py-0.5 px-1.5 text-[9px] text-white font-mono focus:outline-none focus:border-cb-accent"
                                       />
                                     </div>
                                   </div>
@@ -2207,7 +2207,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {/* LAYOUT CONSTRUCTOR SECTOR */}
                 {activeTab === 'layout' && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                    <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                       <Layout className="w-4 h-4" />
                       <span>Конструктор (Порядок блоков)</span>
                     </h3>
@@ -2280,7 +2280,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {/* 2. BACKGROUND SECTOR */}
                 {activeTab === 'background' && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                    <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                       <Monitor className="w-4 h-4" />
                       <span>Настройка фона страницы</span>
                     </h3>
@@ -2308,7 +2308,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                               type="button"
                               onClick={() => updateConfigValue('bgType', t.key as BackgroundType)}
                               className={`p-2 rounded-sm border text-[10px] font-black uppercase transition scale-[0.98] cursor-pointer ${
-                                config.bgType === t.key ? 'bg-[#00f2ff] text-black border-transparent shadow-[0_0_12px_rgba(0,242,255,0.3)]' : 'bg-black/40 border-white/10 text-neutral-400 hover:text-white'
+                                config.bgType === t.key ? 'bg-cb-accent text-cb-on-accent border-transparent shadow-[0_0_12px_color-mix(in_srgb,var(--cb-accent)_30%,transparent)]' : 'bg-black/40 border-white/10 text-neutral-400 hover:text-white'
                               }`}
                             >
                               {t.label}
@@ -2331,13 +2331,13 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 type="text"
                                 value={config.bgValue}
                                 onChange={e => updateConfigValue('bgValue', e.target.value)}
-                                className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none text-xs text-white"
+                                className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 focus:outline-none text-xs text-white"
                               />
                               {(config.bgType === 'image' || config.bgType === 'video') && (
                                 <button 
                                   type="button" 
                                   onClick={() => { setUploadTarget('bgValue'); fileInputRef.current?.click(); }} 
-                                  className="px-4 py-3 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[10px] text-[#00f2ff] font-bold uppercase tracking-wider rounded-sm flex items-center justify-center cursor-pointer transition-all"
+                                  className="px-4 py-3 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-[10px] text-cb-accent font-bold uppercase tracking-wider rounded-sm flex items-center justify-center cursor-pointer transition-all"
                                 >
                                   <Upload className="w-3.5 h-3.5 mr-1" /> ФАЙЛ
                                 </button>
@@ -2388,7 +2388,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                               max="10"
                               value={config.bgEffectIntensity || 5}
                               onChange={e => updateConfigValue('bgEffectIntensity', parseInt(e.target.value))}
-                              className="w-full accent-[#00f2ff]"
+                              className="w-full accent-cb-accent"
                             />
                           </div>
                         </div>
@@ -2415,27 +2415,27 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Размытие фона (Blur)</label>
-                          <span className="text-[10px] text-[#00f2ff] font-black block mb-1">{config.bgBlur} px</span>
+                          <span className="text-[10px] text-cb-accent font-black block mb-1">{config.bgBlur} px</span>
                           <input
                             type="range"
                             min="0"
                             max="20"
                             value={config.bgBlur}
                             onChange={e => updateConfigValue('bgBlur', parseInt(e.target.value))}
-                            className="w-full accent-[#00f2ff]"
+                            className="w-full accent-cb-accent"
                           />
                         </div>
 
                         <div>
                           <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Затемнение фона (Dimmer)</label>
-                          <span className="text-[10px] text-[#00f2ff] font-black block mb-1">{config.bgDim}%</span>
+                          <span className="text-[10px] text-cb-accent font-black block mb-1">{config.bgDim}%</span>
                           <input
                             type="range"
                             min="0"
                             max="90"
                             value={config.bgDim}
                             onChange={e => updateConfigValue('bgDim', parseInt(e.target.value))}
-                            className="w-full accent-[#00f2ff]"
+                            className="w-full accent-cb-accent"
                           />
                         </div>
                       </div>
@@ -2446,7 +2446,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {/* VISUALS SECTOR */}
                 {activeTab === 'visuals' && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                    <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                       <Flame className="w-4 h-4" />
                       <span>Параметры оформления</span>
                     </h3>
@@ -2456,21 +2456,21 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       <div className="grid grid-cols-1 gap-4">
                         <div>
                           <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 font-bold">Прозрачность карточки</label>
-                          <span className="text-[10px] text-[#00f2ff] font-black block mb-1">{config.cardOpacity !== undefined ? config.cardOpacity : 55}%</span>
+                          <span className="text-[10px] text-cb-accent font-black block mb-1">{config.cardOpacity !== undefined ? config.cardOpacity : 55}%</span>
                           <input
                             type="range"
                             min="0"
                             max="100"
                             value={config.cardOpacity !== undefined ? config.cardOpacity : 55}
                             onChange={e => updateConfigValue('cardOpacity', parseInt(e.target.value))}
-                            className="w-full accent-[#00f2ff]"
+                            className="w-full accent-cb-accent"
                           />
                         </div>
                       </div>
 
                       {/* Theme Colors and typography options */}
                       <div className="border-t border-white/10 pt-4 space-y-3">
-                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black tracking-widest mb-2 italic">Цветовая палитра и выбор шрифта</h4>
+                        <h4 className="text-[10px] uppercase text-cb-accent font-black tracking-widest mb-2 italic">Цветовая палитра и выбор шрифта</h4>
                         
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                           <div>
@@ -2508,7 +2508,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             <select
                                 value={config.fontFamily}
                                 onChange={e => updateConfigValue('fontFamily', e.target.value as any)}
-                                className="bg-black/80 border border-white/15 rounded-sm p-2 focus:outline-none focus:border-[#00f2ff] text-[10px] w-full font-mono font-bold text-white outline-none"
+                                className="bg-black/80 border border-white/15 rounded-sm p-2 focus:outline-none focus:border-cb-accent text-[10px] w-full font-mono font-bold text-white outline-none"
                             >
                               <option value="Inter">Inter Sans</option>
                               <option value="Space Grotesk">Space Grotesk</option>
@@ -2521,7 +2521,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
                         <div className="border-t border-white/10 pt-4 space-y-3">
                           <div className="flex items-center justify-between gap-2">
-                            <h4 className="text-[10px] uppercase text-[#00f2ff] font-black tracking-widest italic">Цвета элементов</h4>
+                            <h4 className="text-[10px] uppercase text-cb-accent font-black tracking-widest italic">Цвета элементов</h4>
                             <button
                               type="button"
                               onClick={() => {
@@ -2532,7 +2532,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 delete cleared.sparkleColor;
                                 setConfig(cleared);
                               }}
-                              className="text-[8px] uppercase font-bold text-neutral-500 hover:text-[#00f2ff] transition"
+                              className="text-[8px] uppercase font-bold text-neutral-500 hover:text-cb-accent transition"
                             >
                               Сбросить к основному
                             </button>
@@ -2579,14 +2579,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         <div className="pt-2">
                           <label className="block text-[10px] text-neutral-500 uppercase tracking-widest mb-1 flex items-center justify-between font-bold">
                             <span>Пользовательский CSS-код (стили)</span>
-                            <span className="text-[#00f2ff] text-[8px] font-bold">[ Идеально для тонкой настройки ]</span>
+                            <span className="text-cb-accent text-[8px] font-bold">[ Идеально для тонкой настройки ]</span>
                           </label>
                           <textarea
                             value={config.customCSS || ''}
                             onChange={e => updateConfigValue('customCSS', e.target.value)}
                             rows={3}
                             placeholder=".my-element { border-radius: 5px; }"
-                            className="w-full bg-black/50 border border-white/15 hover:border-white/20 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none font-mono text-[10px] text-white"
+                            className="w-full bg-black/50 border border-white/15 hover:border-white/20 focus:border-cb-accent rounded-sm p-3 focus:outline-none font-mono text-[10px] text-white"
                           />
                         </div>
                       </div>
@@ -2597,7 +2597,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {/* GLOW SETTINGS SECTOR */}
                 {activeTab === 'glow' && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                    <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                       <Sparkles className="w-4 h-4" />
                       <span>Свечение и карточка</span>
                     </h3>
@@ -2614,17 +2614,17 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         Поменять цвета блоков: {config.swapBoxColors ? 'ВКЛ' : 'ВЫКЛ'}
                       </button>
                       <div className="border-t border-white/10 pt-3 space-y-2">
-                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black">Шаблоны профиля</h4>
+                        <h4 className="text-[10px] uppercase text-cb-accent font-black">Шаблоны профиля</h4>
                         <div className="grid grid-cols-1 gap-2">
                           {PROFILE_PRESETS.map((preset, i) => (
-                            <button key={i} type="button" onClick={() => setConfig({ ...config, ...preset })} className="py-2 px-3 bg-black/40 border border-white/10 hover:border-[#00f2ff]/40 rounded-sm text-[10px] text-left text-neutral-300">
+                            <button key={i} type="button" onClick={() => setConfig({ ...config, ...preset })} className="py-2 px-3 bg-black/40 border border-white/10 hover:border-cb-accent/40 rounded-sm text-[10px] text-left text-neutral-300">
                               Шаблон {i + 1}: {LAYOUT_MODE_LABELS[preset.layoutMode || 'default']} / {preset.bgType}
                             </button>
                           ))}
                         </div>
                       </div>
                       <div className="border-t border-white/10 pt-3 space-y-2">
-                        <h4 className="text-[10px] uppercase text-[#00f2ff] font-black">Мета для соцсетей</h4>
+                        <h4 className="text-[10px] uppercase text-cb-accent font-black">Мета для соцсетей</h4>
                         <p className="text-[9px] text-neutral-500">Как профиль выглядит при шаринге в Discord, Telegram и т.д.</p>
                         <input type="text" placeholder="Заголовок (og:title)" value={config.ogTitle || ''} onChange={e => updateConfigValue('ogTitle', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white mb-2" />
                         <input type="text" placeholder="Описание (og:description)" value={config.ogDescription || ''} onChange={e => updateConfigValue('ogDescription', e.target.value)} className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-xs text-white mb-2" />
@@ -2637,7 +2637,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {/* 3. AUDIO SECTOR */}
                 {activeTab === 'audio' && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                    <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                       <Music className="w-4 h-4" />
                       <span>Настройка фоновой музыки</span>
                     </h3>
@@ -2650,7 +2650,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             type="button"
                             onClick={() => updateConfigValue('audioEnabled', !config.audioEnabled)}
                             className={`w-full py-2.5 rounded-sm border font-black text-[10px] uppercase transition tracking-widest cursor-pointer ${
-                              config.audioEnabled ? 'bg-[#00f2ff]/10 border-[#00f2ff]/40 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
+                              config.audioEnabled ? 'bg-cb-accent/10 border-cb-accent/40 text-cb-accent' : 'bg-black/20 border-white/10 text-neutral-500'
                             }`}
                           >
                             {config.audioEnabled ? '[ ВКЛЮЧЕНО ]' : '[ ВЫКЛЮЧЕНО ]'}
@@ -2661,7 +2661,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           <select
                             value={config.audioSourceMode || 'single'}
                             onChange={e => updateConfigValue('audioSourceMode', e.target.value)}
-                            className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none cursor-pointer"
+                            className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2.5 text-xs text-white outline-none cursor-pointer"
                           >
                             <option value="single">1 файл</option>
                             <option value="playlist">Плейлист</option>
@@ -2681,7 +2681,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         <select
                           value={config.audioPlayerMode || 'minimal'}
                           onChange={e => updateConfigValue('audioPlayerMode', e.target.value)}
-                          className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none cursor-pointer"
+                          className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2.5 text-xs text-white outline-none cursor-pointer"
                         >
                           {Object.entries(AUDIO_PLAYER_LABELS).map(([id, label]) => (
                             <option key={id} value={id}>{label}</option>
@@ -2714,8 +2714,8 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       </div>
 
                       {(config.audioPlayerMode || 'minimal') === 'free' && (
-                        <div className="space-y-2.5 p-3 bg-[#00f2ff]/[0.04] border border-[#00f2ff]/20 rounded-sm">
-                          <p className="text-[10px] text-[#00f2ff] font-sans leading-relaxed">
+                        <div className="space-y-2.5 p-3 bg-cb-accent/[0.04] border border-cb-accent/20 rounded-sm">
+                          <p className="text-[10px] text-cb-accent font-sans leading-relaxed">
                             Перетащите плеер мышкой (или пальцем) прямо в предпросмотре — он встанет куда угодно. Точнее можно ползунками:
                           </p>
                           {(['x', 'y'] as const).map((axis) => (
@@ -2728,7 +2728,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 step={0.5}
                                 value={normalizePlayerPos(config.audioPlayerPos)[axis]}
                                 onChange={(e) => updateConfigValue('audioPlayerPos', { ...normalizePlayerPos(config.audioPlayerPos), [axis]: parseFloat(e.target.value) })}
-                                className="flex-1 accent-[#00f2ff]"
+                                className="flex-1 accent-cb-accent"
                               />
                               <span className="w-9 text-right text-[10px] text-neutral-400">{Math.round(normalizePlayerPos(config.audioPlayerPos)[axis])}%</span>
                             </div>
@@ -2736,7 +2736,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           <button
                             type="button"
                             onClick={() => updateConfigValue('audioPlayerPos', { ...DEFAULT_PLAYER_POS })}
-                            className="text-[9px] font-black uppercase text-[#00f2ff] hover:underline cursor-pointer"
+                            className="text-[9px] font-black uppercase text-cb-accent hover:underline cursor-pointer"
                           >
                             Сбросить позицию
                           </button>
@@ -2778,7 +2778,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           step={0.05}
                           value={config.audioPlayerOpacity ?? 1}
                           onChange={(e) => updateConfigValue('audioPlayerOpacity', parseFloat(e.target.value))}
-                          className="w-full accent-[#00f2ff]"
+                          className="w-full accent-cb-accent"
                         />
                       </div>
 
@@ -2792,12 +2792,12 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 placeholder="https://example.com/sound-beat.mp3"
                                 value={config.audioUrl}
                                 onChange={e => updateConfigValue('audioUrl', e.target.value)}
-                                className="flex-grow bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
+                                className="flex-grow bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 focus:outline-none placeholder-neutral-700 text-white text-xs"
                               />
                               <button
                                 type="button"
                                 onClick={() => { setUploadTarget('audioUrl'); fileInputRef.current?.click(); }}
-                                className="px-4 py-3 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[10px] text-[#00f2ff] font-bold uppercase tracking-wider rounded-sm flex items-center justify-center cursor-pointer transition-all"
+                                className="px-4 py-3 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-[10px] text-cb-accent font-bold uppercase tracking-wider rounded-sm flex items-center justify-center cursor-pointer transition-all"
                               >
                                 <Upload className="w-3.5 h-3.5 mr-1" /> ФАЙЛ
                               </button>
@@ -2810,7 +2810,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 type="text"
                                 value={config.audioTitle}
                                 onChange={e => updateConfigValue('audioTitle', e.target.value)}
-                                className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none"
+                                className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2.5 text-xs text-white outline-none"
                               />
                             </div>
                             <div>
@@ -2819,7 +2819,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 type="text"
                                 value={config.audioArtist}
                                 onChange={e => updateConfigValue('audioArtist', e.target.value)}
-                                className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none"
+                                className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2.5 text-xs text-white outline-none"
                               />
                             </div>
                           </div>
@@ -2852,8 +2852,8 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             <div className="space-y-2">
                               {config.playlist.map((song, sIdx) => (
                                 <div key={song.id} className="flex items-center gap-2 p-2.5 bg-black/40 border border-white/10 rounded-sm group">
-                                  <div className="w-8 h-8 rounded-sm bg-[#00f2ff]/10 border border-[#00f2ff]/20 flex items-center justify-center flex-shrink-0">
-                                    <Music className="w-3.5 h-3.5 text-[#00f2ff]" />
+                                  <div className="w-8 h-8 rounded-sm bg-cb-accent/10 border border-cb-accent/20 flex items-center justify-center flex-shrink-0">
+                                    <Music className="w-3.5 h-3.5 text-cb-accent" />
                                   </div>
                                   <div className="flex-grow min-w-0 grid grid-cols-2 gap-1.5">
                                     <input
@@ -2891,7 +2891,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     <button
                                       type="button"
                                       onClick={() => { setUploadTarget('playlistTrack'); setUploadSongId(song.id); fileInputRef.current?.click(); }}
-                                      className="px-2 py-1 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[#00f2ff] text-[8px] font-bold uppercase rounded-sm cursor-pointer"
+                                      className="px-2 py-1 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-cb-accent text-[8px] font-bold uppercase rounded-sm cursor-pointer"
                                     >
                                       ФАЙЛ
                                     </button>
@@ -2950,7 +2950,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       </div>
 
                       <details className="border-t border-white/5 pt-4">
-                        <summary className="text-[11px] font-black uppercase tracking-widest text-[#00f2ff] cursor-pointer flex items-center gap-2">
+                        <summary className="text-[11px] font-black uppercase tracking-widest text-cb-accent cursor-pointer flex items-center gap-2">
                           <Sparkles className="w-3.5 h-3.5" />
                           Аудио визуализатор
                         </summary>
@@ -2991,7 +2991,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {activeTab === 'blocks' && (
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                      <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                      <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                         <Code className="w-4 h-4" />
                         <span>Конструктор блоков профиля</span>
                       </h3>
@@ -3001,14 +3001,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                     <div className="space-y-4">
                       {/* Form to add elements */}
                       <div className="p-4 bg-black/40 border border-white/10 rounded-sm">
-                        <span className="text-[10px] block font-mono uppercase text-[#00f2ff] font-bold mb-2.5">➕ Добавить настраиваемый блок</span>
+                        <span className="text-[10px] block font-mono uppercase text-cb-accent font-bold mb-2.5">➕ Добавить настраиваемый блок</span>
                         <div className="flex flex-wrap gap-2">
                           {(['socials', 'html', 'textbox', 'quote', 'status_api', 'views_counter', 'image', 'embed'] as BlockConfig['type'][]).map(type => (
                             <button
                               key={type}
                               type="button"
                               onClick={() => handleAddBlock(type)}
-                              className="px-2.5 py-1.5 bg-white/5 hover:bg-[#00f2ff] hover:text-black rounded-sm text-[10px] font-bold font-mono uppercase tracking-wider transition cursor-pointer"
+                              className="px-2.5 py-1.5 bg-white/5 hover:bg-cb-accent hover:text-cb-on-accent rounded-sm text-[10px] font-bold font-mono uppercase tracking-wider transition cursor-pointer"
                             >
                               + {type === 'socials' ? 'Сетка ссылок' :
                                  type === 'html' ? 'Свой HTML' :
@@ -3025,9 +3025,9 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       {/* Display Blocks list */}
                       <div className="space-y-4 font-mono text-xs">
                         {config.blocks.map((block, bIdx) => (
-                           <div key={block.id} className="p-4 bg-[#0c0c0c] border border-white/10 rounded-sm relative space-y-3">
+                           <div key={block.id} className="p-4 bg-cb-surface border border-white/10 rounded-sm relative space-y-3">
                              <div className="flex justify-between items-center border-b border-white/10 pb-2.5">
-                               <span className="font-bold text-xs text-[#00f2ff] font-mono uppercase flex items-center gap-1.5">
+                               <span className="font-bold text-xs text-cb-accent font-mono uppercase flex items-center gap-1.5">
                                  <span className="bg-white/5 text-neutral-400 p-1 rounded-sm font-normal text-[10px]">{bIdx + 1}</span>
                                  {block.type === 'socials' ? '🔗 Сетка контактов / ссылок' :
                                   block.type === 'html' ? '🔱 Интегрированный HTML-песочница' :
@@ -3044,7 +3044,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   type="button"
                                   disabled={bIdx === 0}
                                   onClick={() => handleMoveBlockUp(bIdx)}
-                                  className="text-neutral-400 hover:text-[#00f2ff] disabled:opacity-20 transition cursor-pointer"
+                                  className="text-neutral-400 hover:text-cb-accent disabled:opacity-20 transition cursor-pointer"
                                   title="Переместить вверх"
                                 >
                                   <ArrowUp className="w-3.5 h-3.5" />
@@ -3053,7 +3053,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   type="button"
                                   disabled={bIdx === config.blocks.length - 1}
                                   onClick={() => handleMoveBlockDown(bIdx)}
-                                  className="text-neutral-400 hover:text-[#00f2ff] disabled:opacity-20 transition cursor-pointer"
+                                  className="text-neutral-400 hover:text-cb-accent disabled:opacity-20 transition cursor-pointer"
                                   title="Переместить вниз"
                                 >
                                   <ArrowDown className="w-3.5 h-3.5" />
@@ -3087,7 +3087,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   type="text"
                                   value={block.title}
                                   onChange={e => updateBlock(block.id, { title: e.target.value })}
-                                  className="w-full bg-black/50 border border-white/10 focus:border-[#00f2ff] rounded-sm px-2.5 py-1.5 text-xs text-white"
+                                  className="w-full bg-black/50 border border-white/10 focus:border-cb-accent rounded-sm px-2.5 py-1.5 text-xs text-white"
                                 />
                               </div>
                               <div>
@@ -3115,7 +3115,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     placeholder="#000000"
                                     value={block.bgColor || ''}
                                     onChange={e => updateBlock(block.id, { bgColor: e.target.value })}
-                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] text-white focus:border-[#00f2ff] outline-none"
+                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] text-white focus:border-cb-accent outline-none"
                                   />
                                 </div>
                                 <div>
@@ -3125,7 +3125,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     placeholder="#ffffff"
                                     value={block.textColor || ''}
                                     onChange={e => updateBlock(block.id, { textColor: e.target.value })}
-                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] text-white focus:border-[#00f2ff] outline-none"
+                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] text-white focus:border-cb-accent outline-none"
                                   />
                                 </div>
                                 <div>
@@ -3135,7 +3135,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     placeholder="#ffffff"
                                     value={block.borderColor || ''}
                                     onChange={e => updateBlock(block.id, { borderColor: e.target.value })}
-                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] text-white focus:border-[#00f2ff] outline-none"
+                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] text-white focus:border-cb-accent outline-none"
                                   />
                                 </div>
                                 <div>
@@ -3143,7 +3143,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   <select
                                     value={block.borderRadius || 'sm'}
                                     onChange={e => updateBlock(block.id, { borderRadius: e.target.value as any })}
-                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] font-bold text-white focus:border-[#00f2ff] outline-none"
+                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] font-bold text-white focus:border-cb-accent outline-none"
                                   >
                                     <option value="none">Острое (none)</option>
                                     <option value="sm">Малое (sm)</option>
@@ -3160,7 +3160,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   <select
                                     value={block.textAlign || 'center'}
                                     onChange={e => updateBlock(block.id, { textAlign: e.target.value as any })}
-                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] font-bold text-white focus:border-[#00f2ff] outline-none"
+                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] font-bold text-white focus:border-cb-accent outline-none"
                                   >
                                     <option value="left font-sans">По левому краю</option>
                                     <option value="center font-sans">По центру</option>
@@ -3172,7 +3172,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   <select
                                     value={block.fontSize || 'sm'}
                                     onChange={e => updateBlock(block.id, { fontSize: e.target.value as any })}
-                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] font-bold text-white focus:border-[#00f2ff] outline-none"
+                                    className="w-full bg-black border border-white/10 rounded-sm px-2 py-1 text-[10px] font-bold text-white focus:border-cb-accent outline-none"
                                   >
                                     <option value="xs">Микро (xs)</option>
                                     <option value="sm">Мелкий (sm)</option>
@@ -3186,7 +3186,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       type="checkbox"
                                       checked={block.glow || false}
                                       onChange={e => updateBlock(block.id, { glow: e.target.checked })}
-                                      className="rounded-sm border border-white/10 bg-black text-[#00f2ff] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                                      className="rounded-sm border border-white/10 bg-black text-cb-accent focus:ring-0 w-3.5 h-3.5 cursor-pointer"
                                     />
                                     <span>Включить неоновое свечение теней?</span>
                                   </label>
@@ -3196,7 +3196,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       placeholder="#00f2ff"
                                       value={block.glowColor || ''}
                                       onChange={e => updateBlock(block.id, { glowColor: e.target.value })}
-                                      className="bg-black border border-white/10 rounded-sm px-1.5 py-0.5 text-[9px] w-16 text-white focus:border-[#00f2ff] outline-none"
+                                      className="bg-black border border-white/10 rounded-sm px-1.5 py-0.5 text-[9px] w-16 text-white focus:border-cb-accent outline-none"
                                       title="Пользовательский CSS-код цвета свечения"
                                     />
                                   )}
@@ -3212,7 +3212,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   <button
                                     type="button"
                                     onClick={() => setSocialPickerBlockId(block.id)}
-                                    className="text-[#00f2ff] hover:underline cursor-pointer"
+                                    className="text-cb-accent hover:underline cursor-pointer"
                                   >
                                     + ДОБАВИТЬ ПЛАТФОРМУ / ССЫЛКУ
                                   </button>
@@ -3231,7 +3231,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                         <select
                                           value={soc.platform}
                                           onChange={e => handleUpdateSocialLink(block.id, soc.id, { platform: e.target.value as any })}
-                                          className="bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] font-bold text-white focus:border-[#00f2ff] outline-none"
+                                          className="bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] font-bold text-white focus:border-cb-accent outline-none"
                                         >
                                           {SOCIAL_PLATFORMS.map(p => (
                                             <option key={p.id} value={p.id}>{p.label}</option>
@@ -3243,7 +3243,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                           placeholder="Подпись (необязательно)"
                                           value={soc.label || ''}
                                           onChange={e => handleUpdateSocialLink(block.id, soc.id, { label: e.target.value })}
-                                          className="bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 text-white outline-none focus:border-[#00f2ff]"
+                                          className="bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 text-white outline-none focus:border-cb-accent"
                                         />
                                       </div>
 
@@ -3253,13 +3253,13 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                           placeholder="Ссылка (https://...)"
                                           value={soc.url}
                                           onChange={e => handleUpdateSocialLink(block.id, soc.id, { url: e.target.value })}
-                                          className="flex-grow min-w-[140px] bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 focus:border-[#00f2ff] outline-none text-white"
+                                          className="flex-grow min-w-[140px] bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 focus:border-cb-accent outline-none text-white"
                                         />
                                         <button
                                           type="button"
                                           onClick={() => handleUpdateSocialLink(block.id, soc.id, { useBrandColor: soc.useBrandColor === false })}
                                           className={`px-2 py-1 rounded-sm border text-[8px] font-bold uppercase cursor-pointer ${
-                                            soc.useBrandColor !== false ? 'bg-[#00f2ff]/10 border-[#00f2ff]/30 text-[#00f2ff]' : 'bg-black/20 border-white/10 text-neutral-500'
+                                            soc.useBrandColor !== false ? 'bg-cb-accent/10 border-cb-accent/30 text-cb-accent' : 'bg-black/20 border-white/10 text-neutral-500'
                                           }`}
                                         >
                                           Фирм. цвет
@@ -3295,7 +3295,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     <select
                                       value={block.textboxStyle || 'standard'}
                                       onChange={e => updateBlock(block.id, { textboxStyle: e.target.value as any })}
-                                      className="bg-black border border-white/15 rounded-sm p-1.5 focus:border-[#00f2ff] text-[10px] w-full font-bold text-white focus:outline-none"
+                                      className="bg-black border border-white/15 rounded-sm p-1.5 focus:border-cb-accent text-[10px] w-full font-bold text-white focus:outline-none"
                                     >
                                       {Object.entries(TEXTBOX_STYLE_LABELS).map(([id, label]) => (
                                         <option key={id} value={id}>{label}</option>
@@ -3310,7 +3310,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     value={block.textboxContent || ''}
                                     onChange={e => updateBlock(block.id, { textboxContent: e.target.value })}
                                     rows={2}
-                                    className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-sans font-sans text-xs outline-none text-white"
+                                    className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2.5 text-sans font-sans text-xs outline-none text-white"
                                   />
                                 </div>
                               </div>
@@ -3324,7 +3324,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     type="text"
                                     value={block.quoteText || ''}
                                     onChange={e => updateBlock(block.id, { quoteText: e.target.value })}
-                                    className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none"
+                                    className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2.5 text-xs text-white outline-none"
                                   />
                                 </div>
 
@@ -3334,7 +3334,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     type="text"
                                     value={block.quoteAuthor || ''}
                                     onChange={e => updateBlock(block.id, { quoteAuthor: e.target.value })}
-                                    className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2.5 text-xs text-white outline-none"
+                                    className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2.5 text-xs text-white outline-none"
                                   />
                                 </div>
                               </div>
@@ -3350,7 +3350,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       value={block.imageUrl || ''}
                                       placeholder="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe"
                                       onChange={e => updateBlock(block.id, { imageUrl: e.target.value })}
-                                      className="flex-1 bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
+                                      className="flex-1 bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2 text-xs text-white outline-none"
                                     />
                                     <button
                                       type="button"
@@ -3359,7 +3359,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                         setUploadBlockId(block.id);
                                         fileInputRef.current?.click();
                                       }}
-                                      className="px-3 py-2 bg-[#00f2ff]/10 hover:bg-[#00f2ff]/20 border border-[#00f2ff]/30 text-[#00f2ff] rounded-sm text-[9px] font-bold uppercase whitespace-nowrap cursor-pointer"
+                                      className="px-3 py-2 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-cb-accent rounded-sm text-[9px] font-bold uppercase whitespace-nowrap cursor-pointer"
                                     >
                                       Загрузить
                                     </button>
@@ -3373,7 +3373,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       value={block.imageLink || ''}
                                       placeholder="https://example.com"
                                       onChange={e => updateBlock(block.id, { imageLink: e.target.value })}
-                                      className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
+                                      className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2 text-xs text-white outline-none"
                                     />
                                   </div>
                                   <div>
@@ -3383,7 +3383,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       value={block.imageAlt || ''}
                                       placeholder="Banner Description"
                                       onChange={e => updateBlock(block.id, { imageAlt: e.target.value })}
-                                      className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
+                                      className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2 text-xs text-white outline-none"
                                     />
                                   </div>
                                 </div>
@@ -3394,7 +3394,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       type="number"
                                       value={block.imageHeight || 200}
                                       onChange={e => updateBlock(block.id, { imageHeight: parseInt(e.target.value) || 200 })}
-                                      className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
+                                      className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2 text-xs text-white outline-none"
                                     />
                                   </div>
                                   <div>
@@ -3402,7 +3402,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     <select
                                       value={block.imageFit || 'cover'}
                                       onChange={e => updateBlock(block.id, { imageFit: e.target.value as any })}
-                                      className="bg-black border border-white/15 rounded-sm p-2 focus:border-[#00f2ff] text-[11px] w-full font-bold text-white outline-none"
+                                      className="bg-black border border-white/15 rounded-sm p-2 focus:border-cb-accent text-[11px] w-full font-bold text-white outline-none"
                                     >
                                       <option value="cover">Заполнение/Обрезать лишнее (cover)</option>
                                       <option value="contain">Вписать целиком (contain)</option>
@@ -3421,7 +3421,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     <select
                                       value={block.embedType || 'youtube'}
                                       onChange={e => updateBlock(block.id, { embedType: e.target.value as any })}
-                                      className="bg-black border border-white/15 rounded-sm p-2 focus:border-[#00f2ff] text-[11px] w-full font-bold text-white outline-none"
+                                      className="bg-black border border-white/15 rounded-sm p-2 focus:border-cb-accent text-[11px] w-full font-bold text-white outline-none"
                                     >
                                       <option value="youtube">Ролик YouTube</option>
                                       <option value="spotify">Плеер Spotify</option>
@@ -3436,11 +3436,11 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                       value={block.embedUrl || ''}
                                       placeholder={block.embedType === 'spotify' ? 'https://open.spotify.com/track/...' : 'https://www.youtube.com/watch?v=...'}
                                       onChange={e => updateBlock(block.id, { embedUrl: e.target.value })}
-                                      className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
+                                      className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2 text-xs text-white outline-none"
                                     />
                                   </div>
                                 </div>
-                                <p className="text-[9px] text-[#00f2ff]/60 leading-normal font-sans italic">
+                                <p className="text-[9px] text-cb-accent/60 leading-normal font-sans italic">
                                   💡 Вставляйте обычные стандартные ссылки! Платформа самостоятельно отформатирует стандартные ссылки YouTube и Spotify во встроенные авторизованные аудио/видео-плееры.
                                 </p>
                               </div>
@@ -3453,7 +3453,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   <select
                                     value={block.statusProvider || 'custom'}
                                     onChange={e => updateBlock(block.id, { statusProvider: e.target.value as 'discord' | 'custom' })}
-                                    className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-2 text-xs text-white outline-none"
+                                    className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2 text-xs text-white outline-none"
                                   >
                                     <option value="custom">Свой текст</option>
                                     <option value="discord" disabled={!config.discordConnected}>
@@ -3467,7 +3467,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     type="text"
                                     value={block.statusCustomText || ''}
                                     onChange={e => updateBlock(block.id, { statusCustomText: e.target.value })}
-                                    className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 text-xs text-white outline-none"
+                                    className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 text-xs text-white outline-none"
                                   />
                                 </div>
                               </div>
@@ -3484,7 +3484,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   onChange={e => updateBlock(block.id, { htmlContent: e.target.value })}
                                   rows={5}
                                   placeholder="<div style='background: red;'>Custom block markup</div>"
-                                  className="w-full bg-black/50 border border-white/15 focus:border-[#00f2ff] rounded-sm p-3 focus:outline-none font-mono text-[10px] outline-none text-white"
+                                  className="w-full bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-3 focus:outline-none font-mono text-[10px] outline-none text-white"
                                 />
                               </div>
                             )}
@@ -3506,7 +3506,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {/* 6. SELF-HOST SECTOR */}
                 {activeTab === 'selfhost' && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                    <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                       <Settings className="w-4 h-4" />
                       <span>Селф-хостинг и Экспорт профиля</span>
                     </h3>
@@ -3537,7 +3537,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           <button
                             type="button"
                             onClick={handleJSONImportClick}
-                            className="px-4 py-2.5 bg-[#00f2ff] hover:bg-[#00d0e0] text-black rounded-sm font-bold tracking-wider transition flex items-center justify-center space-x-1.5 cursor-pointer text-[10px] uppercase shadow-[0_0_15px_rgba(0,242,255,0.15)]"
+                            className="px-4 py-2.5 bg-cb-accent hover:bg-cb-accent-hover text-cb-on-accent rounded-sm font-bold tracking-wider transition flex items-center justify-center space-x-1.5 cursor-pointer text-[10px] uppercase shadow-[0_0_15px_color-mix(in_srgb,var(--cb-accent)_15%,transparent)]"
                           >
                             <Upload className="w-4 h-4" />
                             <span>Импортировать конфигурацию из JSON</span>
@@ -3571,9 +3571,9 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             Поддомены пользователей
                           </h4>
                           <p className="text-[11px] mt-1 leading-relaxed">
-                            При настроенном DNS <code className="text-[#00f2ff]">*.{runtimePlatform.baseDomain || 'yourdomain.com'}</code> каждый профиль доступен как{' '}
-                            <code className="text-[#00f2ff]">slug.{runtimePlatform.baseDomain || 'yourdomain.com'}</code> и{' '}
-                            <code className="text-[#00f2ff]">{runtimePlatform.baseDomain || 'yourdomain.com'}/slug</code>.
+                            При настроенном DNS <code className="text-cb-accent">*.{runtimePlatform.baseDomain || 'yourdomain.com'}</code> каждый профиль доступен как{' '}
+                            <code className="text-cb-accent">slug.{runtimePlatform.baseDomain || 'yourdomain.com'}</code> и{' '}
+                            <code className="text-cb-accent">{runtimePlatform.baseDomain || 'yourdomain.com'}/slug</code>.
                             Alias slug из профиля задаёт короткий адрес; без alias используется username.
                           </p>
                         </div>
@@ -3599,7 +3599,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   <div className="space-y-5 animate-fade-in">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="text-sm font-black font-mono text-[#00f2ff] uppercase tracking-widest flex items-center gap-2 italic">
+                        <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
                           <QrCode className="w-4 h-4" />
                           <span>QR-код Генератор</span>
                         </h3>
@@ -3621,7 +3621,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                               <button
                                 type="button"
                                 onClick={() => setQrText(getProfileLinks().shortPath)}
-                                className="text-[8px] text-[#00f2ff] hover:underline uppercase font-extrabold cursor-pointer"
+                                className="text-[8px] text-cb-accent hover:underline uppercase font-extrabold cursor-pointer"
                               >
                                 Path
                               </button>
@@ -3629,7 +3629,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 <button
                                   type="button"
                                   onClick={() => setQrText(getProfileLinks().subdomain!)}
-                                  className="text-[8px] text-neutral-400 hover:text-[#00f2ff] hover:underline uppercase font-extrabold cursor-pointer"
+                                  className="text-[8px] text-neutral-400 hover:text-cb-accent hover:underline uppercase font-extrabold cursor-pointer"
                                 >
                                   Поддомен
                                 </button>
@@ -3648,14 +3648,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             value={qrText}
                             onChange={e => setQrText(e.target.value)}
                             placeholder="https://..."
-                            className="w-full bg-black/60 border border-white/10 focus:border-[#00f2ff] rounded-sm p-2 text-[10px] text-white outline-none"
+                            className="w-full bg-black/60 border border-white/10 focus:border-cb-accent rounded-sm p-2 text-[10px] text-white outline-none"
                           />
                         </div>
 
                         {/* Presets Grid */}
                         <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-3">
                           <span className="block text-[10px] uppercase text-neutral-400 font-bold flex items-center gap-1.5">
-                            <Palette className="w-3.5 h-3.5 text-[#00f2ff]" />
+                            <Palette className="w-3.5 h-3.5 text-cb-accent" />
                             <span>Цветовые шаблоны</span>
                           </span>
                           <div className="grid grid-cols-2 gap-2">
@@ -3757,7 +3757,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 step="0.01"
                                 value={qrAvatarSize}
                                 onChange={e => setQrAvatarSize(parseFloat(e.target.value))}
-                                className="w-full accent-[#00f2ff] h-1 bg-neutral-800 rounded-lg cursor-pointer"
+                                className="w-full accent-cb-accent h-1 bg-neutral-800 rounded-lg cursor-pointer"
                               />
                               <span className="block text-[8px] text-neutral-500 leading-normal font-sans">
                                 Примечание: При активации логотипа мы принудительно используем уровень коррекции H (High), чтобы сохранить сканируемость кода.
@@ -3782,7 +3782,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 step="1"
                                 value={qrMargin}
                                 onChange={e => setQrMargin(parseInt(e.target.value))}
-                                className="w-full accent-[#00f2ff] h-1 bg-neutral-800 rounded-lg cursor-pointer"
+                                className="w-full accent-cb-accent h-1 bg-neutral-800 rounded-lg cursor-pointer"
                               />
                             </div>
 
@@ -3791,7 +3791,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                               <select
                                 value={qrErrorCorrection}
                                 onChange={e => setQrErrorCorrection(e.target.value as any)}
-                                className="w-full bg-black border border-white/10 rounded-sm p-1.5 text-[9px] text-white focus:border-[#00f2ff] outline-none"
+                                className="w-full bg-black border border-white/10 rounded-sm p-1.5 text-[9px] text-white focus:border-cb-accent outline-none"
                               >
                                 <option value="L">Level L (7% восстановление)</option>
                                 <option value="M">Level M (15% восстановление)</option>
@@ -3807,7 +3807,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       {/* Right: Live Preview & Exports Column */}
                       <div className="space-y-4 flex flex-col items-center">
                         <div className="p-5 bg-white/5 border border-white/10 rounded-sm w-full flex flex-col items-center justify-center space-y-4">
-                          <span className="block text-[9px] uppercase tracking-widest text-[#00f2ff] font-bold font-mono">Предпросмотр</span>
+                          <span className="block text-[9px] uppercase tracking-widest text-cb-accent font-bold font-mono">Предпросмотр</span>
                           
                           {/* Main Live QR Canvas Container */}
                           <div 
@@ -3834,7 +3834,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                           <button
                             type="button"
                             onClick={handleDownloadPNG}
-                            className="w-full py-3 bg-[#00f2ff] hover:bg-[#00d0e0] text-black rounded-sm font-black text-[10px] uppercase tracking-widest transition flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_20px_rgba(0,242,255,0.15)]"
+                            className="w-full py-3 bg-cb-accent hover:bg-cb-accent-hover text-cb-on-accent rounded-sm font-black text-[10px] uppercase tracking-widest transition flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_20px_color-mix(in_srgb,var(--cb-accent)_15%,transparent)]"
                           >
                             <Download className="w-4 h-4" />
                             <span>Скачать PNG (Растр)</span>
@@ -3873,7 +3873,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
               </div>
 
               {/* Sticky bottom drawer control actions */}
-              <div className="p-4 px-6 border-t border-white/10 bg-[#0c0c0c] flex justify-between items-center z-10">
+              <div className="p-4 px-6 border-t border-white/10 bg-cb-surface flex justify-between items-center z-10">
                 <span className="text-[10px] font-mono text-neutral-400 font-bold">
                   {saveStatus === 'saving' ? 'Сохранение настроек в базу данных...' :
                    saveStatus === 'success' ? '⚡ Конфигурация успешно синхронизирована!' :
@@ -3886,7 +3886,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   className={`px-5 py-3 rounded-sm text-xs font-black tracking-widest font-mono transition uppercase flex items-center space-x-2 cursor-pointer ${
                     saveStatus === 'success' ? 'bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.35)]' :
                     saveStatus === 'error' ? 'bg-red-500 text-white' :
-                    'bg-[#00f2ff] text-black hover:bg-[#00d0e0] shadow-[0_0_20px_rgba(0,242,255,0.3)]'
+                    'bg-cb-accent text-cb-on-accent hover:bg-cb-accent-hover shadow-[0_0_20px_color-mix(in_srgb,var(--cb-accent)_30%,transparent)]'
                   }`}
                 >
                   <Save className="w-4 h-4" />
@@ -3896,17 +3896,17 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
             </div>
 
             {/* Right Sector: Live Interactive Bio Preview Frame */}
-            <div className="hidden lg:flex lg:w-[50%] lg:sticky lg:top-0 lg:self-start lg:h-[calc(100vh-76px)] bg-[#050505] flex-col overflow-hidden relative border-l border-white/10">
-              <div className="p-4 bg-[#0c0c0c] border-b border-white/10 flex justify-between items-center px-6">
+            <div className="hidden lg:flex lg:w-[50%] lg:sticky lg:top-0 lg:self-start lg:h-[calc(100vh-76px)] bg-cb-bg flex-col overflow-hidden relative border-l border-white/10">
+              <div className="p-4 bg-cb-surface border-b border-white/10 flex justify-between items-center px-6">
                 <div>
                   <span className="text-[10px] font-mono text-neutral-400 flex items-center space-x-1.5 uppercase font-bold tracking-wider">
-                    <Monitor className="w-3.5 h-3.5 text-[#00f2ff]" />
+                    <Monitor className="w-3.5 h-3.5 text-cb-accent" />
                     <span>Режим Предпросмотра (В реальном времени)</span>
                   </span>
                 </div>
                 <div className="flex gap-1 bg-black/40 p-1 rounded-sm border border-white/10">
-                  <button type="button" onClick={() => setPreviewMode('desktop')} className={`px-2 py-1 text-[9px] uppercase font-bold rounded-sm ${previewMode === 'desktop' ? 'bg-[#00f2ff] text-black' : 'text-neutral-500'}`}>Desktop</button>
-                  <button type="button" onClick={() => setPreviewMode('mobile')} className={`px-2 py-1 text-[9px] uppercase font-bold rounded-sm ${previewMode === 'mobile' ? 'bg-[#00f2ff] text-black' : 'text-neutral-500'}`}>Mobile</button>
+                  <button type="button" onClick={() => setPreviewMode('desktop')} className={`px-2 py-1 text-[9px] uppercase font-bold rounded-sm ${previewMode === 'desktop' ? 'bg-cb-accent text-cb-on-accent' : 'text-neutral-500'}`}>Desktop</button>
+                  <button type="button" onClick={() => setPreviewMode('mobile')} className={`px-2 py-1 text-[9px] uppercase font-bold rounded-sm ${previewMode === 'mobile' ? 'bg-cb-accent text-cb-on-accent' : 'text-neutral-500'}`}>Mobile</button>
                 </div>
               </div>
 
@@ -3953,8 +3953,8 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       {isRenameModalOpen && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[99] flex items-center justify-center p-4">
           <div className="bg-[#0b0b0f] border border-white/10 p-6 rounded-sm max-w-sm w-full space-y-4 font-mono text-white">
-            <h4 className="text-xs font-black uppercase tracking-widest text-[#00f2ff] flex items-center gap-1.5 italic">
-              <Settings className="w-4 h-4 text-[#00f2ff]" />
+            <h4 className="text-xs font-black uppercase tracking-widest text-cb-accent flex items-center gap-1.5 italic">
+              <Settings className="w-4 h-4 text-cb-accent" />
               <span>Изменить имя пользователя</span>
             </h4>
             <p className="text-[10px] text-neutral-400 font-sans leading-normal">
@@ -3968,7 +3968,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   placeholder="new_username_slug"
                   value={renameInput}
                   onChange={e => setRenameInput(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                  className="w-full bg-black border border-white/15 focus:border-[#00f2ff] p-2.5 rounded-sm text-xs outline-none text-white font-sans [color-scheme:dark]"
+                  className="w-full bg-black border border-white/15 focus:border-cb-accent p-2.5 rounded-sm text-xs outline-none text-white font-sans [color-scheme:dark]"
                 />
               </div>
 
@@ -3995,7 +3995,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 <button
                   type="submit"
                   disabled={renameLoading}
-                  className="px-4 py-2 bg-[#00f2ff] text-black font-black uppercase rounded-sm hover:bg-[#00d0e0] transition flex items-center space-x-1 cursor-pointer"
+                  className="px-4 py-2 bg-cb-accent text-cb-on-accent font-black uppercase rounded-sm hover:bg-cb-accent-hover transition flex items-center space-x-1 cursor-pointer"
                 >
                   {renameLoading ? (
                     <span className="w-3.5 h-3.5 border border-t-transparent border-black animate-spin rounded-full" />

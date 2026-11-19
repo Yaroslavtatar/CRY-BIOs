@@ -12,6 +12,7 @@ export interface AdminApi {
   get<T = any>(path: string): Promise<T>;
   send<T = any>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T>;
   download(path: string, filename: string): Promise<void>;
+  upload<T = any>(path: string, file: File): Promise<T>;
   password: string;
 }
 
@@ -38,6 +39,11 @@ export function createAdminApi(password: string): AdminApi {
     get: async (path) => parse(await fetch(path, { headers: headers() })),
     send: async (method, path, body) =>
       parse(await fetch(path, { method, headers: headers(body !== undefined), body: body !== undefined ? JSON.stringify(body) : undefined })),
+    upload: async (path, file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return parse(await fetch(path, { method: 'POST', headers: headers(), body: fd }));
+    },
     download: async (path, filename) => {
       const res = await fetch(path, { headers: headers() });
       if (!res.ok) await parse(res);

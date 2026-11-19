@@ -39,6 +39,15 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
   const toastId = useRef(0);
 
+  // Админка всегда в стандартном оформлении: пользовательская тема её не затрагивает
+  useEffect(() => {
+    const link = document.getElementById('cb-theme-css');
+    const parent = link?.parentNode;
+    link?.remove();
+    // при выходе на сайт возвращаем тему обратно (без перезагрузки страницы)
+    return () => { if (link && parent) parent.appendChild(link); };
+  }, []);
+
   // Админ-пароль живёт только в памяти вкладки; старые копии из storage удаляем.
   useEffect(() => {
     try {

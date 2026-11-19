@@ -16,7 +16,7 @@ export default function SocialRow({ githubUrl, socials, className = '' }: { gith
             rel="noopener noreferrer"
             aria-label={s.label}
             title={s.label}
-            className="w-10 h-10 rounded-sm bg-white/5 border border-white/10 hover:border-[#00f2ff]/60 hover:text-[#00f2ff] text-neutral-300 flex items-center justify-center transition"
+            className="w-10 h-10 rounded-sm bg-white/5 border border-white/10 hover:border-cb-accent/60 hover:text-cb-accent text-neutral-300 flex items-center justify-center transition"
           >
             <SocialIcon platform={s.id} className="w-5 h-5" />
           </a>
