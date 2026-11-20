@@ -1,4 +1,5 @@
 import type { BioConfig } from './types';
+import { sanitizeCanvas } from './canvasLayout';
 
 /** Поля профиля, которые клиент менять не может: их ставит только сервер/админ. */
 const PROTECTED_BADGE_TYPES = new Set(['verified', 'staff']);
@@ -43,6 +44,13 @@ export function guardProfilePayload(payload: Partial<BioConfig> & Record<string,
     for (const sb of storedProtected) {
       if (!payload.badges.some(b => b.id === sb.id)) payload.badges.push(sb);
     }
+  }
+
+  // canvas: только числа в разумных пределах и безопасные ключи
+  if ('canvas' in payload) {
+    const canvas = sanitizeCanvas(payload.canvas);
+    if (canvas) payload.canvas = canvas;
+    else delete payload.canvas;
   }
 
   return { ok: true };

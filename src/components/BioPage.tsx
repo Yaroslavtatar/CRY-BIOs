@@ -16,6 +16,8 @@ import LocationLine from './LocationLine';
 import MobileBioLayout, { useMobileBio } from './MobileBioLayout';
 import VerifiedBadge, { VerifiedAvatarRing } from './VerifiedBadge';
 import BadgeRow from './BadgeRow';
+import CanvasStage, { type CanvasEditorProps } from './CanvasStage';
+import { resolveCanvas } from '../canvasLayout';
 import SocialIcon from './SocialIcon';
 import GlowLayer, { getGlowStyle, getCardGlow, ProfileGradientWrapper } from './GlowLayer';
 import { getNameEffectClasses, getNameEffectStyle, nameEffectOptions } from '../utils/nameEffects';
@@ -94,9 +96,11 @@ interface BioPageProps {
   forceMobile?: boolean;
   /** Предпросмотр: плеер в режиме «свободное место» можно перетаскивать, итоговая позиция приходит сюда */
   onPlayerMove?: (pos: AudioPlayerPos) => void;
+  /** Студия конструктора: включает перетаскивание и изменение размеров элементов на холсте */
+  canvasEditor?: CanvasEditorProps;
 }
 
-export default function BioPage({ username, onExit, previewConfig, forceMobile, onPlayerMove }: BioPageProps) {
+export default function BioPage({ username, onExit, previewConfig, forceMobile, onPlayerMove, canvasEditor }: BioPageProps) {
   const [config, setConfig] = useState<BioConfig | null>(previewConfig || null);
   const [loading, setLoading] = useState(!previewConfig);
   const [entered, setEntered] = useState(!!previewConfig);
@@ -940,10 +944,415 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
     );
   }
 
+  const renderBlock = (block: BlockConfig) => {
+      const blockStyle = getBlockStyle(block);
+      const blockClasses = getBlockClasses(block);
+
+      switch (block.type) {
+        // Social Links Blocks Minimal
+        case 'socials':
+          return (
+            <div 
+              key={block.id} 
+              style={blockStyle}
+              className={`flex flex-wrap items-center justify-center gap-3.5 py-2 mt-2 ${blockClasses}`}
+            >
+              {block.socialsList && block.socialsList.map((soc: SocialLink) => {
+                const iconColor = getSocialIconColor(soc, resolveThemeColor(config, 'link'));
+                return (
+                <a
+                  key={soc.id}
+                  href={safeHref(soc.url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center text-[22px] transition-all duration-300 hover:scale-110 active:scale-95"
+                  style={{ color: iconColor, filter: `drop-shadow(0 0 7px ${iconColor}88)` }}
+                  title={soc.label || soc.platform}
+                >
+                  <SocialIcon platform={soc.platform} className="w-5 h-5" />
+                </a>
+              );})}
+            </div>
+          );
+
+        // Custom embedded HTML / CSS container code block
+        case 'html':
+          return (
+            <div 
+              key={block.id} 
+              style={blockStyle}
+              className={`w-full max-w-sm bg-transparent !border-none overflow-x-auto ${blockClasses}`}
+            >
+              <div
+                className="p-3 text-[11px] font-sans text-white/90 drop-shadow-md max-w-full overflow-x-auto [&_*]:max-w-full [&_*]:[overflow-wrap:anywhere]"
+                dangerouslySetInnerHTML={{ __html: sanitizeUserHtml(block.htmlContent || '') }}
+              />
+            </div>
+          );
+
+        // Custom-made guns.lol direct Status profile module!
+        case 'status_api': {
+          const useDiscord = block.statusProvider === 'discord' && discordUser?.discord_user;
+          const dStatus = normalizeDiscordStatus(discordUser?.discord_status);
+          const dActivity = useDiscord ? describeActivity(discordUser.activities) : null;
+          return (
+            <div
+              key={block.id}
+              style={blockStyle}
+              className={`max-w-xs text-center font-mono ${blockClasses}`}
+            >
+              {useDiscord ? (
+                <div className="flex flex-col items-center gap-1">
+                  <span className="inline-flex items-center gap-2 text-[12px] text-white/90 drop-shadow-md">
+                    <span className={`w-2.5 h-2.5 rounded-full ${
+                      dStatus === 'online' ? 'bg-green-500' :
+                      dStatus === 'idle' ? 'bg-yellow-500' :
+                      dStatus === 'dnd' ? 'bg-red-500' : 'bg-neutral-500'
+                    }`} />
+                    {DISCORD_STATUS_LABEL[dStatus]}
+                  </span>
+                  {dActivity && (
+                    <span className="text-[11px] text-white/70 font-sans line-clamp-1">{dActivity}</span>
+                  )}
+                </div>
+              ) : (
+                block.statusCustomText && (
+                  <p className="italic font-sans text-[13px] leading-relaxed drop-shadow-md text-white/80">
+                    "{block.statusCustomText}"
+                  </p>
+                )
+              )}
+            </div>
+          );
+        }
+
+        // Interactive tracking profile View page counter block Minimal
+        case 'views_counter':
+          return (
+            <div 
+              key={block.id} 
+              style={{ ...blockStyle, ...viewsCounterOffset }}
+              className={`fixed bottom-[12px] left-[15px] flex justify-center items-center font-sans z-50 ${blockClasses}`}
+            >
+              <span className="flex items-center space-x-1.5 text-[14px] text-[#f5f5f5] drop-shadow-lg font-semibold tracking-wide">
+                <Eye className="w-[14px] h-[14px]" />
+                <span>{visitorCount}</span>
+              </span>
+            </div>
+          );
+
+        // Glowing textbox announcement block
+        case 'textbox':
+          return (
+            <div
+              key={block.id}
+              style={{
+                ...blockStyle,
+                backgroundColor: `rgba(0, 0, 0, ${(config.cardOpacity !== undefined ? config.cardOpacity : 20) / 100})`,
+                border: `2px solid rgba(255, 255, 255, 0.04)`,
+                borderRadius: `20px`,
+              }}
+              className={`p-[35px_15px] max-w-[40rem] mx-auto text-center font-sans text-[14px] leading-relaxed text-white drop-shadow-md ${blockClasses} ${
+                block.textboxStyle === 'glow' ? 'shadow-[0_0_16.5px_#ffffff] text-white border-none' : ''
+              }`}
+            >
+              {block.textboxStyle === 'marquee' ? (
+                <div className="overflow-hidden w-full">
+                  <div className="whitespace-nowrap animate-marquee">
+                    {block.textboxContent || 'КОНТЕНТ НЕ ЗАДАН'}
+                  </div>
+                </div>
+              ) : (
+                <p>{block.textboxContent || 'КОНТЕНТ НЕ ЗАДАН'}</p>
+              )}
+            </div>
+          );
+
+        // Quotes text block
+        case 'quote':
+          return (
+            <div 
+              key={block.id} 
+              style={{
+                ...blockStyle,
+                backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                border: '2px solid rgba(0, 0, 0, 0.1)',
+                borderRadius: '20px'
+              }}
+              className={`p-[35px_15px] max-w-[40rem] mx-auto font-sans text-center text-white/60 relative w-full ${blockClasses}`}
+            >
+              <Quote className="w-4 h-4 text-white/30 absolute top-4 left-6 mix-blend-screen" />
+              <p className="font-sans leading-relaxed text-[14px] tracking-wide text-white drop-shadow-md italic">"{block.quoteText || 'Код без терминала — как рыцарь без меча.'}"</p>
+              {block.quoteAuthor && (
+                <span className="block text-center text-[12px] font-sans text-white/60 tracking-wider uppercase mt-3 font-semibold drop-shadow-md break-words">
+                  — {block.quoteAuthor}
+                </span>
+              )}
+            </div>
+          );
+
+        // Featured Image block
+        case 'image':
+          const imgElement = (
+            <img
+              src={block.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80'}
+              alt={block.imageAlt || 'Изображение'}
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              decoding="async"
+              style={{
+                height: block.imageHeight ? `${block.imageHeight}px` : '200px',
+                objectFit: block.imageFit || 'cover',
+              }}
+              className="w-full block"
+            />
+          );
+          return (
+            <div
+              key={block.id}
+              style={{
+                ...blockStyle,
+                backgroundColor: `rgba(0, 0, 0, ${(config.cardOpacity !== undefined ? config.cardOpacity - 10 : 45) / 100})`
+              }}
+              className={`overflow-hidden border border-white/10 rounded-xl ${blockClasses}`}
+            >
+              {block.title && (
+                <div className="px-3.5 py-1.5 border-b border-white/10 bg-black/40 text-[9px] font-mono text-neutral-500 uppercase tracking-widest text-center font-bold">
+                  {block.title}
+                </div>
+              )}
+              {block.imageLink ? (
+                <a href={block.imageLink} target="_blank" rel="noopener noreferrer" className="block focus:outline-none hover:opacity-90 transition">
+                  {imgElement}
+                </a>
+              ) : (
+                imgElement
+              )}
+            </div>
+          );
+
+        // Media Embed block
+        case 'embed':
+          const embedSrc = getEmbedSrc(block.embedType, block.embedUrl || '');
+          return (
+            <div
+              key={block.id}
+              style={{
+                ...blockStyle,
+                backgroundColor: `rgba(0, 0, 0, ${(config.cardOpacity !== undefined ? config.cardOpacity - 10 : 45) / 100})`
+              }}
+              className={`overflow-hidden border border-white/10 rounded-xl ${blockClasses}`}
+            >
+              {block.title && (
+                <div className="px-3.5 py-1.5 border-b border-white/10 bg-black/40 text-[9px] font-mono text-neutral-500 uppercase tracking-widest text-center font-bold">
+                  {block.title}
+                </div>
+              )}
+              <div className="p-2 justify-center flex">
+                {embedSrc && isSafeEmbedUrl(embedSrc) ? (
+                  <iframe
+                    src={embedSrc}
+                    sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    loading="lazy"
+                    width="100%"
+                    height={block.embedType === 'spotify' ? '80' : block.embedType === 'soundcloud' ? '150' : '220'}
+                    frameBorder="0"
+                    allowFullScreen
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    className="rounded-sm"
+                  />
+                ) : (
+                  <div className="p-4 text-xs text-neutral-500 font-mono text-center w-full">Канал проигрывателя не настроен.</div>
+                )}
+              </div>
+            </div>
+          );
+
+        default:
+          return null;
+      }
+  };
+
+  const renderSection = (section: string) => {
+      if (section === 'avatar') {
+        return (
+          <div key="avatar">
+          <GlowLayer config={config} target="avatar">
+            <div className="relative flex flex-col items-center">
+              <VerifiedAvatarRing config={config}>
+                <img
+                  src={mediaUrl(config.avatarUrl) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
+                  crossOrigin="anonymous"
+                  alt={config.displayName}
+                  referrerPolicy="no-referrer"
+                  loading="eager"
+                  decoding="async"
+                  className={`${mobile.avatarSize} rounded-full object-cover relative z-10 transition duration-300`}
+                  style={{ boxShadow: '0 0 15px rgba(0,0,0,0.5)', ...getGlowStyle(config, 'avatar') }}
+                />
+              </VerifiedAvatarRing>
+            </div>
+          </GlowLayer>
+          </div>
+        );
+      }
+
+      if (section === 'username') {
+        return (
+          <div key="username">
+          <GlowLayer config={config} target="username">
+            <div className="flex flex-col items-center">
+              <div className="group relative flex items-center justify-center gap-1.5 flex-wrap">
+                <div className="relative inline-block isolate">
+                  <NameSparkOverlay
+                    effect={config.nameEffect}
+                    textLength={(config.displayName || config.username).length}
+                    options={nameEffectOptions(config)}
+                  />
+                  <h1
+                    aria-label={config.displayName || config.username}
+                    className={`${mobile.nameSize} leading-none font-semibold pb-1 relative z-10 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
+                    style={{
+                      ...getNameEffectStyle(config.nameEffect, config.displayName || config.username, nameEffectOptions(config)),
+                      ...getGlowStyle(config, 'username'),
+                    }}
+                  >
+                    <NameText effect={config.nameEffect} text={config.displayName || config.username} />
+                  </h1>
+                </div>
+                <VerifiedBadge config={config} />
+              </div>
+            </div>
+          </GlowLayer>
+          </div>
+        );
+      }
+
+      if (section === 'location') {
+        return (
+          <div key="location">
+            <GlowLayer config={config} target="location">
+              <LocationLine config={config} />
+            </GlowLayer>
+          </div>
+        );
+      }
+
+      if (section === 'badges') {
+        if (config.badges && config.badges.filter(b => b.enabled).length > 0) {
+          return (
+            <div key="badges" className="w-full flex justify-center">
+              <GlowLayer config={config} target="badges">
+                <BadgeRow
+                  badges={config.badges}
+                  primaryColor={config.primaryColor}
+                />
+              </GlowLayer>
+            </div>
+          );
+        }
+      }
+
+      if (section === 'discord') {
+        if (config.discordConnected && config.discordId) {
+          return (
+            <div key="discord" className="flex flex-col items-center p-3 bg-black/40 border border-white/5 rounded-xl min-w-0 w-full max-w-xs shadow-lg">
+              {discordUser && discordUser.discord_user && (
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <img
+                      src={discordAvatarUrl(
+                        discordUser.discord_user.id,
+                        discordUser.discord_user.avatar,
+                      )}
+                      className="w-12 h-12 rounded-full border border-white/10"
+                      loading="lazy"
+                      decoding="async"
+                      onError={(e) => { e.currentTarget.src = 'https://cdn.discordapp.com/embed/avatars/0.png' }}
+                      alt="Discord avatar"
+                    />
+                    <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-black ${
+                      discordUser.discord_status === 'online' ? 'bg-green-500' :
+                      discordUser.discord_status === 'idle' ? 'bg-yellow-500' :
+                      discordUser.discord_status === 'dnd' ? 'bg-red-500' : 'bg-neutral-500'
+                    }`} title={DISCORD_STATUS_LABEL[normalizeDiscordStatus(discordUser.discord_status)]} />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h1 className="font-bold text-[15px] text-white leading-tight flex items-center gap-1.5 drop-shadow-md">
+                        {discordUser.discord_user.display_name || discordUser.discord_user.username}
+                      </h1>
+                      {discordUser.discord_user.badges && discordUser.discord_user.badges.map((b: DiscordBadge) => (
+                        <div key={b.id} className="w-4 h-4 bg-black/40 rounded-sm border border-white/10 flex items-center justify-center" title={b.label}>
+                          {renderDiscordBadgeIcon(b)}
+                        </div>
+                      ))}
+                    </div>
+                    <h3 className="font-mono text-[11px] text-white/50 tracking-wide leading-tight mt-0.5">
+                       @{discordUser.discord_user.username}
+                    </h3>
+                    {describeActivity(discordUser.activities) && (
+                      <p className="text-[10px] text-white/70 mt-1 line-clamp-1 max-w-[180px]">
+                        {describeActivity(discordUser.activities)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+      }
+
+      if (section === 'bio') {
+        if (config.bio) {
+          return (
+            <p key="bio" className="text-[14px] font-sans text-center text-white/90 leading-normal max-w-[320px] px-2 whitespace-pre-line drop-shadow-md">
+              {config.bio}
+            </p>
+          );
+        }
+      }
+
+      if (section === 'blocks') {
+        return (
+          <div key="blocks" className="w-full">
+            <GlowLayer config={config} target="links" className="flex flex-col items-center space-y-3 w-full">
+            {config.blocks && config.blocks.filter(b => b.enabled).map((block) => renderBlock(block))}
+          </GlowLayer>
+          </div>
+        );
+      }
+
+      if (section === 'player') {
+        return <React.Fragment key="player">{renderAudioBar('inline')}</React.Fragment>;
+      }
+      return null;
+  };
+
+  const canvasMode = config.canvas?.enabled === true;
+  const canvasDevice = mobile.isViewportMobile ? 'mobile' : 'desktop';
+  const canvasState = canvasMode ? resolveCanvas(config) : null;
+
+  /** Элемент холста: секция страницы или отдельный блок */
+  const renderCanvasElement = (id: string): React.ReactNode => {
+    if (id.startsWith('block:')) {
+      const block = config.blocks?.find((b) => `block:${b.id}` === id && b.enabled);
+      if (!block) return null;
+      return (
+        <GlowLayer config={config} target="links" className="flex flex-col items-center w-full">
+          {renderBlock(block)}
+        </GlowLayer>
+      );
+    }
+    return renderSection(id);
+  };
+
   return (
     <MobileBioLayout config={config} forceMobile={forceMobile} className="min-h-screen w-full">
     <div
-      className={`min-h-screen relative text-white flex items-center justify-center py-6 p-4 overflow-x-hidden ${config.monochromeMode ? 'grayscale' : ''}`}
+      className={`min-h-screen relative text-white flex justify-center overflow-x-hidden ${canvasMode ? 'items-start' : 'items-center py-6 p-4'} ${config.monochromeMode ? 'grayscale' : ''}`}
       style={{
         ...resolveBackgroundCSS(),
         ...(playerDockedBottom ? { paddingBottom: `max(${dockedReserve}, calc(env(safe-area-inset-bottom, 0px) + ${dockedReserve}))` } : {}),
@@ -1061,7 +1470,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
       </AnimatePresence>
 
       {/* Floating authentic top bar overlay when viewing preview config */}
-      {previewConfig && (
+      {previewConfig && !canvasEditor && (
         <div className="fixed top-0 left-0 right-0 h-14 bg-black/75 border-b border-white/5 backdrop-blur-md z-[50] px-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <button onClick={toggleMute} className="text-neutral-400 hover:text-white transition cursor-pointer">
@@ -1086,7 +1495,23 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
       {entered && renderAudioBar('floating')}
       {entered && renderAudioBar('free')}
 
-      {entered && (
+      {entered && canvasMode && canvasState && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+          className="relative z-10 w-full"
+        >
+          <CanvasStage
+            device={canvasDevice}
+            layout={canvasState[canvasDevice]}
+            renderElement={renderCanvasElement}
+            editor={canvasEditor}
+          />
+        </motion.div>
+      )}
+
+      {entered && !canvasMode && (
         <motion.div
           ref={cardRef}
           initial={{ opacity: 0, y: 35, scale: 0.95 }}
@@ -1116,390 +1541,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
           {(card.glare || card.tilt) && (
             <div aria-hidden className="pointer-events-none absolute inset-0 z-20" style={cardGlareStyle(tilt, card.radius, card.glare && cardHover)} />
           )}
-          {visibleLayout.map((section) => {
-            if (section === 'avatar') {
-              return (
-                <div key="avatar">
-                <GlowLayer config={config} target="avatar">
-                  <div className="relative flex flex-col items-center">
-                    <VerifiedAvatarRing config={config}>
-                      <img
-                        src={mediaUrl(config.avatarUrl) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
-                        crossOrigin="anonymous"
-                        alt={config.displayName}
-                        referrerPolicy="no-referrer"
-                        loading="eager"
-                        decoding="async"
-                        className={`${mobile.avatarSize} rounded-full object-cover relative z-10 transition duration-300`}
-                        style={{ boxShadow: '0 0 15px rgba(0,0,0,0.5)', ...getGlowStyle(config, 'avatar') }}
-                      />
-                    </VerifiedAvatarRing>
-                  </div>
-                </GlowLayer>
-                </div>
-              );
-            }
-
-            if (section === 'username') {
-              return (
-                <div key="username">
-                <GlowLayer config={config} target="username">
-                  <div className="flex flex-col items-center">
-                    <div className="group relative flex items-center justify-center gap-1.5 flex-wrap">
-                      <div className="relative inline-block isolate">
-                        <NameSparkOverlay
-                          effect={config.nameEffect}
-                          textLength={(config.displayName || config.username).length}
-                          options={nameEffectOptions(config)}
-                        />
-                        <h1
-                          aria-label={config.displayName || config.username}
-                          className={`${mobile.nameSize} leading-none font-semibold pb-1 relative z-10 ${getNameEffectClasses(config.nameEffect, config.displayName || config.username)}`}
-                          style={{
-                            ...getNameEffectStyle(config.nameEffect, config.displayName || config.username, nameEffectOptions(config)),
-                            ...getGlowStyle(config, 'username'),
-                          }}
-                        >
-                          <NameText effect={config.nameEffect} text={config.displayName || config.username} />
-                        </h1>
-                      </div>
-                      <VerifiedBadge config={config} />
-                    </div>
-                  </div>
-                </GlowLayer>
-                </div>
-              );
-            }
-
-            if (section === 'location') {
-              return (
-                <div key="location">
-                  <GlowLayer config={config} target="location">
-                    <LocationLine config={config} />
-                  </GlowLayer>
-                </div>
-              );
-            }
-
-            if (section === 'badges') {
-              if (config.badges && config.badges.filter(b => b.enabled).length > 0) {
-                return (
-                  <div key="badges" className="w-full flex justify-center">
-                    <GlowLayer config={config} target="badges">
-                      <BadgeRow
-                        badges={config.badges}
-                        primaryColor={config.primaryColor}
-                      />
-                    </GlowLayer>
-                  </div>
-                );
-              }
-            }
-
-            if (section === 'discord') {
-              if (config.discordConnected && config.discordId) {
-                return (
-                  <div key="discord" className="flex flex-col items-center p-3 bg-black/40 border border-white/5 rounded-xl min-w-0 w-full max-w-xs shadow-lg">
-                    {discordUser && discordUser.discord_user && (
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <img
-                            src={discordAvatarUrl(
-                              discordUser.discord_user.id,
-                              discordUser.discord_user.avatar,
-                            )}
-                            className="w-12 h-12 rounded-full border border-white/10"
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => { e.currentTarget.src = 'https://cdn.discordapp.com/embed/avatars/0.png' }}
-                            alt="Discord avatar"
-                          />
-                          <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-black ${
-                            discordUser.discord_status === 'online' ? 'bg-green-500' :
-                            discordUser.discord_status === 'idle' ? 'bg-yellow-500' :
-                            discordUser.discord_status === 'dnd' ? 'bg-red-500' : 'bg-neutral-500'
-                          }`} title={DISCORD_STATUS_LABEL[normalizeDiscordStatus(discordUser.discord_status)]} />
-                        </div>
-                        <div className="flex flex-col text-left">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h1 className="font-bold text-[15px] text-white leading-tight flex items-center gap-1.5 drop-shadow-md">
-                              {discordUser.discord_user.display_name || discordUser.discord_user.username}
-                            </h1>
-                            {discordUser.discord_user.badges && discordUser.discord_user.badges.map((b: DiscordBadge) => (
-                              <div key={b.id} className="w-4 h-4 bg-black/40 rounded-sm border border-white/10 flex items-center justify-center" title={b.label}>
-                                {renderDiscordBadgeIcon(b)}
-                              </div>
-                            ))}
-                          </div>
-                          <h3 className="font-mono text-[11px] text-white/50 tracking-wide leading-tight mt-0.5">
-                             @{discordUser.discord_user.username}
-                          </h3>
-                          {describeActivity(discordUser.activities) && (
-                            <p className="text-[10px] text-white/70 mt-1 line-clamp-1 max-w-[180px]">
-                              {describeActivity(discordUser.activities)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-            }
-
-            if (section === 'bio') {
-              if (config.bio) {
-                return (
-                  <p key="bio" className="text-[14px] font-sans text-center text-white/90 leading-normal max-w-[320px] px-2 whitespace-pre-line drop-shadow-md">
-                    {config.bio}
-                  </p>
-                );
-              }
-            }
-
-            if (section === 'blocks') {
-              return (
-                <div key="blocks" className="w-full">
-                  <GlowLayer config={config} target="links" className="flex flex-col items-center space-y-3 w-full">
-                  {config.blocks && config.blocks.filter(b => b.enabled).map((block) => {
-                    const blockStyle = getBlockStyle(block);
-                    const blockClasses = getBlockClasses(block);
-
-                    switch (block.type) {
-                      // Social Links Blocks Minimal
-                      case 'socials':
-                        return (
-                          <div 
-                            key={block.id} 
-                            style={blockStyle}
-                            className={`flex flex-wrap items-center justify-center gap-3.5 py-2 mt-2 ${blockClasses}`}
-                          >
-                            {block.socialsList && block.socialsList.map((soc: SocialLink) => {
-                              const iconColor = getSocialIconColor(soc, resolveThemeColor(config, 'link'));
-                              return (
-                              <a
-                                key={soc.id}
-                                href={safeHref(soc.url)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center justify-center text-[22px] transition-all duration-300 hover:scale-110 active:scale-95"
-                                style={{ color: iconColor, filter: `drop-shadow(0 0 7px ${iconColor}88)` }}
-                                title={soc.label || soc.platform}
-                              >
-                                <SocialIcon platform={soc.platform} className="w-5 h-5" />
-                              </a>
-                            );})}
-                          </div>
-                        );
-
-                      // Custom embedded HTML / CSS container code block
-                      case 'html':
-                        return (
-                          <div 
-                            key={block.id} 
-                            style={blockStyle}
-                            className={`w-full max-w-sm bg-transparent !border-none overflow-x-auto ${blockClasses}`}
-                          >
-                            <div
-                              className="p-3 text-[11px] font-sans text-white/90 drop-shadow-md max-w-full overflow-x-auto [&_*]:max-w-full [&_*]:[overflow-wrap:anywhere]"
-                              dangerouslySetInnerHTML={{ __html: sanitizeUserHtml(block.htmlContent || '') }}
-                            />
-                          </div>
-                        );
-
-                      // Custom-made guns.lol direct Status profile module!
-                      case 'status_api': {
-                        const useDiscord = block.statusProvider === 'discord' && discordUser?.discord_user;
-                        const dStatus = normalizeDiscordStatus(discordUser?.discord_status);
-                        const dActivity = useDiscord ? describeActivity(discordUser.activities) : null;
-                        return (
-                          <div
-                            key={block.id}
-                            style={blockStyle}
-                            className={`max-w-xs text-center font-mono ${blockClasses}`}
-                          >
-                            {useDiscord ? (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className="inline-flex items-center gap-2 text-[12px] text-white/90 drop-shadow-md">
-                                  <span className={`w-2.5 h-2.5 rounded-full ${
-                                    dStatus === 'online' ? 'bg-green-500' :
-                                    dStatus === 'idle' ? 'bg-yellow-500' :
-                                    dStatus === 'dnd' ? 'bg-red-500' : 'bg-neutral-500'
-                                  }`} />
-                                  {DISCORD_STATUS_LABEL[dStatus]}
-                                </span>
-                                {dActivity && (
-                                  <span className="text-[11px] text-white/70 font-sans line-clamp-1">{dActivity}</span>
-                                )}
-                              </div>
-                            ) : (
-                              block.statusCustomText && (
-                                <p className="italic font-sans text-[13px] leading-relaxed drop-shadow-md text-white/80">
-                                  "{block.statusCustomText}"
-                                </p>
-                              )
-                            )}
-                          </div>
-                        );
-                      }
-
-                      // Interactive tracking profile View page counter block Minimal
-                      case 'views_counter':
-                        return (
-                          <div 
-                            key={block.id} 
-                            style={{ ...blockStyle, ...viewsCounterOffset }}
-                            className={`fixed bottom-[12px] left-[15px] flex justify-center items-center font-sans z-50 ${blockClasses}`}
-                          >
-                            <span className="flex items-center space-x-1.5 text-[14px] text-[#f5f5f5] drop-shadow-lg font-semibold tracking-wide">
-                              <Eye className="w-[14px] h-[14px]" />
-                              <span>{visitorCount}</span>
-                            </span>
-                          </div>
-                        );
-
-                      // Glowing textbox announcement block
-                      case 'textbox':
-                        return (
-                          <div
-                            key={block.id}
-                            style={{
-                              ...blockStyle,
-                              backgroundColor: `rgba(0, 0, 0, ${(config.cardOpacity !== undefined ? config.cardOpacity : 20) / 100})`,
-                              border: `2px solid rgba(255, 255, 255, 0.04)`,
-                              borderRadius: `20px`,
-                            }}
-                            className={`p-[35px_15px] max-w-[40rem] mx-auto text-center font-sans text-[14px] leading-relaxed text-white drop-shadow-md ${blockClasses} ${
-                              block.textboxStyle === 'glow' ? 'shadow-[0_0_16.5px_#ffffff] text-white border-none' : ''
-                            }`}
-                          >
-                            {block.textboxStyle === 'marquee' ? (
-                              <div className="overflow-hidden w-full">
-                                <div className="whitespace-nowrap animate-marquee">
-                                  {block.textboxContent || 'КОНТЕНТ НЕ ЗАДАН'}
-                                </div>
-                              </div>
-                            ) : (
-                              <p>{block.textboxContent || 'КОНТЕНТ НЕ ЗАДАН'}</p>
-                            )}
-                          </div>
-                        );
-
-                      // Quotes text block
-                      case 'quote':
-                        return (
-                          <div 
-                            key={block.id} 
-                            style={{
-                              ...blockStyle,
-                              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                              border: '2px solid rgba(0, 0, 0, 0.1)',
-                              borderRadius: '20px'
-                            }}
-                            className={`p-[35px_15px] max-w-[40rem] mx-auto font-sans text-center text-white/60 relative w-full ${blockClasses}`}
-                          >
-                            <Quote className="w-4 h-4 text-white/30 absolute top-4 left-6 mix-blend-screen" />
-                            <p className="font-sans leading-relaxed text-[14px] tracking-wide text-white drop-shadow-md italic">"{block.quoteText || 'Код без терминала — как рыцарь без меча.'}"</p>
-                            {block.quoteAuthor && (
-                              <span className="block text-center text-[12px] font-sans text-white/60 tracking-wider uppercase mt-3 font-semibold drop-shadow-md break-words">
-                                — {block.quoteAuthor}
-                              </span>
-                            )}
-                          </div>
-                        );
-
-                      // Featured Image block
-                      case 'image':
-                        const imgElement = (
-                          <img
-                            src={block.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80'}
-                            alt={block.imageAlt || 'Изображение'}
-                            referrerPolicy="no-referrer"
-                            loading="lazy"
-                            decoding="async"
-                            style={{
-                              height: block.imageHeight ? `${block.imageHeight}px` : '200px',
-                              objectFit: block.imageFit || 'cover',
-                            }}
-                            className="w-full block"
-                          />
-                        );
-                        return (
-                          <div
-                            key={block.id}
-                            style={{
-                              ...blockStyle,
-                              backgroundColor: `rgba(0, 0, 0, ${(config.cardOpacity !== undefined ? config.cardOpacity - 10 : 45) / 100})`
-                            }}
-                            className={`overflow-hidden border border-white/10 rounded-xl ${blockClasses}`}
-                          >
-                            {block.title && (
-                              <div className="px-3.5 py-1.5 border-b border-white/10 bg-black/40 text-[9px] font-mono text-neutral-500 uppercase tracking-widest text-center font-bold">
-                                {block.title}
-                              </div>
-                            )}
-                            {block.imageLink ? (
-                              <a href={block.imageLink} target="_blank" rel="noopener noreferrer" className="block focus:outline-none hover:opacity-90 transition">
-                                {imgElement}
-                              </a>
-                            ) : (
-                              imgElement
-                            )}
-                          </div>
-                        );
-
-                      // Media Embed block
-                      case 'embed':
-                        const embedSrc = getEmbedSrc(block.embedType, block.embedUrl || '');
-                        return (
-                          <div
-                            key={block.id}
-                            style={{
-                              ...blockStyle,
-                              backgroundColor: `rgba(0, 0, 0, ${(config.cardOpacity !== undefined ? config.cardOpacity - 10 : 45) / 100})`
-                            }}
-                            className={`overflow-hidden border border-white/10 rounded-xl ${blockClasses}`}
-                          >
-                            {block.title && (
-                              <div className="px-3.5 py-1.5 border-b border-white/10 bg-black/40 text-[9px] font-mono text-neutral-500 uppercase tracking-widest text-center font-bold">
-                                {block.title}
-                              </div>
-                            )}
-                            <div className="p-2 justify-center flex">
-                              {embedSrc && isSafeEmbedUrl(embedSrc) ? (
-                                <iframe
-                                  src={embedSrc}
-                                  sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
-                                  referrerPolicy="strict-origin-when-cross-origin"
-                                  loading="lazy"
-                                  width="100%"
-                                  height={block.embedType === 'spotify' ? '80' : block.embedType === 'soundcloud' ? '150' : '220'}
-                                  frameBorder="0"
-                                  allowFullScreen
-                                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                                  className="rounded-sm"
-                                />
-                              ) : (
-                                <div className="p-4 text-xs text-neutral-500 font-mono text-center w-full">Канал проигрывателя не настроен.</div>
-                              )}
-                            </div>
-                          </div>
-                        );
-
-                      default:
-                        return null;
-                    }
-                  })}
-                </GlowLayer>
-                </div>
-              );
-            }
-
-            if (section === 'player') {
-              return <React.Fragment key="player">{renderAudioBar('inline')}</React.Fragment>;
-            }
-            return null;
-          })}
+          {visibleLayout.map((section) => renderSection(section))}
         </motion.div>
       )}
     </div>

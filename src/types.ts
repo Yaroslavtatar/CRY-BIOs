@@ -106,6 +106,39 @@ export interface BlockConfig {
   glowColor?: string;
 }
 
+/** Положение элемента на «холсте» страницы (координаты в px логического экрана устройства) */
+export interface CanvasFrame {
+  x: number;
+  y: number;
+  w: number;
+  /** Не задана — высота определяется содержимым */
+  h?: number;
+  /** Порядок слоёв: больше — выше */
+  z: number;
+  rotate?: number;
+  hidden?: boolean;
+  locked?: boolean;
+}
+
+export interface CanvasDeviceLayout {
+  /** Высота «страницы» в px логического экрана */
+  height: number;
+  /** Ключ: avatar | username | location | discord | bio | player | block:<id блока> */
+  frames: Record<string, CanvasFrame>;
+}
+
+/** Свободный конструктор: если enabled, страница рисуется по координатам, а не списком секций */
+export interface CanvasLayout {
+  enabled: boolean;
+  /** Привязка к сетке при перетаскивании */
+  snap: boolean;
+  /** Шаг сетки, px */
+  grid: number;
+  desktop?: CanvasDeviceLayout;
+  /** Не задана — мобильная раскладка собирается автоматически */
+  mobile?: CanvasDeviceLayout;
+}
+
 export interface UserBadge {
   id: string;
   type: 'verified' | 'premium' | 'developer' | 'vip' | 'staff' | 'booster' | 'member' | 'custom';
@@ -277,6 +310,8 @@ export interface BioConfig {
   nameEffect?: NameEffect;
   discordId?: string;
   layout?: string[];
+  /** Свободная раскладка (конструктор-холст) */
+  canvas?: CanvasLayout;
 
   blocks: BlockConfig[];
 }

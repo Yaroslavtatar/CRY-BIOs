@@ -9,6 +9,10 @@ import AnalyticsView from './AnalyticsView';
 import BioPage from './BioPage';
 import QRCode from 'qrcode';
 import { getThumbUrl } from '../utils/media';
+import { createDefaultBlock } from '../blockDefaults';
+import { enableCanvas } from '../canvasLayout';
+import CanvasStudio from './CanvasStudio';
+import { useStudioPrefs } from '../studioPrefs';
 import { applyGunsImportToConfig, getImportPreviewSummary, getImportPreviewItems, type GunsImportResult, type ImportPreviewItem } from '../gunsImportMap';
 import {
   GLOW_TARGET_LABELS,
@@ -40,7 +44,7 @@ import SocialPlatformPickerModal from './SocialPlatformPickerModal';
 import type { NameEffect } from '../types';
 import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
 import SocialIcon from './SocialIcon';
-import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy } from 'lucide-react';
+import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy, LayoutTemplate } from 'lucide-react';
 
 const renderDashboardBadgeIcon = (iconName: string) => {
   const iconProps = { className: "w-3.5 h-3.5 flex-shrink-0" };
@@ -112,7 +116,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
   // Profile configuration states
   const [config, setConfig] = useState<BioConfig | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'layout' | 'background' | 'visuals' | 'glow' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'studio' | 'profile' | 'layout' | 'background' | 'visuals' | 'glow' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr'>('overview');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
 
@@ -398,6 +402,8 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [importProgress, setImportProgress] = useState('');
   const [importProgressPct, setImportProgressPct] = useState(0);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [studioOpen, setStudioOpen] = useState(false);
+  const [studioPrefs, setStudioPrefs] = useStudioPrefs();
 
   // Checks and loads active sessions
   useEffect(() => {
@@ -723,6 +729,11 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       .finally(() => setPasswordChangeLoading(false));
   };
 
+  const openStudio = () => {
+    setConfig(prev => (prev ? enableCanvas(prev) : prev));
+    setStudioOpen(true);
+  };
+
   // Profile configuration saves
   const handleSaveConfig = () => {
     if (!config) return;
@@ -850,68 +861,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
   const handleAddBlock = (type: BlockConfig['type']) => {
     if (!config) return;
-    
-    let defaultDetails: Partial<BlockConfig> = { id: Math.random().toString(), type, enabled: true };
-    if (type === 'socials') {
-      defaultDetails = {
-        ...defaultDetails,
-        title: 'Social networks',
-        socialsList: [
-          { id: Math.random().toString(), platform: 'discord', url: 'https://discord.gg/', useBrandColor: true }
-        ]
-      };
-    } else if (type === 'html') {
-      defaultDetails = {
-        ...defaultDetails,
-        title: 'Custom code embed',
-        htmlContent: '<div style="color: #00ffcc; text-align: center;">🔥 Custom coding layout sandbox active!</div>'
-      };
-    } else if (type === 'textbox') {
-      defaultDetails = {
-        ...defaultDetails,
-        title: 'Notice Board',
-        textboxContent: 'Write some scrolling announcement or details here.',
-        textboxStyle: 'standard'
-      };
-    } else if (type === 'quote') {
-      defaultDetails = {
-        ...defaultDetails,
-        title: 'Inspiring quotes',
-        quoteText: 'Think open-source, write performant code.',
-        quoteAuthor: 'GunsOpen'
-      };
-    } else if (type === 'status_api') {
-      defaultDetails = {
-        ...defaultDetails,
-        title: 'Status widget',
-        statusCustomText: '🎮 Coding in Dark Mode',
-        statusProvider: 'custom'
-      };
-    } else if (type === 'views_counter') {
-      defaultDetails = {
-        ...defaultDetails,
-        title: 'Page view stats monitor'
-      };
-    } else if (type === 'image') {
-      defaultDetails = {
-        ...defaultDetails,
-        title: 'Featured Image',
-        imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80',
-        imageAlt: 'Abstract Design',
-        imageHeight: 200,
-        imageFit: 'cover'
-      };
-    } else if (type === 'embed') {
-      defaultDetails = {
-        ...defaultDetails,
-        title: 'Custom Embed Media',
-        embedType: 'youtube',
-        embedUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
-      };
-    }
-
-    const nextBlocks = [...config.blocks, defaultDetails as BlockConfig];
-    updateConfigValue('blocks', nextBlocks);
+    updateConfigValue('blocks', [...config.blocks, createDefaultBlock(type)]);
   };
 
   const handleDeleteBlock = (blockId: string) => {
@@ -1099,10 +1049,11 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
               
               {/* Navigation Tabs Options */}
               <div className="p-4 border-b border-white/10 bg-cb-surface grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
-                {(['overview', 'profile', 'layout', 'background', 'visuals', 'glow', 'audio', 'blocks', 'analytics', 'selfhost', 'qr'] as const).map(tab => {
+                {(['overview', 'studio', 'profile', 'layout', 'background', 'visuals', 'glow', 'audio', 'blocks', 'analytics', 'selfhost', 'qr'] as const).map(tab => {
                   let tabName = '';
                   switch (tab) {
                     case 'overview': tabName = 'Обзор'; break;
+                    case 'studio': tabName = 'Студия'; break;
                     case 'profile': tabName = 'Профиль'; break;
                     case 'layout': tabName = 'Макет'; break;
                     case 'background': tabName = 'Фон'; break;
@@ -1163,6 +1114,15 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
                   return (
                     <div className="space-y-6">
+                      {!config.canvas?.enabled && (
+                        <div className="p-4 border border-cb-accent/40 bg-cb-accent/5 rounded-sm flex flex-col sm:flex-row sm:items-center gap-3">
+                          <div className="flex-1">
+                            <div className="text-xs font-black font-mono uppercase tracking-wider text-cb-accent">Новое: Студия конструктора</div>
+                            <p className="text-[11px] text-neutral-300 font-sans mt-1 leading-relaxed">Двигайте и растягивайте любые элементы страницы как угодно — с компьютера или с телефона.</p>
+                          </div>
+                          <button type="button" onClick={openStudio} className="px-4 py-3 bg-cb-accent text-cb-on-accent text-[10px] font-black uppercase tracking-widest rounded-sm cursor-pointer">Открыть студию</button>
+                        </div>
+                      )}
                       {/* Top Welcome Panel / Bio Link Banner */}
                       <div className="p-5 bg-white/5 border border-white/10 rounded-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-cb-accent/5 rounded-full blur-2xl pointer-events-none" />
@@ -2205,6 +2165,55 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 )}
 
                 {/* LAYOUT CONSTRUCTOR SECTOR */}
+                {activeTab === 'studio' && (
+                  <div className="space-y-5">
+                    <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
+                      <LayoutTemplate className="w-4 h-4" />
+                      <span>Студия конструктора</span>
+                    </h3>
+                    <p className="text-xs text-neutral-400 font-sans leading-relaxed">
+                      Свободный редактор страницы: двигайте и растягивайте аватар, ник, блоки и плеер как угодно. Для телефона можно сделать отдельную раскладку — редактор удобно работает и с мобильного.
+                    </p>
+                    <div className="p-4 bg-black/40 border border-white/10 rounded-sm space-y-2 text-[11px] font-mono">
+                      <div className="flex justify-between"><span className="text-neutral-500">Свободный режим</span><span className={config.canvas?.enabled ? 'text-cb-accent' : 'text-neutral-400'}>{config.canvas?.enabled ? 'включён' : 'выключен'}</span></div>
+                      <div className="flex justify-between"><span className="text-neutral-500">Раскладка телефона</span><span className="text-neutral-300">{config.canvas?.mobile ? 'настроена вручную' : 'автоматическая'}</span></div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openStudio}
+                      className="w-full bg-cb-accent text-cb-on-accent font-black py-4 rounded-sm uppercase tracking-widest text-xs hover:bg-cb-accent-hover cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <LayoutTemplate className="w-4 h-4" />
+                      <span>Открыть студию</span>
+                    </button>
+                    {config.canvas?.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => setConfig({ ...config, canvas: { ...config.canvas!, enabled: false } })}
+                        className="w-full py-2.5 rounded-sm border border-white/15 text-neutral-300 hover:bg-white/5 text-[10px] font-mono uppercase tracking-wider cursor-pointer"
+                      >
+                        Вернуть обычную раскладку
+                      </button>
+                    )}
+                    <div className="p-4 bg-black/40 border border-white/10 rounded-sm space-y-3">
+                      <span className="block text-[9px] uppercase tracking-wider font-bold text-cb-accent">Стиль конструктора</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {([['right', 'Панель справа'], ['left', 'Панель слева']] as const).map(([v, l]) => (
+                          <button key={v} type="button" onClick={() => setStudioPrefs({ panelSide: v })} aria-pressed={studioPrefs.panelSide === v} className={`py-2.5 rounded-sm text-[10px] font-mono uppercase cursor-pointer ${studioPrefs.panelSide === v ? 'bg-cb-accent text-cb-on-accent font-bold' : 'bg-white/5 text-neutral-300'}`}>{l}</button>
+                        ))}
+                        {([['normal', 'Обычные кнопки'], ['large', 'Крупные кнопки']] as const).map(([v, l]) => (
+                          <button key={v} type="button" onClick={() => setStudioPrefs({ controls: v })} aria-pressed={studioPrefs.controls === v} className={`py-2.5 rounded-sm text-[10px] font-mono uppercase cursor-pointer ${studioPrefs.controls === v ? 'bg-cb-accent text-cb-on-accent font-bold' : 'bg-white/5 text-neutral-300'}`}>{l}</button>
+                        ))}
+                      </div>
+                      <label className="flex items-center justify-between text-xs font-mono">
+                        <span>Показывать сетку</span>
+                        <input type="checkbox" checked={studioPrefs.showGrid} onChange={(e) => setStudioPrefs({ showGrid: e.target.checked })} className="w-5 h-5 accent-cyan-400" />
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-neutral-600 font-sans">Изменения применяются после нажатия «Сохранить».</p>
+                  </div>
+                )}
+
                 {activeTab === 'layout' && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
@@ -3948,6 +3957,17 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
           </>
         )}
       </div>
+
+      {studioOpen && token && username && config && (
+        <CanvasStudio
+          config={config}
+          username={username}
+          onChange={setConfig}
+          onClose={() => setStudioOpen(false)}
+          onSave={handleSaveConfig}
+          saveStatus={saveStatus}
+        />
+      )}
 
       {/* RENAME MODAL DIALOG OVERLAY */}
       {isRenameModalOpen && (
