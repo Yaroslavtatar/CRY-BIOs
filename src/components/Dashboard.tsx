@@ -14,6 +14,9 @@ import { enableCanvas } from '../canvasLayout';
 import CanvasStudio from './CanvasStudio';
 import Onboarding from './Onboarding';
 import { useStudioPrefs } from '../studioPrefs';
+import AccountSettings from './AccountSettings';
+import FirstSteps from './FirstSteps';
+import { SIMPLE_TABS, accentStyle, isChecklistHidden, isOnboardingPending, setChecklistHidden, setOnboardingPending, useUiPrefs } from '../uiPrefs';
 import { applyGunsImportToConfig, getImportPreviewSummary, getImportPreviewItems, type GunsImportResult, type ImportPreviewItem } from '../gunsImportMap';
 import {
   GLOW_TARGET_LABELS,
@@ -98,14 +101,14 @@ const PROFILE_PRESETS: Partial<BioConfig>[] = [
 
 const SESSION_MARKER = 'cookie-session';
 
-type DashTab = 'overview' | 'studio' | 'profile' | 'layout' | 'background' | 'visuals' | 'glow' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr';
+type DashTab = 'overview' | 'studio' | 'profile' | 'layout' | 'background' | 'visuals' | 'glow' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr' | 'settings';
 
 /** Вкладки личного кабинета, сгруппированные по смыслу */
 const TAB_GROUPS: { id: string; label: string; tabs: { id: DashTab; label: string }[] }[] = [
   { id: 'home', label: 'Главная', tabs: [{ id: 'overview', label: 'Обзор' }, { id: 'analytics', label: 'Статистика' }, { id: 'qr', label: 'QR' }] },
   { id: 'build', label: 'Конструктор', tabs: [{ id: 'studio', label: 'Студия' }, { id: 'layout', label: 'Макет' }, { id: 'blocks', label: 'Блоки' }] },
   { id: 'look', label: 'Оформление', tabs: [{ id: 'background', label: 'Фон' }, { id: 'visuals', label: 'Эффекты' }, { id: 'glow', label: 'Glow' }, { id: 'audio', label: 'Аудио' }] },
-  { id: 'account', label: 'Аккаунт', tabs: [{ id: 'profile', label: 'Профиль' }, { id: 'selfhost', label: 'Экспорт' }] },
+  { id: 'account', label: 'Аккаунт', tabs: [{ id: 'profile', label: 'Профиль' }, { id: 'settings', label: 'Настройки' }, { id: 'selfhost', label: 'Экспорт' }] },
 ];
 
 export default function Dashboard({ onExit, onViewProfile, platformConfig }: DashboardProps) {
@@ -120,10 +123,13 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [passwordChangeError, setPasswordChangeError] = useState('');
-  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
+  // Второй шаг входа (2FA): после верного пароля сервер просит код
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [uiPrefs] = useUiPrefs();
+  const [checklistHidden, setChecklistHiddenState] = useState(false);
+  // null — ещё не знаем; нужен для пункта чек-листа «Защитить аккаунт»
+  const [twoFactorOn, setTwoFactorOn] = useState<boolean | null>(null);
 
   // Profile configuration states
   const [config, setConfig] = useState<BioConfig | null>(null);
@@ -417,6 +423,19 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [studioPrefs, setStudioPrefs] = useStudioPrefs();
 
+  // Мастер первого входа не теряется при перезагрузке: ждёт, пока его пройдут или пропустят
+  useEffect(() => {
+    if (token && username && config && isOnboardingPending(username)) setShowOnboarding(true);
+  }, [token, username, config]);
+  useEffect(() => {
+    setChecklistHiddenState(username ? isChecklistHidden(username) : false);
+  }, [username]);
+  // Статус 2FA для чек-листа: перечитываем при возврате на «Обзор» (мог измениться в настройках)
+  useEffect(() => {
+    if (!token || !username || activeTab !== 'overview') return;
+    fetch('/api/account/security').then(r => (r.ok ? r.json() : null)).then(d => setTwoFactorOn(d ? Boolean(d.twoFactorEnabled) : null)).catch(() => {});
+  }, [token, username, activeTab]);
+
   // Checks and loads active sessions
   useEffect(() => {
     if (token) {
@@ -437,6 +456,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
           const activeUser = data?.username || username;
           loadBioConfig(activeUser);
           loadAnalytics(activeUser);
+          fetch('/api/account/security').then(r => (r.ok ? r.json() : null)).then(d => setTwoFactorOn(d ? Boolean(d.twoFactorEnabled) : null)).catch(() => {});
         })
         .catch(() => {
           // expired
@@ -684,14 +704,12 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         return body;
       })
       .then(data => {
-        // Токен в JS не сохраняем: сервер выставил HttpOnly-cookie
-        localStorage.setItem('biogun_username', data.username);
-        if (data.isNew) setShowOnboarding(true);
-        setToken(SESSION_MARKER);
-        setUsername(data.username);
-        
-        loadBioConfig(data.username);
-        loadAnalytics(data.username);
+        if (data.twoFactorRequired) {
+          setTwoFactorChallenge(data.challenge);
+          setTwoFactorCode('');
+          return;
+        }
+        completeLogin(data);
       })
       .catch(err => {
         setAuthError(err.message || 'Error executing request');
@@ -699,6 +717,42 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       .finally(() => {
         setAuthLoading(false);
       });
+  };
+
+  // Токен в JS не сохраняем: сервер выставил HttpOnly-cookie
+  const completeLogin = (data: { username: string; isNew?: boolean }) => {
+    localStorage.setItem('biogun_username', data.username);
+    if (data.isNew) setOnboardingPending(data.username, true);
+    setTwoFactorChallenge('');
+    setTwoFactorCode('');
+    setLoginPassword('');
+    setToken(SESSION_MARKER);
+    setUsername(data.username);
+    loadBioConfig(data.username);
+    loadAnalytics(data.username);
+  };
+
+  const handleTwoFactorLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!twoFactorCode.trim()) { setAuthError('Введите код из приложения'); return; }
+    setAuthError('');
+    setAuthLoading(true);
+    fetch('/api/auth/2fa/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challenge: twoFactorChallenge, code: twoFactorCode }),
+    })
+      .then(async res => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // Вызов исчерпан или истёк — возвращаем на ввод пароля
+          if (res.status === 401 && /Время подтверждения/.test(body.error || '')) setTwoFactorChallenge('');
+          throw new Error(body.error || 'Не удалось войти');
+        }
+        completeLogin(body);
+      })
+      .catch(err => setAuthError(err.message || 'Не удалось войти'))
+      .finally(() => setAuthLoading(false));
   };
 
   const handleLogout = () => {
@@ -713,33 +767,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     setUsername('');
     setConfig(null);
     setAnalytics(null);
-  };
-
-  const handleChangePassword = () => {
-    if (!currentPassword || !newPassword) {
-      setPasswordChangeError('Заполните оба поля');
-      return;
-    }
-    setPasswordChangeLoading(true);
-    setPasswordChangeError('');
-    fetch('/api/auth/change-password', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ currentPassword, newPassword }),
-    })
-      .then(async res => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Ошибка смены пароля');
-        // Новая cookie-сессия выставлена сервером
-        setToken(SESSION_MARKER);
-        setCurrentPassword('');
-        setNewPassword('');
-        alert('Пароль успешно изменён');
-      })
-      .catch(err => setPasswordChangeError(err.message))
-      .finally(() => setPasswordChangeLoading(false));
   };
 
   const openStudio = () => {
@@ -923,10 +950,20 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     updateBlock(blockId, { socialsList: nextLinks });
   };
 
+  // Простой режим прячет редкие разделы; открытый сейчас раздел всегда остаётся доступным
+  const visibleGroups = TAB_GROUPS
+    .map(g => ({
+      ...g,
+      tabs: uiPrefs.editorMode === 'simple'
+        ? g.tabs.filter(t => (SIMPLE_TABS as readonly string[]).includes(t.id) || t.id === activeTab)
+        : g.tabs,
+    }))
+    .filter(g => g.tabs.length > 0);
+
   // --- RENDERS ---
 
   return (
-    <div className="cb-root min-h-screen bg-cb-bg text-white font-sans antialiased flex flex-col">
+    <div className="cb-root min-h-screen bg-cb-bg text-white font-sans antialiased flex flex-col" style={accentStyle(uiPrefs.accent)}>
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -1003,6 +1040,39 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 </div>
               )}
 
+              {twoFactorChallenge ? (
+              <form onSubmit={handleTwoFactorLogin} className="space-y-4 font-mono text-xs" data-testid="login-2fa">
+                <p className="text-xs text-neutral-300 font-sans leading-relaxed">
+                  Введите 6-значный код из приложения-аутентификатора или один из резервных кодов.
+                </p>
+                <input
+                  type="text"
+                  inputMode="text"
+                  autoComplete="one-time-code"
+                  aria-label="Код подтверждения"
+                  placeholder="000000"
+                  maxLength={32}
+                  value={twoFactorCode}
+                  onChange={e => setTwoFactorCode(e.target.value)}
+                  autoFocus
+                  className="w-full bg-black/50 border border-white/15 focus:border-cb-accent/80 focus:outline-none p-3.5 rounded-sm font-mono text-white text-center text-lg tracking-[0.3em] placeholder-neutral-700"
+                />
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full bg-cb-accent text-cb-on-accent font-black py-4 rounded-sm uppercase tracking-widest text-xs hover:bg-cb-accent-hover cursor-pointer disabled:opacity-60"
+                >
+                  {authLoading ? 'Проверяем…' : 'Подтвердить вход'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTwoFactorChallenge(''); setTwoFactorCode(''); setAuthError(''); }}
+                  className="w-full text-[10px] text-neutral-400 hover:text-white uppercase tracking-wider cursor-pointer"
+                >
+                  ← Назад к паролю
+                </button>
+              </form>
+              ) : (
               <form onSubmit={handleLoginRegister} className="space-y-4 font-mono text-xs">
                 <div>
                   <label className="block text-[10px] uppercase text-neutral-500 mb-1.5 tracking-wider font-bold">Username slug</label>
@@ -1050,6 +1120,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   )}
                 </button>
               </form>
+              )}
             </div>
           </div>
         )}
@@ -1058,12 +1129,12 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         {token && username && config && (
           <>
             {/* Left Sector: Accordion Workspace Options */}
-            <div className="w-full lg:w-[50%] border-r border-white/10 flex flex-col justify-between overflow-y-auto bg-cb-bg">
+            <div className={`w-full ${uiPrefs.preview === 'hidden' ? '' : 'lg:w-[50%]'} border-r border-white/10 flex flex-col justify-between overflow-y-auto bg-cb-bg`}>
               
               {/* Navigation Tabs Options */}
               <div className="p-4 border-b border-white/10 bg-cb-surface space-y-2 text-center font-mono">
-                <div className="grid grid-cols-4 gap-1.5" role="tablist" aria-label="Разделы кабинета">
-                  {TAB_GROUPS.map(g => {
+                <div style={{ gridTemplateColumns: `repeat(${visibleGroups.length}, minmax(0, 1fr))` }} className="grid gap-1.5" role="tablist" aria-label="Разделы кабинета">
+                  {visibleGroups.map(g => {
                     const groupActive = g.tabs.some(t => t.id === activeTab);
                     return (
                       <button
@@ -1081,7 +1152,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   })}
                 </div>
                 <div className="flex flex-wrap gap-1.5 justify-center">
-                  {(TAB_GROUPS.find(g => g.tabs.some(t => t.id === activeTab)) ?? TAB_GROUPS[0]).tabs.map(t => (
+                  {(visibleGroups.find(g => g.tabs.some(t => t.id === activeTab)) ?? visibleGroups[0]).tabs.map(t => (
                     <button
                       key={t.id}
                       onClick={() => setActiveTab(t.id)}
@@ -1244,40 +1315,18 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         </div>
                       </div>
 
-                      <div className="p-4 bg-white/5 border border-white/10 rounded-sm space-y-3">
-                        <h4 className="text-[10px] font-black uppercase text-neutral-400 tracking-widest flex items-center gap-2">
-                          <Lock className="w-3.5 h-3.5" />
-                          Безопасность аккаунта
-                        </h4>
-                        <p className="text-[9px] text-neutral-500">Смена пароля завершит все другие активные сессии.</p>
-                        {passwordChangeError && (
-                          <p className="text-[10px] text-red-400 font-mono">{passwordChangeError}</p>
-                        )}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <input
-                            type="password"
-                            placeholder="Текущий пароль"
-                            value={currentPassword}
-                            onChange={e => setCurrentPassword(e.target.value)}
-                            className="bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none focus:border-cb-accent"
-                          />
-                          <input
-                            type="password"
-                            placeholder="Новый пароль (8+ символов, буквы и цифры)"
-                            value={newPassword}
-                            onChange={e => setNewPassword(e.target.value)}
-                            className="bg-black/50 border border-white/15 rounded-sm p-2.5 text-xs text-white outline-none focus:border-cb-accent"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleChangePassword}
-                          disabled={passwordChangeLoading}
-                          className="px-4 py-2 bg-cb-accent/10 hover:bg-cb-accent/20 border border-cb-accent/30 text-[10px] text-cb-accent font-bold uppercase tracking-wider rounded-sm cursor-pointer disabled:opacity-50"
-                        >
-                          {passwordChangeLoading ? 'Сохранение...' : 'Сменить пароль'}
-                        </button>
-                      </div>
+                      {!checklistHidden && (
+                        <FirstSteps
+                          onHide={() => { if (username) setChecklistHidden(username, true); setChecklistHiddenState(true); }}
+                          items={[
+                            { id: 'avatar', title: 'Добавить аватар', hint: 'Своё фото или картинка вместо заглушки.', done: Boolean(isCustomAvatar), action: 'Профиль', onAction: () => setActiveTab('profile') },
+                            { id: 'bio', title: 'Написать о себе', hint: 'Пара слов, которые увидят посетители.', done: Boolean(isCustomBio), action: 'Профиль', onAction: () => setActiveTab('profile') },
+                            { id: 'socials', title: 'Добавить ссылки на соцсети', hint: 'Блок «Соцсети» в разделе «Блоки».', done: hasSocialsBlock, action: 'Блоки', onAction: () => setActiveTab('blocks') },
+                            { id: 'studio', title: 'Попробовать свободный конструктор', hint: 'Двигайте элементы страницы как угодно.', done: Boolean(config.canvas?.enabled), action: 'Студия', onAction: openStudio },
+                            { id: '2fa', title: 'Защитить аккаунт кодом 2FA', hint: 'Вход станет безопаснее, даже если пароль утечёт.', done: twoFactorOn === true, action: 'Настройки', onAction: () => setActiveTab('settings') },
+                          ]}
+                        />
+                      )}
 
                       {/* --- GUNS.LOL MODERN PROFILE IMPORTER --- */}
                       <div className="p-5 bg-gradient-to-r from-purple-950/30 to-black border border-purple-500/20 rounded-sm relative overflow-hidden space-y-4">
@@ -3528,6 +3577,16 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 )}
 
                 {/* 6. SELF-HOST SECTOR */}
+                {activeTab === 'settings' && (
+                  <AccountSettings
+                    username={username}
+                    onRename={() => { setRenameInput(username); setIsRenameModalOpen(true); }}
+                    onLogout={handleLogout}
+                    onRestartOnboarding={() => { setOnboardingPending(username, true); setShowOnboarding(true); }}
+                    onShowChecklist={() => { setChecklistHidden(username, false); setChecklistHiddenState(false); setActiveTab('overview'); }}
+                  />
+                )}
+
                 {activeTab === 'selfhost' && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-black font-mono text-cb-accent uppercase tracking-widest flex items-center gap-2 italic">
@@ -3920,7 +3979,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
             </div>
 
             {/* Right Sector: Live Interactive Bio Preview Frame */}
-            <div className="hidden lg:flex lg:w-[50%] lg:sticky lg:top-0 lg:self-start lg:h-[calc(100vh-76px)] bg-cb-bg flex-col overflow-hidden relative border-l border-white/10">
+            <div className={`${uiPrefs.preview === 'hidden' ? 'hidden' : 'hidden lg:flex'} lg:w-[50%] lg:sticky lg:top-0 lg:self-start lg:h-[calc(100vh-76px)] bg-cb-bg flex-col overflow-hidden relative border-l border-white/10`}>
               <div className="p-4 bg-cb-surface border-b border-white/10 flex justify-between items-center px-6">
                 <div>
                   <span className="text-[10px] font-mono text-neutral-400 flex items-center space-x-1.5 uppercase font-bold tracking-wider">
@@ -3980,7 +4039,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
           onChange={setConfig}
           onSave={handleSaveConfig}
           onOpenStudio={openStudio}
-          onClose={() => setShowOnboarding(false)}
+          onClose={() => { setOnboardingPending(username, false); setShowOnboarding(false); }}
         />
       )}
 
