@@ -463,3 +463,50 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .gl-s-pulse, .gl-s-breathe, .gl-s-flicker, .gl-s-rainbow, .gl-s-dual { animation: none !important; }
 }
+
+/* ---------- Кабинет на телефоне ---------- */
+@media (max-width: 1023px) {
+  /* 16px в полях: иначе iOS Safari приближает страницу при фокусе. Размер зон нажатия — не меньше 40px */
+  .cb-touch input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+  .cb-touch select,
+  .cb-touch textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .cb-touch textarea { min-height: 88px; }
+  .cb-touch button,
+  .cb-touch [role='tab'],
+  .cb-touch [role='radio'] {
+    min-height: 44px;
+    min-width: 40px;
+  }
+  .cb-touch input[type='color'] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .cb-touch input[type='range'] {
+    min-height: 32px;
+  }
+  .cb-touch input[type='checkbox'],
+  .cb-touch input[type='radio'] {
+    width: 22px;
+    height: 22px;
+  }
+  /* Сама страница в предпросмотре отображается как есть, без увеличения элементов */
+  .cb-touch .cb-no-touch button,
+  .cb-touch .cb-no-touch [role='tab'] {
+    min-height: 0;
+    min-width: 0;
+  }
+  .cb-touch .cb-no-touch input:not([type='checkbox']):not([type='radio']),
+  .cb-touch .cb-no-touch select,
+  .cb-touch .cb-no-touch textarea {
+    font-size: inherit;
+    min-height: 0;
+  }
+  /* Шапка предпросмотра (кнопка «Закрыть») остаётся крупной */
+  .cb-touch .cb-no-touch .cb-keep-touch button {
+    min-height: 44px;
+    min-width: 40px;
+  }
+}

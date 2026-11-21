@@ -71,7 +71,7 @@ const HISTORY_LIMIT = 100;
 const COALESCE_MS = 1000;
 
 const iconBtn =
-  'inline-flex items-center justify-center w-9 h-9 [.studio-large_&]:w-12 [.studio-large_&]:h-12 rounded-sm bg-white/5 text-neutral-300 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none transition shrink-0';
+  'inline-flex items-center justify-center w-11 h-11 lg:w-9 lg:h-9 [.studio-large_&]:w-12 [.studio-large_&]:h-12 [.studio-large_&]:lg:w-12 [.studio-large_&]:lg:h-12 rounded-sm bg-white/5 text-neutral-300 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none transition shrink-0';
 const fieldCls =
   'w-full bg-black/50 border border-white/15 focus:border-cb-accent/80 focus:outline-none px-2 py-1.5 rounded-sm font-mono text-xs text-white';
 
@@ -522,10 +522,10 @@ export default function CanvasStudio({ config, username, onChange, onClose, onSa
       <div className="shrink-0 h-14 px-2 sm:px-4 flex items-center gap-1.5 sm:gap-2 bg-cb-surface border-b border-white/10">
         <button type="button" onClick={onClose} className={iconBtn} aria-label="Закрыть студию"><X className="w-4 h-4" /></button>
         <div className="flex gap-1 bg-black/40 p-1 rounded-sm border border-white/10">
-          <button type="button" onClick={() => setDevice('desktop')} aria-pressed={device === 'desktop'} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] uppercase font-bold rounded-sm ${device === 'desktop' ? 'bg-cb-accent text-cb-on-accent' : 'text-neutral-400'}`}>
+          <button type="button" onClick={() => setDevice('desktop')} aria-pressed={device === 'desktop'} className={`inline-flex items-center gap-1.5 px-3 min-h-[40px] lg:min-h-0 lg:px-2.5 lg:py-1.5 text-[10px] uppercase font-bold rounded-sm ${device === 'desktop' ? 'bg-cb-accent text-cb-on-accent' : 'text-neutral-400'}`}>
             <Monitor className="w-3.5 h-3.5" /><span className="hidden sm:inline">ПК</span>
           </button>
-          <button type="button" onClick={() => setDevice('mobile')} aria-pressed={device === 'mobile'} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] uppercase font-bold rounded-sm ${device === 'mobile' ? 'bg-cb-accent text-cb-on-accent' : 'text-neutral-400'}`}>
+          <button type="button" onClick={() => setDevice('mobile')} aria-pressed={device === 'mobile'} className={`inline-flex items-center gap-1.5 px-3 min-h-[40px] lg:min-h-0 lg:px-2.5 lg:py-1.5 text-[10px] uppercase font-bold rounded-sm ${device === 'mobile' ? 'bg-cb-accent text-cb-on-accent' : 'text-neutral-400'}`}>
             <Smartphone className="w-3.5 h-3.5" /><span className="hidden sm:inline">Телефон</span>
           </button>
         </div>
@@ -536,7 +536,7 @@ export default function CanvasStudio({ config, username, onChange, onClose, onSa
           type="button"
           onClick={onSave}
           disabled={saveStatus === 'saving'}
-          className="inline-flex items-center gap-1.5 px-3 h-9 rounded-sm bg-cb-accent text-cb-on-accent text-[10px] font-black uppercase tracking-widest disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 px-3 h-11 lg:h-9 rounded-sm bg-cb-accent text-cb-on-accent text-[10px] font-black uppercase tracking-widest disabled:opacity-60"
         >
           {saveStatus === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> : saveStatus === 'success' ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
           <span>{saveStatus === 'success' ? 'Сохранено' : saveStatus === 'error' ? 'Ошибка' : 'Сохранить'}</span>
@@ -545,7 +545,7 @@ export default function CanvasStudio({ config, username, onChange, onClose, onSa
 
       <div className={`flex-1 min-h-0 flex flex-col ${prefs.panelSide === 'left' ? 'lg:flex-row-reverse' : 'lg:flex-row'}`}>
         {/* холст */}
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto bg-[#040407]">
+        <div ref={scrollRef} className="cb-no-touch flex-1 min-h-0 overflow-auto bg-[#040407]">
           <div
             className={device === 'mobile' ? 'mx-auto w-full max-w-[390px] lg:my-4 lg:border lg:border-white/10 lg:rounded-[1.5rem] lg:overflow-hidden lg:shadow-2xl' : 'w-full'}
             style={{ transform: 'translateZ(0)' }}
