@@ -12,6 +12,7 @@ import { getThumbUrl } from '../utils/media';
 import { createDefaultBlock } from '../blockDefaults';
 import { enableCanvas } from '../canvasLayout';
 import CanvasStudio from './CanvasStudio';
+import Onboarding from './Onboarding';
 import { useStudioPrefs } from '../studioPrefs';
 import { applyGunsImportToConfig, getImportPreviewSummary, getImportPreviewItems, type GunsImportResult, type ImportPreviewItem } from '../gunsImportMap';
 import {
@@ -97,6 +98,16 @@ const PROFILE_PRESETS: Partial<BioConfig>[] = [
 
 const SESSION_MARKER = 'cookie-session';
 
+type DashTab = 'overview' | 'studio' | 'profile' | 'layout' | 'background' | 'visuals' | 'glow' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr';
+
+/** Вкладки личного кабинета, сгруппированные по смыслу */
+const TAB_GROUPS: { id: string; label: string; tabs: { id: DashTab; label: string }[] }[] = [
+  { id: 'home', label: 'Главная', tabs: [{ id: 'overview', label: 'Обзор' }, { id: 'analytics', label: 'Статистика' }, { id: 'qr', label: 'QR' }] },
+  { id: 'build', label: 'Конструктор', tabs: [{ id: 'studio', label: 'Студия' }, { id: 'layout', label: 'Макет' }, { id: 'blocks', label: 'Блоки' }] },
+  { id: 'look', label: 'Оформление', tabs: [{ id: 'background', label: 'Фон' }, { id: 'visuals', label: 'Эффекты' }, { id: 'glow', label: 'Glow' }, { id: 'audio', label: 'Аудио' }] },
+  { id: 'account', label: 'Аккаунт', tabs: [{ id: 'profile', label: 'Профиль' }, { id: 'selfhost', label: 'Экспорт' }] },
+];
+
 export default function Dashboard({ onExit, onViewProfile, platformConfig }: DashboardProps) {
   // Authentication States
   // Сессия — HttpOnly-cookie (недоступна из JS). В localStorage хранится только имя пользователя
@@ -116,7 +127,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
   // Profile configuration states
   const [config, setConfig] = useState<BioConfig | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'studio' | 'profile' | 'layout' | 'background' | 'visuals' | 'glow' | 'audio' | 'blocks' | 'analytics' | 'selfhost' | 'qr'>('overview');
+  const [activeTab, setActiveTab] = useState<DashTab>('overview');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
 
@@ -403,6 +414,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [importProgressPct, setImportProgressPct] = useState(0);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [studioOpen, setStudioOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [studioPrefs, setStudioPrefs] = useStudioPrefs();
 
   // Checks and loads active sessions
@@ -674,6 +686,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
       .then(data => {
         // Токен в JS не сохраняем: сервер выставил HttpOnly-cookie
         localStorage.setItem('biogun_username', data.username);
+        if (data.isNew) setShowOnboarding(true);
         setToken(SESSION_MARKER);
         setUsername(data.username);
         
@@ -1048,36 +1061,38 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
             <div className="w-full lg:w-[50%] border-r border-white/10 flex flex-col justify-between overflow-y-auto bg-cb-bg">
               
               {/* Navigation Tabs Options */}
-              <div className="p-4 border-b border-white/10 bg-cb-surface grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
-                {(['overview', 'studio', 'profile', 'layout', 'background', 'visuals', 'glow', 'audio', 'blocks', 'analytics', 'selfhost', 'qr'] as const).map(tab => {
-                  let tabName = '';
-                  switch (tab) {
-                    case 'overview': tabName = 'Обзор'; break;
-                    case 'studio': tabName = 'Студия'; break;
-                    case 'profile': tabName = 'Профиль'; break;
-                    case 'layout': tabName = 'Макет'; break;
-                    case 'background': tabName = 'Фон'; break;
-                    case 'visuals': tabName = 'Эффекты'; break;
-                    case 'glow': tabName = 'Glow'; break;
-                    case 'audio': tabName = 'Аудио'; break;
-                    case 'blocks': tabName = 'Блоки'; break;
-                    case 'analytics': tabName = 'Статистика'; break;
-                    case 'selfhost': tabName = 'Экспорт'; break;
-                    case 'qr': tabName = 'QR'; break;
-                    default: tabName = tab;
-                  }
-                  return (
+              <div className="p-4 border-b border-white/10 bg-cb-surface space-y-2 text-center font-mono">
+                <div className="grid grid-cols-4 gap-1.5" role="tablist" aria-label="Разделы кабинета">
+                  {TAB_GROUPS.map(g => {
+                    const groupActive = g.tabs.some(t => t.id === activeTab);
+                    return (
+                      <button
+                        key={g.id}
+                        role="tab"
+                        aria-selected={groupActive}
+                        onClick={() => { if (!groupActive) setActiveTab(g.tabs[0].id); }}
+                        className={`p-2 py-3 rounded-sm transition font-black uppercase tracking-widest cursor-pointer text-[9px] sm:text-[10px] ${
+                          groupActive ? 'bg-cb-accent text-cb-on-accent shadow-[0_0_15px_color-mix(in_srgb,var(--cb-accent)_30%,transparent)]' : 'bg-white/5 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {g.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  {(TAB_GROUPS.find(g => g.tabs.some(t => t.id === activeTab)) ?? TAB_GROUPS[0]).tabs.map(t => (
                     <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`p-2 py-2.5 rounded-sm transition font-black uppercase tracking-widest cursor-pointer text-[8px] sm:text-[9px] ${
-                        activeTab === tab ? 'bg-cb-accent text-cb-on-accent shadow-[0_0_15px_color-mix(in_srgb,var(--cb-accent)_30%,transparent)]' : 'bg-white/5 text-neutral-400 hover:text-white'
+                      key={t.id}
+                      onClick={() => setActiveTab(t.id)}
+                      className={`px-3 py-2 rounded-sm transition font-bold uppercase tracking-wider cursor-pointer text-[9px] ${
+                        activeTab === t.id ? 'bg-white/15 text-white' : 'bg-white/5 text-neutral-500 hover:text-white'
                       }`}
                     >
-                      {tabName}
+                      {t.label}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
 
               {/* Accordion Panels Context */}
@@ -1118,7 +1133,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         <div className="p-4 border border-cb-accent/40 bg-cb-accent/5 rounded-sm flex flex-col sm:flex-row sm:items-center gap-3">
                           <div className="flex-1">
                             <div className="text-xs font-black font-mono uppercase tracking-wider text-cb-accent">Новое: Студия конструктора</div>
-                            <p className="text-[11px] text-neutral-300 font-sans mt-1 leading-relaxed">Двигайте и растягивайте любые элементы страницы как угодно — с компьютера или с телефона.</p>
+                            <p className="text-[11px] text-neutral-300 font-sans mt-1 leading-relaxed">Двигайте и растягивайте любые элементы страницы как угодно — с компьютера или с телефона. Раздел «Конструктор».</p>
                           </div>
                           <button type="button" onClick={openStudio} className="px-4 py-3 bg-cb-accent text-cb-on-accent text-[10px] font-black uppercase tracking-widest rounded-sm cursor-pointer">Открыть студию</button>
                         </div>
@@ -3957,6 +3972,17 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
           </>
         )}
       </div>
+
+      {showOnboarding && token && username && config && !studioOpen && (
+        <Onboarding
+          username={username}
+          config={config}
+          onChange={setConfig}
+          onSave={handleSaveConfig}
+          onOpenStudio={openStudio}
+          onClose={() => setShowOnboarding(false)}
+        />
+      )}
 
       {studioOpen && token && username && config && (
         <CanvasStudio
