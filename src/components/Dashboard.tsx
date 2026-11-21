@@ -16,6 +16,7 @@ import Onboarding from './Onboarding';
 import { useStudioPrefs } from '../studioPrefs';
 import AccountSettings from './AccountSettings';
 import FirstSteps from './FirstSteps';
+import { MobileBottomNav, MobileSubTabs, MOBILE_NAV_HEIGHT } from './MobileNav';
 import { SIMPLE_TABS, accentStyle, isChecklistHidden, isOnboardingPending, setChecklistHidden, setOnboardingPending, useUiPrefs } from '../uiPrefs';
 import { applyGunsImportToConfig, getImportPreviewSummary, getImportPreviewItems, type GunsImportResult, type ImportPreviewItem } from '../gunsImportMap';
 import {
@@ -48,7 +49,7 @@ import SocialPlatformPickerModal from './SocialPlatformPickerModal';
 import type { NameEffect } from '../types';
 import { SOCIAL_PLATFORMS, getPlatformBrandColor } from '../utils/socialPlatforms';
 import SocialIcon from './SocialIcon';
-import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy, LayoutTemplate } from 'lucide-react';
+import { Save, LogOut, Layout, Play, Activity, Music, Sparkles, Monitor, Code, Settings, Plus, Trash2, Check, User, Lock, ExternalLink, Globe2, AlertTriangle, FileJson, ArrowLeft, ArrowUp, ArrowDown, Image, Video, Layers, Sliders, Crown, Shield, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2, Flame, Upload, QrCode, Download, Palette, Copy, LayoutTemplate, X } from 'lucide-react';
 
 const renderDashboardBadgeIcon = (iconName: string) => {
   const iconProps = { className: "w-3.5 h-3.5 flex-shrink-0" };
@@ -422,6 +423,23 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   const [studioOpen, setStudioOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [studioPrefs, setStudioPrefs] = useStudioPrefs();
+  // Телефон: предпросмотр открывается поверх кабинета по кнопке, а не стоит рядом
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [isPhone, setIsPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 1023px)').matches === true);
+  useEffect(() => {
+    const mq = window.matchMedia?.('(max-width: 1023px)');
+    if (!mq) return;
+    const on = () => { setIsPhone(mq.matches); if (!mq.matches) setMobilePreviewOpen(false); };
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  // Под открытым предпросмотром страница не должна прокручиваться
+  useEffect(() => {
+    if (!mobilePreviewOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [mobilePreviewOpen]);
 
   // Мастер первого входа не теряется при перезагрузке: ждёт, пока его пройдут или пропустят
   useEffect(() => {
@@ -963,7 +981,10 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   // --- RENDERS ---
 
   return (
-    <div className="cb-root min-h-screen bg-cb-bg text-white font-sans antialiased flex flex-col" style={accentStyle(uiPrefs.accent)}>
+    <div
+      className="cb-root cb-touch min-h-screen bg-cb-bg text-white font-sans antialiased flex flex-col"
+      style={{ ...accentStyle(uiPrefs.accent), ...(token && username && config ? { paddingBottom: `calc(${MOBILE_NAV_HEIGHT}px + env(safe-area-inset-bottom))` } : {}) } as React.CSSProperties}
+    >
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -978,14 +999,14 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         }
       />
       {/* Header Panel */}
-      <header className="border-b border-white/10 bg-cb-bg px-6 py-5 flex justify-between items-center z-20">
+      <header className="border-b border-white/10 bg-cb-bg px-4 py-3 lg:px-6 lg:py-5 flex justify-between items-center gap-2 z-20">
         <div className="flex items-center space-x-3 cursor-pointer" onClick={onExit}>
           <ArrowLeft className="w-5 h-5 text-neutral-400 hover:text-cb-accent transition" />
           <div>
-            <span className="font-black text-sm tracking-widest uppercase italic text-white">
-              CRY BIOS CONTROL PANEL
+            <span className="font-black text-xs sm:text-sm tracking-widest uppercase italic text-white whitespace-nowrap">
+              CRY BIOS<span className="hidden sm:inline"> CONTROL PANEL</span>
             </span>
-            <span className="text-[9px] block text-cb-accent font-mono leading-none tracking-widest uppercase mt-0.5 font-bold">
+            <span className="hidden sm:block text-[9px] text-cb-accent font-mono leading-none tracking-widest uppercase mt-0.5 font-bold">
               Management & Bio Editing
             </span>
           </div>
@@ -1129,10 +1150,10 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         {token && username && config && (
           <>
             {/* Left Sector: Accordion Workspace Options */}
-            <div className={`w-full ${uiPrefs.preview === 'hidden' ? '' : 'lg:w-[50%]'} border-r border-white/10 flex flex-col justify-between overflow-y-auto bg-cb-bg`}>
+            <div className={`w-full ${uiPrefs.preview === 'hidden' ? '' : 'lg:w-[50%]'} border-r border-white/10 flex flex-col justify-between lg:overflow-y-auto bg-cb-bg`}>
               
               {/* Navigation Tabs Options */}
-              <div className="p-4 border-b border-white/10 bg-cb-surface space-y-2 text-center font-mono">
+              <div className="hidden lg:block p-4 border-b border-white/10 bg-cb-surface space-y-2 text-center font-mono">
                 <div style={{ gridTemplateColumns: `repeat(${visibleGroups.length}, minmax(0, 1fr))` }} className="grid gap-1.5" role="tablist" aria-label="Разделы кабинета">
                   {visibleGroups.map(g => {
                     const groupActive = g.tabs.some(t => t.id === activeTab);
@@ -1166,8 +1187,10 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 </div>
               </div>
 
+              <MobileSubTabs groups={visibleGroups} activeTab={activeTab} onSelectTab={setActiveTab} />
+
               {/* Accordion Panels Context */}
-              <div className="p-6 flex-grow space-y-6">
+              <div className="p-4 sm:p-6 flex-grow space-y-6">
 
                 {/* 0. OVERVIEW SECTOR */}
                 {activeTab === 'overview' && (() => {
@@ -3099,8 +3122,8 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                       <div className="space-y-4 font-mono text-xs">
                         {config.blocks.map((block, bIdx) => (
                            <div key={block.id} className="p-4 bg-cb-surface border border-white/10 rounded-sm relative space-y-3">
-                             <div className="flex justify-between items-center border-b border-white/10 pb-2.5">
-                               <span className="font-bold text-xs text-cb-accent font-mono uppercase flex items-center gap-1.5">
+                             <div className="flex flex-wrap justify-between items-center gap-x-3 gap-y-2 border-b border-white/10 pb-2.5">
+                               <span className="min-w-0 font-bold text-xs text-cb-accent font-mono uppercase flex items-center gap-1.5">
                                  <span className="bg-white/5 text-neutral-400 p-1 rounded-sm font-normal text-[10px]">{bIdx + 1}</span>
                                  {block.type === 'socials' ? '🔗 Сетка контактов / ссылок' :
                                   block.type === 'html' ? '🔱 Интегрированный HTML-песочница' :
@@ -3111,7 +3134,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   block.type === 'image' ? '🖼️ Выделенное изображение' : '📻 Медиа-плеер YouTube/Soundcloud'}
                                </span>
 
-                              <div className="flex items-center space-x-2.5">
+                              <div className="flex items-center gap-1 shrink-0 ml-auto">
                                 {/* Order Arrangement buttons */}
                                 <button
                                   type="button"
@@ -3119,6 +3142,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   onClick={() => handleMoveBlockUp(bIdx)}
                                   className="text-neutral-400 hover:text-cb-accent disabled:opacity-20 transition cursor-pointer"
                                   title="Переместить вверх"
+                                  aria-label="Переместить блок вверх"
                                 >
                                   <ArrowUp className="w-3.5 h-3.5" />
                                 </button>
@@ -3128,6 +3152,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   onClick={() => handleMoveBlockDown(bIdx)}
                                   className="text-neutral-400 hover:text-cb-accent disabled:opacity-20 transition cursor-pointer"
                                   title="Переместить вниз"
+                                  aria-label="Переместить блок вниз"
                                 >
                                   <ArrowDown className="w-3.5 h-3.5" />
                                 </button>
@@ -3146,6 +3171,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                   type="button"
                                   onClick={() => handleDeleteBlock(block.id)}
                                   className="text-neutral-400 hover:text-red-400 transition cursor-pointer"
+                                  aria-label="Удалить блок"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -3294,7 +3320,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                 <div className="space-y-2.5">
                                   {block.socialsList.map(soc => (
                                     <div key={soc.id} className="p-3 bg-black/50 border border-white/10 rounded-sm space-y-2">
-                                      <div className="grid grid-cols-[auto_1fr_1fr] gap-2.5 items-center">
+                                      <div className="grid grid-cols-[auto_1fr] sm:grid-cols-[auto_1fr_1fr] gap-2.5 items-center">
                                         <div
                                           className="w-9 h-9 rounded-sm border border-white/10 flex items-center justify-center flex-shrink-0"
                                           style={{ color: soc.useBrandColor !== false ? getPlatformBrandColor(soc.platform) : (soc.iconColor || '#ffffff') }}
@@ -3316,7 +3342,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                           placeholder="Подпись (необязательно)"
                                           value={soc.label || ''}
                                           onChange={e => handleUpdateSocialLink(block.id, soc.id, { label: e.target.value })}
-                                          className="bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 text-white outline-none focus:border-cb-accent"
+                                          className="col-span-2 sm:col-span-1 min-w-0 bg-black border border-white/10 rounded-sm px-2.5 py-1 text-[11px] placeholder-neutral-700 text-white outline-none focus:border-cb-accent"
                                         />
                                       </div>
 
@@ -3955,39 +3981,57 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 )}
               </div>
 
-              {/* Sticky bottom drawer control actions */}
-              <div className="p-4 px-6 border-t border-white/10 bg-cb-surface flex justify-between items-center z-10">
-                <span className="text-[10px] font-mono text-neutral-400 font-bold">
+              {/* Панель сохранения: на телефоне закреплена над нижней навигацией */}
+              <div
+                className="sticky z-30 lg:static p-3 px-4 lg:p-4 lg:px-6 border-t border-white/10 bg-cb-surface flex justify-between items-center gap-3"
+                style={{ bottom: `calc(${MOBILE_NAV_HEIGHT}px + env(safe-area-inset-bottom))` }}
+              >
+                <span aria-live="polite" className="hidden sm:block text-[10px] font-mono text-neutral-400 font-bold">
                   {saveStatus === 'saving' ? 'Сохранение настроек в базу данных...' :
                    saveStatus === 'success' ? '⚡ Конфигурация успешно синхронизирована!' :
                    saveStatus === 'error' ? '☠️ Ошибка при сохранении конфигурации' : 'Нажмите кнопку сохранения, чтобы применить изменения'}
                 </span>
 
-                <button
-                  type="button"
-                  onClick={handleSaveConfig}
-                  className={`px-5 py-3 rounded-sm text-xs font-black tracking-widest font-mono transition uppercase flex items-center space-x-2 cursor-pointer ${
-                    saveStatus === 'success' ? 'bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.35)]' :
-                    saveStatus === 'error' ? 'bg-red-500 text-white' :
-                    'bg-cb-accent text-cb-on-accent hover:bg-cb-accent-hover shadow-[0_0_20px_color-mix(in_srgb,var(--cb-accent)_30%,transparent)]'
-                  }`}
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{saveStatus === 'saving' ? 'Сохранение...' : 'Синхронизировать и Сохранить'}</span>
-                </button>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => { setPreviewMode('mobile'); setMobilePreviewOpen(true); }}
+                    className="lg:hidden flex-1 px-4 py-3 rounded-sm text-xs font-black tracking-widest font-mono uppercase flex items-center justify-center gap-2 bg-white/10 text-white border border-white/10 cursor-pointer"
+                  >
+                    <Monitor className="w-4 h-4" />
+                    <span>Предпросмотр</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveConfig}
+                    className={`flex-1 sm:flex-none px-5 py-3 rounded-sm text-xs font-black tracking-widest font-mono transition uppercase flex items-center justify-center space-x-2 cursor-pointer ${
+                      saveStatus === 'success' ? 'bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.35)]' :
+                      saveStatus === 'error' ? 'bg-red-500 text-white' :
+                      'bg-cb-accent text-cb-on-accent hover:bg-cb-accent-hover shadow-[0_0_20px_color-mix(in_srgb,var(--cb-accent)_30%,transparent)]'
+                    }`}
+                  >
+                    {saveStatus === 'success' ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                    <span>
+                      {saveStatus === 'saving' ? 'Сохранение...' : saveStatus === 'success' ? 'Сохранено' : saveStatus === 'error' ? 'Ошибка' : (
+                        <><span className="sm:hidden">Сохранить</span><span className="hidden sm:inline">Синхронизировать и Сохранить</span></>
+                      )}
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Right Sector: Live Interactive Bio Preview Frame */}
-            <div className={`${uiPrefs.preview === 'hidden' ? 'hidden' : 'hidden lg:flex'} lg:w-[50%] lg:sticky lg:top-0 lg:self-start lg:h-[calc(100vh-76px)] bg-cb-bg flex-col overflow-hidden relative border-l border-white/10`}>
-              <div className="p-4 bg-cb-surface border-b border-white/10 flex justify-between items-center px-6">
+            <div role={mobilePreviewOpen ? 'dialog' : undefined} aria-label={mobilePreviewOpen ? 'Предпросмотр страницы' : undefined} className={`${mobilePreviewOpen ? `flex max-lg:fixed max-lg:inset-0 max-lg:z-[80] ${uiPrefs.preview === 'hidden' ? 'lg:hidden' : ''}` : uiPrefs.preview === 'hidden' ? 'hidden' : 'hidden lg:flex'} cb-no-touch lg:w-[50%] lg:sticky lg:top-0 lg:self-start lg:h-[calc(100vh-76px)] bg-cb-bg flex-col overflow-hidden relative border-l border-white/10`}>
+              <div className="cb-keep-touch p-4 bg-cb-surface border-b border-white/10 flex justify-between items-center px-6">
                 <div>
                   <span className="text-[10px] font-mono text-neutral-400 flex items-center space-x-1.5 uppercase font-bold tracking-wider">
                     <Monitor className="w-3.5 h-3.5 text-cb-accent" />
                     <span>Режим Предпросмотра (В реальном времени)</span>
                   </span>
                 </div>
-                <div className="flex gap-1 bg-black/40 p-1 rounded-sm border border-white/10">
+                <button type="button" onClick={() => setMobilePreviewOpen(false)} aria-label="Закрыть предпросмотр" className="lg:hidden flex items-center gap-1.5 px-3 min-h-[40px] rounded-sm bg-white/10 text-white text-[10px] font-black uppercase tracking-wider cursor-pointer"><X className="w-4 h-4" />Закрыть</button>
+                <div className="hidden lg:flex gap-1 bg-black/40 p-1 rounded-sm border border-white/10">
                   <button type="button" onClick={() => setPreviewMode('desktop')} className={`px-2 py-1 text-[9px] uppercase font-bold rounded-sm ${previewMode === 'desktop' ? 'bg-cb-accent text-cb-on-accent' : 'text-neutral-500'}`}>Desktop</button>
                   <button type="button" onClick={() => setPreviewMode('mobile')} className={`px-2 py-1 text-[9px] uppercase font-bold rounded-sm ${previewMode === 'mobile' ? 'bg-cb-accent text-cb-on-accent' : 'text-neutral-500'}`}>Mobile</button>
                 </div>
@@ -4002,15 +4046,15 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                     <BioPage
                       username={username}
                       onExit={() => {}}
-                      forceMobile={previewMode === 'mobile'}
+                      forceMobile={previewMode === 'mobile' || isPhone}
                       onPlayerMove={(pos) => updateConfigValue('audioPlayerPos', pos)}
-                      previewConfig={{ ...config, mobileOptimized: previewMode === 'mobile' ? true : config.mobileOptimized }}
+                      previewConfig={{ ...config, mobileOptimized: previewMode === 'mobile' || isPhone ? true : config.mobileOptimized }}
                     />
                   </div>
                 );
                 return (
                   <div className="flex-grow min-h-0 relative bg-[#040407]">
-                    {previewMode === 'mobile' ? (
+                    {previewMode === 'mobile' && !isPhone ? (
                       <div className="absolute inset-0 overflow-y-auto flex justify-center p-4">
                         <div
                           className="w-[390px] h-[844px] max-h-full border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl scale-[0.85] origin-top"
@@ -4031,6 +4075,10 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
           </>
         )}
       </div>
+
+      {token && username && config && !studioOpen && !mobilePreviewOpen && !showOnboarding && (
+        <MobileBottomNav groups={visibleGroups} activeTab={activeTab} onSelectTab={setActiveTab} />
+      )}
 
       {showOnboarding && token && username && config && !studioOpen && (
         <Onboarding
