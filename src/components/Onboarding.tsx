@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, ArrowRight, LayoutTemplate, Sparkles } from 'lucide-react';
 import type { BioConfig } from '../types';
+import { useUiPrefs } from '../uiPrefs';
 
 interface OnboardingProps {
   username: string;
@@ -27,6 +28,7 @@ const STEPS = ['Добро пожаловать', 'О вас', 'Стиль', 'К
 /** Мастер первого входа: имя и описание, цвет, затем открытие свободного конструктора */
 export default function Onboarding({ username, config, onChange, onSave, onOpenStudio, onClose }: OnboardingProps) {
   const [step, setStep] = useState(0);
+  const [ui, setUi] = useUiPrefs();
   const last = step === STEPS.length - 1;
 
   const finish = (openStudio: boolean) => {
@@ -89,6 +91,25 @@ export default function Onboarding({ username, config, onChange, onSave, onOpenS
                 })}
               </div>
               <p className="text-[11px] text-neutral-500 font-sans">Остальное — фон, шрифты, эффекты — настраивается в разделе «Оформление».</p>
+              <div className="pt-2 space-y-2">
+                <span className="block text-[10px] uppercase tracking-wider font-bold text-neutral-400">Как вам удобнее редактировать</span>
+                <div role="radiogroup" aria-label="Режим редактора" className="grid grid-cols-2 gap-2">
+                  {([['simple', 'Попроще', 'Только основное'], ['full', 'Со всеми настройками', 'Все разделы сразу']] as const).map(([id, label, hint]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={ui.editorMode === id}
+                      onClick={() => setUi({ editorMode: id })}
+                      className={`text-left p-3 rounded-sm border ${ui.editorMode === id ? 'border-cb-accent bg-cb-accent/10' : 'border-white/10 bg-black/30'}`}
+                    >
+                      <span className="block text-[11px] font-black font-mono uppercase text-white">{label}</span>
+                      <span className="block text-[10px] text-neutral-400 font-sans">{hint}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-neutral-600 font-sans">Можно поменять в «Аккаунт → Настройки».</p>
+              </div>
             </div>
           )}
 
@@ -97,6 +118,9 @@ export default function Onboarding({ username, config, onChange, onSave, onOpenS
               <h2 className="text-lg font-black flex items-center gap-2"><LayoutTemplate className="w-5 h-5 text-cb-accent" />Соберите страницу сами</h2>
               <p className="text-sm text-neutral-300 font-sans leading-relaxed">
                 В Студии аватар, ник и блоки двигаются и растягиваются свободно. Для телефона можно сделать отдельную раскладку.
+              </p>
+              <p className="text-[11px] text-neutral-500 font-sans leading-relaxed">
+                На вкладке «Обзор» вас ждёт чек-лист «Первые шаги». А в «Настройках» можно включить двухфакторную защиту.
               </p>
             </div>
           )}

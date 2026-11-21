@@ -61,6 +61,7 @@ CRY BIOS — open-source платформа для персональных би
 - bcrypt-хеши паролей, rate limiting, helmet
 - Account lockout после неудачных входов
 - Политика паролей (8+ символов)
+- Двухфакторная аутентификация (TOTP, RFC 6238): Google Authenticator, Authy, 1Password, Aegis; 10 одноразовых резервных кодов; секрет шифруется AES-256-GCM; код нельзя использовать повторно; админ может сбросить 2FA пользователю
 - Подробнее: [SECURITY.md](SECURITY.md) · [RU-SECURITY](RU-SECURITY)
 
 ### Оформление платформы
@@ -158,6 +159,7 @@ curl -fsSL https://cbios.ru/api/install-script | bash
 | `PORT` | — | Порт сервера (default: `3000`) |
 | `NODE_ENV` | prod | `production` для prod-сборки |
 | `ADMIN_PASSWORD` | **да** | Пароль админ-панели |
+| `TWOFA_ENCRYPTION_KEY` | рекомендуется | Ключ шифрования секретов 2FA: 64 hex-символа (`openssl rand -hex 32`). Если не задан, создаётся `data/2fa.key`. **Ключ не входит в бэкап**: при переезде на другой сервер перенесите его или задайте переменную, иначе 2FA у пользователей будет работать только по резервным кодам (или после сброса админом) |
 | `APP_URL` | — | Публичный URL инстанса |
 | `BIO_BASE_DOMAIN` | — | Базовый домен для поддоменов (`name.cbios.ru`) |
 | `GEMINI_API_KEY` | — | Опционально, для AI-фич |

@@ -57,6 +57,18 @@ import { getServerMediaCdnUrl } from './src/utils/cdn';
 import { registerDiscord, preserveDiscordFields } from './src/discord';
 import { createGithubService, isValidRepo, DEFAULT_REPO } from './src/github';
 import { getSocialLinks } from './src/socials';
+import QRCode from 'qrcode';
+import {
+  LoginChallenges,
+  buildOtpauthUrl,
+  consumeRecoveryCode,
+  decryptSecret,
+  encryptSecret,
+  generateRecoveryCodes,
+  generateSecret,
+  loadEncryptionKey,
+  verifyTotp,
+} from './src/twoFactor';
 
 // Разрешённые origin: cbios.ru и cryteam.ru (+ один уровень поддоменов, в т.ч. cdn.*) и CORS_ALLOWED_ORIGINS из окружения
 const CBIOS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?(cbios\.ru|cryteam\.ru)$/;
@@ -466,6 +478,19 @@ async function startServer() {
   });
   // Регистрация: не больше 5 новых аккаунтов в час с одного IP
   const registrations = new FailureLimiter(5, 60 * 60 * 1000);
+  // 2FA: «вызов» живёт 5 минут и допускает 5 попыток ввода кода
+  const twoFactorChallenges = new LoginChallenges();
+  let twoFactorKey: Buffer | null = null;
+  const getTwoFactorKey = (): Buffer => (twoFactorKey ??= loadEncryptionKey(DATA_DIR));
+  const twoFactorLoginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: { error: 'Слишком много попыток. Попробуйте позже.' },
+    keyGenerator: (req) => ipKeyGenerator(req.ip || ''),
+  });
   // Публичные чтения и аналитика
   const publicLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -1363,10 +1388,14 @@ async function startServer() {
         return res.status(403).json({ error: 'Аккаунт заблокирован администратором' });
       }
       if (valid) {
-        clearLoginAttempts(normUsername);
         if (needsRehash) {
           db.updateUserPassword(normUsername, hashPassword(password));
         }
+        // Пароль верен, но при включённой 2FA сессию выдаём только после кода
+        if (db.getTwoFactor(normUsername)?.enabled) {
+          return res.json({ twoFactorRequired: true, challenge: twoFactorChallenges.create(normUsername) });
+        }
+        clearLoginAttempts(normUsername);
         const sessionToken = crypto.randomUUID();
         db.updateUserToken(normUsername, sessionToken);
         setSessionCookie(req, res, sessionToken);
@@ -1485,6 +1514,145 @@ async function startServer() {
     db.updateUserToken(authedUser, sessionToken);
     setSessionCookie(req, res, sessionToken);
     res.json({ success: true, token: sessionToken, message: 'Пароль успешно изменён' });
+  });
+
+
+  // ---------- Двухфакторная аутентификация (TOTP) ----------
+
+  const accountSecurityLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Слишком много попыток. Попробуйте позже.' },
+    keyGenerator: (req) => `u:${getUsernameFromRequest(req) || ipKeyGenerator(req.ip || '')}`,
+  });
+
+  /** Принимает TOTP-код или резервный код; успешный код расходуется (повторно не сработает). */
+  const checkSecondFactor = (username: string, rawCode: unknown): boolean => {
+    const code = String(rawCode ?? '').slice(0, 32);
+    const tf = db.getTwoFactor(username);
+    if (!tf?.enabled || !code) return false;
+    const secret = tf.secret ? decryptSecret(tf.secret, getTwoFactorKey()) : null;
+    if (secret) {
+      const step = verifyTotp(secret, code, { lastUsedStep: tf.lastStep });
+      if (step !== null) { db.setTwoFactorLastStep(username, step); return true; }
+    }
+    const rest = consumeRecoveryCode(code, tf.recovery);
+    if (rest) { db.setTwoFactorRecovery(username, rest); return true; }
+    return false;
+  };
+
+  /** Проверка пароля для чувствительных действий; неверный пароль считается неудачной попыткой входа. */
+  const reauthenticate = (username: string, password: unknown): boolean => {
+    const user = db.getUser(username);
+    if (!user || typeof password !== 'string' || !password) return false;
+    if (isAccountLocked(user)) return false;
+    const ok = verifyPassword(password, user.password_hash).valid;
+    if (!ok) recordFailedLogin(username);
+    return ok;
+  };
+
+  app.get('/api/account/security', (req, res) => {
+    const username = getUsernameFromRequest(req);
+    if (!username) return res.status(401).json({ error: 'Сессия недействительна' });
+    const tf = db.getTwoFactor(username);
+    res.json({ twoFactorEnabled: Boolean(tf?.enabled), recoveryCodesLeft: tf?.enabled ? tf.recovery.length : 0 });
+  });
+
+  app.post('/api/auth/2fa/setup', accountSecurityLimiter, async (req, res) => {
+    const username = getUsernameFromRequest(req);
+    if (!username) return res.status(401).json({ error: 'Сессия недействительна' });
+    if (!reauthenticate(username, req.body?.password)) {
+      return res.status(401).json({ error: 'Неверный пароль' });
+    }
+    if (db.getTwoFactor(username)?.enabled) {
+      return res.status(409).json({ error: 'Двухфакторная защита уже включена' });
+    }
+    try {
+      const secret = generateSecret();
+      db.setTwoFactorPending(username, encryptSecret(secret, getTwoFactorKey()));
+      const otpauthUrl = buildOtpauthUrl(username, secret, 'CRY BIOS');
+      const qr = await QRCode.toDataURL(otpauthUrl, { margin: 1, width: 224 });
+      res.json({ secret, otpauthUrl, qr });
+    } catch (e) {
+      console.error('2FA setup failed', e);
+      res.status(500).json({ error: 'Не удалось начать настройку 2FA' });
+    }
+  });
+
+  app.post('/api/auth/2fa/enable', accountSecurityLimiter, (req, res) => {
+    const username = getUsernameFromRequest(req);
+    if (!username) return res.status(401).json({ error: 'Сессия недействительна' });
+    const tf = db.getTwoFactor(username);
+    if (!tf) return res.status(401).json({ error: 'Сессия недействительна' });
+    if (tf.enabled) return res.status(409).json({ error: 'Двухфакторная защита уже включена' });
+    const secret = tf.pending ? decryptSecret(tf.pending, getTwoFactorKey()) : null;
+    if (!secret) return res.status(400).json({ error: 'Сначала начните настройку заново' });
+    const step = verifyTotp(secret, String(req.body?.code ?? ''));
+    if (step === null) return res.status(400).json({ error: 'Неверный код. Проверьте время на телефоне и попробуйте ещё раз' });
+    const codes = generateRecoveryCodes();
+    db.enableTwoFactor(username, tf.pending, codes.hashes, step);
+    res.json({ success: true, recoveryCodes: codes.plain });
+  });
+
+  app.post('/api/auth/2fa/disable', accountSecurityLimiter, (req, res) => {
+    const username = getUsernameFromRequest(req);
+    if (!username) return res.status(401).json({ error: 'Сессия недействительна' });
+    if (!db.getTwoFactor(username)?.enabled) return res.json({ success: true });
+    if (!reauthenticate(username, req.body?.password)) return res.status(401).json({ error: 'Неверный пароль' });
+    if (!checkSecondFactor(username, req.body?.code)) {
+      recordFailedLogin(username);
+      return res.status(401).json({ error: 'Неверный код' });
+    }
+    db.disableTwoFactor(username);
+    res.json({ success: true });
+  });
+
+  app.post('/api/auth/2fa/recovery-codes', accountSecurityLimiter, (req, res) => {
+    const username = getUsernameFromRequest(req);
+    if (!username) return res.status(401).json({ error: 'Сессия недействительна' });
+    if (!db.getTwoFactor(username)?.enabled) return res.status(400).json({ error: 'Двухфакторная защита не включена' });
+    if (!reauthenticate(username, req.body?.password)) return res.status(401).json({ error: 'Неверный пароль' });
+    if (!checkSecondFactor(username, req.body?.code)) {
+      recordFailedLogin(username);
+      return res.status(401).json({ error: 'Неверный код' });
+    }
+    const codes = generateRecoveryCodes();
+    db.setTwoFactorRecovery(username, codes.hashes);
+    res.json({ success: true, recoveryCodes: codes.plain });
+  });
+
+  // Второй шаг входа: вызов из login-register + код из приложения или резервный код
+  app.post('/api/auth/2fa/login', twoFactorLoginLimiter, (req, res) => {
+    const challenge = String(req.body?.challenge ?? '');
+    const username = twoFactorChallenges.attempt(challenge);
+    if (!username) return res.status(401).json({ error: 'Время подтверждения истекло. Введите пароль заново.' });
+    const user = db.getUser(username);
+    if (!user || !user.totp_enabled) return res.status(401).json({ error: 'Время подтверждения истекло. Введите пароль заново.' });
+    if (isAccountLocked(user)) {
+      return res.status(429).json({ error: 'Аккаунт временно заблокирован из-за множества неудачных попыток. Попробуйте позже.' });
+    }
+    if (user.banned) return res.status(403).json({ error: 'Аккаунт заблокирован администратором' });
+    if (!checkSecondFactor(username, req.body?.code)) {
+      recordFailedLogin(username);
+      return res.status(401).json({ error: 'Неверный код' });
+    }
+    twoFactorChallenges.consume(challenge);
+    clearLoginAttempts(username);
+    const sessionToken = crypto.randomUUID();
+    db.updateUserToken(username, sessionToken);
+    setSessionCookie(req, res, sessionToken);
+    res.json({ token: sessionToken, username, isNew: false });
+  });
+
+  // Утерян телефон и резервные коды: администратор сбрасывает 2FA и закрывает сессии
+  app.post('/api/admin/user/:username/reset-2fa', checkAdminAuth, (req, res) => {
+    const username = req.params.username.toLowerCase();
+    if (!db.getUser(username)) return res.status(404).json({ error: 'Пользователь не найден' });
+    db.disableTwoFactor(username);
+    db.invalidateUserSessions(username);
+    res.json({ success: true });
   });
 
   // Check auth session validity

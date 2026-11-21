@@ -70,6 +70,12 @@ function ensureUserSecurityColumns() {
   if (!names.has('ban_reason')) {
     db.exec("ALTER TABLE users ADD COLUMN ban_reason TEXT DEFAULT ''");
   }
+  // Двухфакторная аутентификация (TOTP). Секрет хранится зашифрованным (см. twoFactor.ts).
+  if (!names.has('totp_secret')) db.exec("ALTER TABLE users ADD COLUMN totp_secret TEXT DEFAULT ''");
+  if (!names.has('totp_pending')) db.exec("ALTER TABLE users ADD COLUMN totp_pending TEXT DEFAULT ''");
+  if (!names.has('totp_enabled')) db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0');
+  if (!names.has('totp_recovery')) db.exec("ALTER TABLE users ADD COLUMN totp_recovery TEXT DEFAULT '[]'");
+  if (!names.has('totp_last_step')) db.exec('ALTER TABLE users ADD COLUMN totp_last_step INTEGER DEFAULT 0');
 }
 
 ensureUserSecurityColumns();
@@ -231,7 +237,13 @@ export function updateUsername(oldUsername: string, newUsername: string) {
     
     // Токен уникален: освобождаем его у старой записи до вставки новой
     db.prepare("UPDATE users SET token = '' WHERE username = ?").run(oldUsername);
-    db.prepare('INSERT INTO users (username, password_hash, token, token_expires_at) VALUES (?, ?, ?, ?)').run(newUsername, user.password_hash, user.token, user.token_expires_at ?? null);
+    db.prepare(
+      'INSERT INTO users (username, password_hash, token, token_expires_at, banned, ban_reason, totp_secret, totp_enabled, totp_recovery, totp_last_step) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      newUsername, user.password_hash, user.token, user.token_expires_at ?? null,
+      user.banned ? 1 : 0, user.ban_reason ?? '',
+      user.totp_secret ?? '', user.totp_enabled ? 1 : 0, user.totp_recovery ?? '[]', user.totp_last_step ?? 0,
+    );
     
     // Copy bio
     const bioRow = db.prepare('SELECT data FROM bios WHERE username = ?').get(oldUsername) as any;
@@ -304,7 +316,7 @@ export function getAllBios(): BioConfig[] {
 }
 
 export function getAllUsersWithStats() {
-  const users = db.prepare('SELECT username, banned, ban_reason FROM users').all() as { username: string; banned: number | null; ban_reason: string | null }[];
+  const users = db.prepare('SELECT username, banned, ban_reason, totp_enabled FROM users').all() as { username: string; banned: number | null; ban_reason: string | null; totp_enabled: number | null }[];
   return users.map(u => {
     const bioRow = db.prepare('SELECT data FROM bios WHERE username = ?').get(u.username) as any;
     const bio = bioRow ? JSON.parse(bioRow.data) : null;
@@ -317,6 +329,7 @@ export function getAllUsersWithStats() {
       visitsCount,
       banned: Boolean(u.banned),
       banReason: u.ban_reason || '',
+      twoFactor: Boolean(u.totp_enabled),
     };
   });
 }
@@ -407,6 +420,66 @@ export function updateUserPasswordAndInvalidateSessions(username: string, passwo
   ).run(passwordHash, '', username);
 }
 
+/** Данные 2FA из бэкапа принимаются, только если они выглядят как наши (зашифрованный секрет + хэши кодов). */
+function sanitizeTwoFactorDump(u: any): { secret: string; enabled: number; recovery: string; lastStep: number } {
+  const secret = typeof u?.totp_secret === 'string' && /^v1:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/.test(u.totp_secret) && u.totp_secret.length < 500
+    ? u.totp_secret : '';
+  let recovery: string[] = [];
+  try {
+    const parsed = JSON.parse(typeof u?.totp_recovery === 'string' ? u.totp_recovery : '[]');
+    if (Array.isArray(parsed)) recovery = parsed.filter((h) => typeof h === 'string' && /^[0-9a-f]{64}$/.test(h)).slice(0, 20);
+  } catch { /* пусто */ }
+  const enabled = u?.totp_enabled && secret ? 1 : 0;
+  const lastStep = Number.isFinite(u?.totp_last_step) ? Math.max(0, Math.floor(u.totp_last_step)) : 0;
+  return { secret: enabled ? secret : '', enabled, recovery: JSON.stringify(enabled ? recovery : []), lastStep };
+}
+
+export interface TwoFactorState {
+  enabled: boolean;
+  secret: string;
+  pending: string;
+  recovery: string[];
+  lastStep: number;
+}
+
+export function getTwoFactor(username: string): TwoFactorState | null {
+  const u = getUser(username);
+  if (!u) return null;
+  let recovery: string[] = [];
+  try { const r = JSON.parse(u.totp_recovery || '[]'); if (Array.isArray(r)) recovery = r.filter((h) => typeof h === 'string'); } catch { /* пусто */ }
+  return {
+    enabled: Boolean(u.totp_enabled),
+    secret: u.totp_secret || '',
+    pending: u.totp_pending || '',
+    recovery,
+    lastStep: u.totp_last_step || 0,
+  };
+}
+
+export function setTwoFactorPending(username: string, encryptedSecret: string) {
+  db.prepare('UPDATE users SET totp_pending = ? WHERE username = ?').run(encryptedSecret, username);
+}
+
+export function enableTwoFactor(username: string, encryptedSecret: string, recoveryHashes: string[], lastStep: number) {
+  db.prepare(
+    "UPDATE users SET totp_secret = ?, totp_pending = '', totp_enabled = 1, totp_recovery = ?, totp_last_step = ? WHERE username = ?"
+  ).run(encryptedSecret, JSON.stringify(recoveryHashes), lastStep, username);
+}
+
+export function disableTwoFactor(username: string) {
+  db.prepare(
+    "UPDATE users SET totp_secret = '', totp_pending = '', totp_enabled = 0, totp_recovery = '[]', totp_last_step = 0 WHERE username = ?"
+  ).run(username);
+}
+
+export function setTwoFactorLastStep(username: string, step: number) {
+  db.prepare('UPDATE users SET totp_last_step = ? WHERE username = ?').run(step, username);
+}
+
+export function setTwoFactorRecovery(username: string, recoveryHashes: string[]) {
+  db.prepare('UPDATE users SET totp_recovery = ? WHERE username = ?').run(JSON.stringify(recoveryHashes), username);
+}
+
 export function exportDatabase(options?: { includeAnalytics?: boolean }) {
   const users = db.prepare('SELECT * FROM users').all() as any[];
   const bios = db.prepare('SELECT * FROM bios').all();
@@ -424,6 +497,11 @@ export function exportDatabase(options?: { includeAnalytics?: boolean }) {
         locked_until: u.locked_until ?? null,
         banned: u.banned ? 1 : 0,
         ban_reason: u.ban_reason ?? '',
+        // 2FA: секрет зашифрован ключом, которого в бэкапе нет; резервные коды — только хэши
+        totp_secret: u.totp_enabled ? (u.totp_secret ?? '') : '',
+        totp_enabled: u.totp_enabled ? 1 : 0,
+        totp_recovery: u.totp_enabled ? (u.totp_recovery ?? '[]') : '[]',
+        totp_last_step: u.totp_last_step ?? 0,
       }));
   return { users: sanitizedUsers, bios, analytics };
 }
@@ -433,9 +511,15 @@ export function importDatabase(dump: { users?: any[], bios?: any[], analytics?: 
     if (dump.users) {
       db.prepare('DELETE FROM users').run();
       // Сессии из бэкапа никогда не восстанавливаются: все входят заново.
-      const insertUser = db.prepare("INSERT INTO users (username, password_hash, token, banned, ban_reason) VALUES (?, ?, '', ?, ?)");
+      const insertUser = db.prepare(
+        "INSERT INTO users (username, password_hash, token, banned, ban_reason, totp_secret, totp_enabled, totp_recovery, totp_last_step) VALUES (?, ?, '', ?, ?, ?, ?, ?, ?)"
+      );
       for (const u of dump.users) {
-        insertUser.run(u.username, u.password_hash, u.banned ? 1 : 0, typeof u.ban_reason === 'string' ? u.ban_reason.slice(0, 200) : '');
+        const tf = sanitizeTwoFactorDump(u);
+        insertUser.run(
+          u.username, u.password_hash, u.banned ? 1 : 0, typeof u.ban_reason === 'string' ? u.ban_reason.slice(0, 200) : '',
+          tf.secret, tf.enabled, tf.recovery, tf.lastStep,
+        );
       }
     }
     if (dump.bios) {
