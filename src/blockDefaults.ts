@@ -61,7 +61,7 @@ export function createDefaultBlock(type: BlockConfig['type']): BlockConfig {
       return {
         ...base,
         title: 'Featured Image',
-        imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80',
+        imageUrl: '/default-image.svg',
         imageAlt: 'Abstract Design',
         imageHeight: 200,
         imageFit: 'cover',

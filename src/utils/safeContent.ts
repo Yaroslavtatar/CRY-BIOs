@@ -1,3 +1,4 @@
+import { EMBED_HOSTS } from '../embedHosts';
 import DOMPurify from 'dompurify';
 
 /** Блок `html` — пользовательский контент: без скриптов, обработчиков событий, форм, iframe, <style>. */
@@ -10,14 +11,7 @@ export function sanitizeUserHtml(html: string): string {
   });
 }
 
-const EMBED_HOSTS = [
-  'youtube.com',
-  'www.youtube.com',
-  'www.youtube-nocookie.com',
-  'open.spotify.com',
-  'w.soundcloud.com',
-  'player.vimeo.com',
-];
+export { EMBED_HOSTS };
 
 /** iframe-эмбеды: только https и известные плееры. */
 export function isSafeEmbedUrl(url: string): boolean {

@@ -47,7 +47,7 @@ check "SPA index"                  200 "${BASE}/"
 
 # Discord-поля нельзя подменить через сохранение био (спуфинг чужого ID)
 REG="$(curl -s -X POST "${BASE}/api/auth/login-register" -H 'Content-Type: application/json' \
-  -d '{"username":"smokeuser","password":"smokepass123"}')"
+  -d '{"username":"smokeuser","password":"smokepass123","acceptTerms":true}')"
 TOKEN="$(printf '%s' "$REG" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
 if [ -z "$TOKEN" ]; then echo "FAIL регистрация: ${REG}"; cat "$LOG"; exit 1; fi
 curl -s -o /dev/null -X POST "${BASE}/api/bio/smokeuser" \

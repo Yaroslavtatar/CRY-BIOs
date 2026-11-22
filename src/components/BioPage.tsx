@@ -3,15 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { sanitizeUserHtml, isSafeEmbedUrl, safeHref } from '../utils/safeContent';
 import { motion, AnimatePresence } from 'motion/react';
 import { BioConfig, SocialLink, BlockConfig, AudioPlayerPos } from '../types';
 import { Volume2, VolumeX, Flame, Play, Eye, Share2, CornerDownRight, Quote, Sparkles, Music, SkipBack, Pause, SkipForward, Crown, Shield, ShieldCheck, Gem, Award, Star, Heart, Zap, Code2, Skull, Gamepad2, Coffee, Terminal, CheckCircle2 } from 'lucide-react';
 import MinimalAudioBar from './MinimalAudioBar';
+import ClickToLoadEmbed, { embedLabel } from './ClickToLoadEmbed';
 import PlayerPositioner from './PlayerPositioner';
-import SparkleCanvas from './SparkleCanvas';
-import BackgroundCanvas from './BackgroundCanvas';
+// Тяжёлые визуальные эффекты грузим лениво: они нужны не каждой странице и не до первого рендера
+const SparkleCanvas = lazy(() => import('./SparkleCanvas'));
+const BackgroundCanvas = lazy(() => import('./BackgroundCanvas'));
 import LocationLine from './LocationLine';
 import MobileBioLayout, { useMobileBio } from './MobileBioLayout';
 import VerifiedBadge, { VerifiedAvatarRing } from './VerifiedBadge';
@@ -718,10 +720,10 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
 
     const style: React.CSSProperties = {
       backgroundColor: config.bgValue && config.bgType === 'color' ? config.bgValue : '#09080e',
-      fontFamily: config.fontFamily === 'Inter' ? '"Inter", sans-serif' :
-                  config.fontFamily === 'Space Grotesk' ? '"Space Grotesk", sans-serif' :
-                  config.fontFamily === 'JetBrains Mono' ? '"JetBrains Mono", monospace' :
-                  config.fontFamily === 'Outfit' ? '"Outfit", sans-serif' : '"Playfair Display", serif'
+      fontFamily: config.fontFamily === 'Inter' ? '"Inter Variable", "Inter", sans-serif' :
+                  config.fontFamily === 'Space Grotesk' ? '"Space Grotesk Variable", "Space Grotesk", sans-serif' :
+                  config.fontFamily === 'JetBrains Mono' ? '"JetBrains Mono Variable", "JetBrains Mono", monospace' :
+                  config.fontFamily === 'Outfit' ? '"Outfit Variable", "Outfit", sans-serif' : '"Playfair Display Variable", "Playfair Display", serif'
     };
 
     // If a gradient is specified
@@ -1095,7 +1097,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
         case 'image':
           const imgElement = (
             <img
-              src={block.imageUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80'}
+              src={block.imageUrl || '/default-image.svg'}
               alt={block.imageAlt || 'Изображение'}
               referrerPolicy="no-referrer"
               loading="lazy"
@@ -1150,17 +1152,10 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
               )}
               <div className="p-2 justify-center flex">
                 {embedSrc && isSafeEmbedUrl(embedSrc) ? (
-                  <iframe
+                  <ClickToLoadEmbed
                     src={embedSrc}
-                    sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    loading="lazy"
-                    width="100%"
                     height={block.embedType === 'spotify' ? '80' : block.embedType === 'soundcloud' ? '150' : '220'}
-                    frameBorder="0"
-                    allowFullScreen
-                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                    className="rounded-sm"
+                    label={embedLabel(embedSrc)}
                   />
                 ) : (
                   <div className="p-4 text-xs text-neutral-500 font-mono text-center w-full">Канал проигрывателя не настроен.</div>
@@ -1182,7 +1177,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
             <div className="relative flex flex-col items-center">
               <VerifiedAvatarRing config={config}>
                 <img
-                  src={mediaUrl(config.avatarUrl) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'}
+                  src={mediaUrl(config.avatarUrl) || '/default-avatar.svg'}
                   crossOrigin="anonymous"
                   alt={config.displayName}
                   referrerPolicy="no-referrer"
@@ -1387,19 +1382,23 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
         />
       )}
 
-      {entered && <BackgroundCanvas config={config} entered={entered} />}
+      {entered && <Suspense fallback={null}><BackgroundCanvas config={config} entered={entered} /></Suspense>}
 
       {entered && config.audioEnabled && (config.audioVisualizerEnabled !== false) && (
         <canvas ref={visualizerCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-[1]" />
       )}
 
-      <SparkleCanvas
-        enabled={!!config.sparkles}
-        entered={entered}
-        style={config.sparkleStyle}
-        color={resolveThemeColor(config, 'sparkle')}
-        intensity={config.sparkleIntensity}
-      />
+      {config.sparkles && (
+        <Suspense fallback={null}>
+          <SparkleCanvas
+            enabled={!!config.sparkles}
+            entered={entered}
+            style={config.sparkleStyle}
+            color={resolveThemeColor(config, 'sparkle')}
+            intensity={config.sparkleIntensity}
+          />
+        </Suspense>
+      )}
 
       {/* Direct styling override for custom guns.lol cursors */}
       {config.customCursorUrl && (
@@ -1478,7 +1477,7 @@ export default function BioPage({ username, onExit, previewConfig, forceMobile, 
             </button>
             <div className="w-[1px] h-4 bg-white/10" />
             <div className="flex items-center space-x-2">
-              <img src={mediaUrl(config.avatarUrl) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'} className="w-7 h-7 rounded-full object-cover border border-white/10" loading="lazy" decoding="async" alt="" crossOrigin="anonymous" />
+              <img src={mediaUrl(config.avatarUrl) || '/default-avatar.svg'} className="w-7 h-7 rounded-full object-cover border border-white/10" loading="lazy" decoding="async" alt="" crossOrigin="anonymous" />
               <div className="flex flex-col text-[10px] leading-tight">
                 <span className="text-neutral-400 font-bold font-mono uppercase tracking-wider text-[8px]">ПРЕДПРОСМОТР ШАБЛОНА</span>
                 <span className="text-white font-extrabold font-mono text-[9px]">{config.displayName || config.username || 'samurai'}</span>

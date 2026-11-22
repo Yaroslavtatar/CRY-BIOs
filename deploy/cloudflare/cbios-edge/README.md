@@ -1,48 +1,34 @@
 # cbios-edge — Cloudflare Worker
 
-Edge proxy for CRY BIOS: Discord OAuth, Lanyard presence, guns.lol HTML fetch.
+Edge proxy для CRY BIOS: получение HTML со страниц guns.lol (импорт профилей, `src/importHub.ts`).
+Discord OAuth и Lanyard-прокси удалены: Node-сервер их больше не использует.
 
-## Setup
+## Развёртывание
 
-### 1. Discord Developer Portal
+**Cloudflare Workers (Git):** корень `deploy/cloudflare/cbios-edge`, build command пустая, deploy command `npx wrangler deploy`. Имя проекта должно совпадать с `wrangler.toml` (`cry-bios`).
 
-1. Create application at https://discord.com/developers/applications
-2. OAuth2 → Redirects: `https://<your-worker>.workers.dev/oauth/callback`
-3. Copy **Client ID** and **Client Secret**
-
-### 2. Deploy Worker
-
-**Cloudflare Workers (Git):** root path `deploy/cloudflare/cbios-edge`, build command empty, deploy command `npx wrangler deploy`. Project name must match `wrangler.toml` (`cry-bios`).
-
-**Local:**
+**Локально:**
 
 ```bash
 cd deploy/cloudflare/cbios-edge
 npm install
 wrangler login
-wrangler secret put DISCORD_CLIENT_ID
-wrangler secret put DISCORD_CLIENT_SECRET
-wrangler secret put DISCORD_REDIRECT_URI    # https://xxx.workers.dev/oauth/callback
-wrangler secret put CBIOS_WEBHOOK_SECRET   # same as Node CBIOS_EDGE_SECRET
-wrangler secret put CBIOS_APP_URL           # https://cbios.ru
-wrangler secret put CBIOS_NODE_WEBHOOK_URL  # https://cbios.ru/api/discord/oauth/webhook
+wrangler secret put CBIOS_EDGE_SECRET   # такой же, как на Node
 npm run deploy
 ```
 
-### 3. Node env (Coolify)
+### Переменные Node (Coolify)
 
 ```env
 CBIOS_EDGE_URL=https://your-worker.workers.dev
-CBIOS_EDGE_SECRET=<same as CBIOS_WEBHOOK_SECRET>
-DISCORD_CLIENT_ID=<discord app id>
+CBIOS_EDGE_SECRET=<тот же секрет, что в воркере>
 ```
 
-## Routes
+Если `CBIOS_EDGE_SECRET` в воркере не задан, `/guns/fetch/*` открыт всем. Задайте секрет, иначе любой желающий сможет гонять запросы через ваш воркер.
+
+## Маршруты
 
 | Route | Description |
 |-------|-------------|
 | `GET /health` | Healthcheck |
-| `GET /oauth/start?state=...` | Redirect to Discord OAuth |
-| `GET /oauth/callback` | OAuth callback → Node webhook |
-| `GET /lanyard/:userId` | Lanyard API proxy (60s cache) |
-| `GET /guns/fetch/:username` | Fetch guns.lol HTML from edge |
+| `GET /guns/fetch/:username` | HTML guns.lol (нужен заголовок `x-cbios-edge-secret`, если секрет задан) |

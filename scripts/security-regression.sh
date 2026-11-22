@@ -8,7 +8,7 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 fails=0
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 jget() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const o=JSON.parse(s);console.log(process.argv[1].split(".").reduce((a,k)=>a==null?a:a[k],o)??"")}catch(e){console.log("")}})' "$1"; }
-reg() { curl -s -X POST $BASE/api/auth/login-register -H "$J" -d "{\"username\":\"$1\",\"password\":\"$2\"}"; }
+reg() { curl -s -X POST $BASE/api/auth/login-register -H "$J" -d "{\"username\":\"$1\",\"password\":\"$2\",\"acceptTerms\":true}"; }
 expect() { # name got want
   if [ "$2" = "$3" ]; then echo "ok   $1 ($2)"; else echo "FAIL $1: получили '$2', ожидали '$3'"; fails=$((fails+1)); fi
 }
@@ -18,6 +18,41 @@ expect "C2 верный пароль работает" "$(code -H "x-admin-passw
 
 TOK=$(reg victim1 victimpass1 | jget token)
 [ -n "$TOK" ] && echo "ok   регистрация" || { echo "FAIL регистрация"; fails=$((fails+1)); }
+
+# 2FA: включение, обязательный второй шаг, повтор кода, резервный код, блокировка перебора
+totp() { # secret(base32) offset_steps -> 6-значный код
+  node -e 'const c=require("crypto");const B="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";let bits=0,v=0;const o=[];for(const ch of process.argv[1]){v=(v<<5)|B.indexOf(ch);bits+=5;if(bits>=8){o.push((v>>>(bits-8))&255);bits-=8}}
+const step=Math.floor(Date.now()/30000)+Number(process.argv[2]||0);const b=Buffer.alloc(8);b.writeBigUInt64BE(BigInt(step));const h=c.createHmac("sha1",Buffer.from(o)).update(b).digest();const off=h[h.length-1]&15;
+const n=((h[off]&127)<<24)|(h[off+1]<<16)|(h[off+2]<<8)|h[off+3];console.log(String(n%1000000).padStart(6,"0"))' "$1" "${2:-0}"
+}
+TF=$(reg twofa1 twofapass1)
+TFTOK=$(echo "$TF" | jget token)
+SETUP=$(curl -s -X POST $BASE/api/auth/2fa/setup -H "Authorization: Bearer $TFTOK" -H "$J" -d '{"password":"twofapass1"}')
+SECRET=$(echo "$SETUP" | jget secret)
+[ -n "$SECRET" ] && echo "ok   2FA setup" || { echo "FAIL 2FA setup: $SETUP"; fails=$((fails+1)); }
+expect "2FA enable с неверным кодом" "$(code -X POST $BASE/api/auth/2fa/enable -H "Authorization: Bearer $TFTOK" -H "$J" -d '{"code":"000000"}')" 400
+EN=$(curl -s -X POST $BASE/api/auth/2fa/enable -H "Authorization: Bearer $TFTOK" -H "$J" -d "{\"code\":\"$(totp "$SECRET")\"}")
+RECOVERY=$(echo "$EN" | jget recoveryCodes.0)
+[ -n "$RECOVERY" ] && echo "ok   2FA enable" || { echo "FAIL 2FA enable: $EN"; fails=$((fails+1)); }
+LOGIN=$(curl -s -X POST $BASE/api/auth/login-register -H "$J" -d '{"username":"twofa1","password":"twofapass1"}')
+CH=$(echo "$LOGIN" | jget challenge)
+expect "2FA пароль без кода не даёт токен" "$(echo "$LOGIN" | jget token)" ""
+expect "2FA login требует challenge" "$(echo "$LOGIN" | jget twoFactorRequired)" true
+# код, уже использованный при включении, повторно не принимается (replay)
+expect "2FA повтор использованного кода" "$(code -X POST $BASE/api/auth/2fa/login -H "$J" -d "{\"challenge\":\"$CH\",\"code\":\"$(totp "$SECRET")\"}")" 401
+# резервный код работает один раз
+LOGIN=$(curl -s -X POST $BASE/api/auth/login-register -H "$J" -d '{"username":"twofa1","password":"twofapass1"}'); CH=$(echo "$LOGIN" | jget challenge)
+expect "2FA резервный код" "$(code -X POST $BASE/api/auth/2fa/login -H "$J" -d "{\"challenge\":\"$CH\",\"code\":\"$RECOVERY\"}")" 200
+LOGIN=$(curl -s -X POST $BASE/api/auth/login-register -H "$J" -d '{"username":"twofa1","password":"twofapass1"}'); CH=$(echo "$LOGIN" | jget challenge)
+expect "2FA резервный код одноразовый" "$(code -X POST $BASE/api/auth/2fa/login -H "$J" -d "{\"challenge\":\"$CH\",\"code\":\"$RECOVERY\"}")" 401
+# перебор кода: после 5 неудач вызов и аккаунт блокируются
+c401=0; cBlocked=0
+for i in $(seq 1 8); do
+  LOGIN=$(curl -s -X POST $BASE/api/auth/login-register -H "$J" -d '{"username":"twofa1","password":"twofapass1"}'); CH=$(echo "$LOGIN" | jget challenge)
+  [ -z "$CH" ] && { cBlocked=$((cBlocked+1)); continue; }
+  r=$(code -X POST $BASE/api/auth/2fa/login -H "$J" -d "{\"challenge\":\"$CH\",\"code\":\"1234$i$i\"}"); [ "$r" = 401 ] && c401=$((c401+1)); [ "$r" = 429 ] && cBlocked=$((cBlocked+1))
+done
+[ "$cBlocked" -gt 0 ] && echo "ok   2FA перебор кода ограничен (401=$c401, блок=$cBlocked)" || { echo "FAIL 2FA перебор не ограничен"; fails=$((fails+1)); }
 
 # H2: без авторизации файл не пишется на диск
 head -c 100000 /dev/urandom > "$TMP/junk.bin"

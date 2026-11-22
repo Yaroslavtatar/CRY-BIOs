@@ -16,6 +16,8 @@ export const RESERVED_SLUGS = new Set([
   'cdn',
   'u',
   'bio',
+  'privacy',
+  'terms',
 ]);
 
 /** Имена, которые нельзя занять при регистрации/смене имени/alias (бренд и служебные). */

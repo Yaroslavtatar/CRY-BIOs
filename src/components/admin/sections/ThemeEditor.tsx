@@ -268,7 +268,7 @@ export default function ThemeEditor({ theme, edit, setEnabled, api, notify }: Pr
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-neutral-500">Название должно точно совпадать с каталогом Google Fonts. Насыщенности — только те, что есть у шрифта.</p>
+            <p className="mt-2 text-[11px] text-neutral-500">Название должно точно совпадать с каталогом Google Fonts. Насыщенности — только те, что есть у шрифта. Файлы шрифта сервер скачивает при сохранении и отдаёт сам, посетители к Google не обращаются; в предпросмотре такой шрифт может не отображаться.</p>
           </div>
         </div>
       )}
@@ -324,7 +324,7 @@ export default function ThemeEditor({ theme, edit, setEnabled, api, notify }: Pr
             <span>{theme.customCss.length} / {MAX_CUSTOM_CSS}</span>
           </div>
           <p className="text-[11px] leading-relaxed text-neutral-500">
-            Внешние файлы подключаются через <code className="text-neutral-300">@import url(https://…)</code>; на боевом сервере политика безопасности разрешает стили только с этого сайта и fonts.googleapis.com. Скрипты (JS) тема не поддерживает.
+            Политика безопасности на боевом сервере разрешает стили только с этого сайта: внешние <code className="text-neutral-300">@import url(https://…)</code> блокируются, шрифты загружайте файлами или добавляйте через Google Fonts выше. Скрипты (JS) тема не поддерживает.
           </p>
         </div>
       )}

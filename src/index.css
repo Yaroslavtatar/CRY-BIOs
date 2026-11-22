@@ -51,10 +51,10 @@ body {
 }
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-display: "Space Grotesk", sans-serif;
-  --font-outfit: "Outfit", sans-serif;
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk Variable", "Space Grotesk", sans-serif;
+  --font-outfit: "Outfit Variable", "Outfit", sans-serif;
   --animate-shine: shine 3s linear infinite;
   --animate-typing: typing 3s steps(20, end) infinite, blink-caret .75s step-end infinite;
   --animate-glitch: glitch 1s linear infinite;

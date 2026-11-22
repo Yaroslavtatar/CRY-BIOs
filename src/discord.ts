@@ -24,6 +24,8 @@ export interface DiscordDeps {
   getBio: (username: string) => any;
   saveBio: (username: string, bio: any) => void;
   getAllBios: () => any[];
+  /** Быстрый поиск по индексу; если не передан — перебор getAllBios (для тестов). */
+  findBioByDiscordId?: (discordId: string) => any | null;
   createOAuthState: (username: string) => string;
   consumeOAuthState: (state: string) => string | null;
 }
@@ -115,6 +117,8 @@ export function preserveDiscordFields(payload: any, stored: any | null | undefin
 }
 
 export function registerDiscord(app: App, deps: DiscordDeps): void {
+  const findBioByDiscordId = (id: string): any | null =>
+    deps.findBioByDiscordId ? deps.findBioByDiscordId(id) : deps.getAllBios().find((b) => b.discordId === id) ?? null;
   const initial = config();
   console.log(
     initial.configured
@@ -178,7 +182,8 @@ export function registerDiscord(app: App, deps: DiscordDeps): void {
       const discordId = String(user.id);
 
       // Один Discord-аккаунт — одно био (иначе можно выдать себя за чужой профиль)
-      const taken = deps.getAllBios().find((b) => b.discordId === discordId && b.username !== username);
+      const owner = findBioByDiscordId(discordId);
+      const taken = owner && owner.username !== username ? owner : null;
       if (taken) return back('already_linked');
 
       const bio = deps.getBio(username);
@@ -224,7 +229,8 @@ export function registerDiscord(app: App, deps: DiscordDeps): void {
     const cached = presenceCache.get(userId);
     if (cached && cached.exp > Date.now()) return res.json(cached.body);
 
-    const bio = deps.getAllBios().find((b) => b.discordId === userId && b.discordConnected);
+    const found = findBioByDiscordId(userId);
+    const bio = found && found.discordConnected ? found : null;
     if (!bio) return res.status(404).json({ success: false, error: 'Discord presence unavailable' });
 
     const cfg = config();

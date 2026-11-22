@@ -1,7 +1,5 @@
 import type { Env } from './auth';
-import { json } from './auth';
-import { handleOAuthStart, handleOAuthCallback } from './discord-oauth';
-import { handleLanyard } from './lanyard';
+import { json, isAuthorized } from './auth';
 import { handleGunsFetch } from './guns-fetch';
 
 export default {
@@ -13,21 +11,9 @@ export default {
       return json({ ok: true, service: 'cbios-edge' });
     }
 
-    if (path === '/oauth/start') {
-      return handleOAuthStart(request, env);
-    }
-
-    if (path === '/oauth/callback') {
-      return handleOAuthCallback(request, env);
-    }
-
-    const lanyardMatch = path.match(/^\/lanyard\/(\d{17,19})$/);
-    if (lanyardMatch) {
-      return handleLanyard(lanyardMatch[1]);
-    }
-
     const gunsMatch = path.match(/^\/guns\/fetch\/([a-z0-9_-]+)$/i);
     if (gunsMatch) {
+      if (!isAuthorized(request, env)) return json({ error: 'Unauthorized' }, 401);
       return handleGunsFetch(gunsMatch[1]);
     }
 
