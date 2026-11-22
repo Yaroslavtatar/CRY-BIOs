@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { useLegal } from '../hooks/useLegal';
+import { formatOperator, isLegalConfigured, requisitesLines } from '../legalConfig';
 import React, { useState, useEffect } from 'react';
 import { Shield, Sparkles, Code2, Play, Terminal, Download, Copy, Check, ArrowRight, Activity, Users, Globe2, HelpCircle, Star, Zap, ChevronDown, Wrench } from 'lucide-react';
 import { getThumbUrl } from '../utils/media';
@@ -43,6 +45,7 @@ const ANNOUNCEMENT_TONES = {
 } as const;
 
 export default function LandingPage({ onNavigateToDashboard, onViewProfile, platformConfig, layout: layoutOverride }: LandingPageProps) {
+  const legal = useLegal();
   const [fetchedLayout, setFetchedLayout] = useState<HomeLayout>(() => getDefaultHomeLayout());
   const layout = layoutOverride ?? fetchedLayout;
   const settings = layout.settings;
@@ -592,6 +595,11 @@ services:
         <a href="/privacy" className="hover:text-white">Политика конфиденциальности</a>
         <a href="/terms" className="hover:text-white">Условия использования</a>
       </nav>
+      {legal.showRequisitesInFooter && isLegalConfigured(legal) && (
+        <div className="bg-cb-surface border-t border-white/5 px-6 py-2 text-center font-mono text-[10px] text-neutral-500" aria-label="Реквизиты оператора">
+          {[formatOperator(legal), ...requisitesLines(legal), legal.operatorContact].join(' · ')}
+        </div>
+      )}
 
       {/* Обязательная подпись разработчиков (см. NOTICE). Не управляется конструктором. */}
       <div className="cb-credit-bar bg-cb-surface border-t border-white/10 px-6 py-4 flex justify-center font-mono">

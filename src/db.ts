@@ -109,7 +109,8 @@ migrateSessionTokens();
 
 // Индексируемые копии alias_slug / custom_domain (вместо JSON.parse всех профилей на каждый запрос)
 function ensureBioIndexColumns() {
-  const columns = db.prepare('PRAGMA table_info(bios)').all() as { name: string }[];
+  // table_xinfo (а не table_info): только она показывает вычисляемые колонки, иначе повторный запуск падает на ALTER TABLE
+  const columns = db.prepare('PRAGMA table_xinfo(bios)').all() as { name: string }[];
   const names = new Set(columns.map(c => c.name));
   if (!names.has('alias_slug')) db.exec('ALTER TABLE bios ADD COLUMN alias_slug TEXT');
   if (!names.has('custom_domain')) db.exec('ALTER TABLE bios ADD COLUMN custom_domain TEXT');

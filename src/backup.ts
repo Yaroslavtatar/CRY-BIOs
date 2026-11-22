@@ -10,6 +10,9 @@ import * as db from './db';
 import { BioConfig } from './types';
 import { collectUsedUploadPaths } from './uploadCleanup';
 
+/** Файлы настроек платформы в папке данных, которые входят в полный бэкап и восстанавливаются из него. */
+const SETTINGS_FILES = ['site_settings.json', 'legal_settings.json'] as const;
+
 export const BACKUP_VERSION = 1;
 
 export function getMaxBackupBytes(): number {
@@ -211,8 +214,10 @@ export function streamFullBackup(
   archive.append(JSON.stringify(dump, null, 2), { name: 'dump.json' });
   addDirectoryToArchive(archive, options.uploadsDir, 'uploads');
 
-  if (fs.existsSync(path.join(options.dataDir, 'site_settings.json'))) {
-    archive.file(path.join(options.dataDir, 'site_settings.json'), { name: 'site_settings.json' });
+  for (const name of SETTINGS_FILES) {
+    if (fs.existsSync(path.join(options.dataDir, name))) {
+      archive.file(path.join(options.dataDir, name), { name });
+    }
   }
 
   return archive.finalize();
@@ -240,8 +245,10 @@ export function writeBackupToFile(
     archive.append(JSON.stringify(dump, null, 2), { name: 'dump.json' });
     addDirectoryToArchive(archive, options.uploadsDir, 'uploads');
 
-    if (fs.existsSync(path.join(options.dataDir, 'site_settings.json'))) {
-      archive.file(path.join(options.dataDir, 'site_settings.json'), { name: 'site_settings.json' });
+    for (const name of SETTINGS_FILES) {
+      if (fs.existsSync(path.join(options.dataDir, name))) {
+        archive.file(path.join(options.dataDir, name), { name });
+      }
     }
 
     archive.finalize();
@@ -311,9 +318,9 @@ export async function importFullBackup(
 
     // admin_password.txt из бэкапов не восстанавливается (и больше не попадает в архивы)
 
-    const siteSettingsSrc = path.join(tmpDir, 'site_settings.json');
-    if (fs.existsSync(siteSettingsSrc)) {
-      fs.copyFileSync(siteSettingsSrc, path.join(options.dataDir, 'site_settings.json'));
+    for (const name of SETTINGS_FILES) {
+      const src = path.join(tmpDir, name);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(options.dataDir, name));
     }
 
     db.importDatabase(dump);

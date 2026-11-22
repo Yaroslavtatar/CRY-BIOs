@@ -41,6 +41,7 @@ import { getStorageStats, runHealthChecks } from './src/storageStats';
 import { createAdminAuth, FailureLimiter } from './src/adminAuth';
 import { guardProfilePayload, sanitizeVisitHost } from './src/profileGuard';
 import { getSiteSettings, updateSiteSettings } from './src/siteSettings';
+import { getLegalSettings, updateLegalSettings } from './src/legalSettings';
 import { buildThemeCss } from './src/theme';
 import { GoogleFontCache } from './src/googleFonts';
 import { saveAsset, listAssets, deleteAsset, MAX_ASSET_BYTES } from './src/themeAssets';
@@ -788,6 +789,34 @@ async function startServer() {
     });
   });
 
+  // --- Юридические данные сайта (оператор, реквизиты, дополнительные абзацы документов) ---
+  app.get('/api/admin/legal', checkAdminAuth, (_req, res) => {
+    res.json(getLegalSettings(DATA_DIR));
+  });
+
+  app.put('/api/admin/legal', checkAdminAuth, (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: 'Ожидается объект с настройками' });
+    }
+    const textKeys = ['siteName', 'operatorForm', 'operatorName', 'taxId', 'regNumber', 'address', 'operatorContact', 'abuseContact', 'jurisdiction', 'lastUpdated', 'privacyExtra', 'termsExtra'] as const;
+    const patch: Record<string, unknown> = {};
+    for (const key of textKeys) {
+      if (key in body) {
+        if (typeof body[key] !== 'string') return res.status(400).json({ error: `${key} must be a string` });
+        patch[key] = body[key];
+      }
+    }
+    if ('showRequisitesInFooter' in body) {
+      if (typeof body.showRequisitesInFooter !== 'boolean') return res.status(400).json({ error: 'showRequisitesInFooter must be a boolean' });
+      patch.showRequisitesInFooter = body.showRequisitesInFooter;
+    }
+    if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'No settings provided' });
+    const result = updateLegalSettings(DATA_DIR, patch);
+    if ('error' in result) return res.status(400).json({ error: result.error });
+    res.json({ success: true, ...result.settings });
+  });
+
   app.get('/api/admin/home-layout', checkAdminAuth, (_req, res) => {
     res.json(readHomeLayout(DATA_DIR));
   });
@@ -1313,6 +1342,12 @@ async function startServer() {
         setupGuidePath: 'deploy/coolify/SSL_SETUP.md',
       },
     });
+  });
+
+  // Юридические данные оператора (публичные: нужны страницам /privacy, /terms и подвалу главной)
+  app.get('/api/legal', publicLimiter, (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(getLegalSettings(DATA_DIR));
   });
 
   // Get singular page bio data (username or alias slug)
