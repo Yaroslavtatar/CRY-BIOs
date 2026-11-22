@@ -9,6 +9,7 @@ import LandingPage from './components/LandingPage';
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const BioPage = lazy(() => import('./components/BioPage'));
 const AdminPanel = lazy(() => import('./components/AdminPanel'));
+const LegalPage = lazy(() => import('./components/LegalPage'));
 import {
   getPlatformDomainConfig,
   parseShortPathSlug,
@@ -22,7 +23,7 @@ const DEFAULT_PLATFORM: PlatformDomainConfig = getPlatformDomainConfig({
 });
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'dashboard' | 'bio' | 'admin'>('landing');
+  const [view, setView] = useState<'landing' | 'dashboard' | 'bio' | 'admin' | 'privacy' | 'terms'>('landing');
   const [username, setUsername] = useState('');
   type PublicConfig = PlatformDomainConfig & { hideAdminPanelLink?: boolean; maintenanceMode?: boolean; maintenanceMessage?: string; mediaCdnUrl?: string | null; socials?: SocialLink[] };
 
@@ -72,6 +73,11 @@ export default function App() {
           setUsername(parts[2].toLowerCase());
           setView('bio');
         }
+        return;
+      }
+
+      if (path === '/privacy' || path === '/terms') {
+        setView(path === '/privacy' ? 'privacy' : 'terms');
         return;
       }
 
@@ -144,6 +150,10 @@ export default function App() {
     setUsername(normalized);
     setView('bio');
   };
+
+  if (view === 'privacy' || view === 'terms') {
+    return <Suspense fallback={null}><LegalPage doc={view} onExit={navigateToLanding} /></Suspense>;
+  }
 
   if (view === 'admin') {
     return <Suspense fallback={null}><AdminPanel onExit={navigateToLanding} /></Suspense>;

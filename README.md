@@ -62,7 +62,15 @@ CRY BIOS — open-source платформа для персональных би
 - Account lockout после неудачных входов
 - Политика паролей (8+ символов)
 - Двухфакторная аутентификация (TOTP, RFC 6238): Google Authenticator, Authy, 1Password, Aegis; 10 одноразовых резервных кодов; секрет шифруется AES-256-GCM; код нельзя использовать повторно; админ может сбросить 2FA пользователю
-- Подробнее: [SECURITY.md](SECURITY.md) · [RU-SECURITY](RU-SECURITY)
+- Подробнее: [SECURITY.md](SECURITY.md) · [RU-SECURITY](docs/RU-SECURITY.md)
+
+### Юридические страницы и приватность
+
+- Страницы `/privacy` и `/terms` — шаблоны. **Перед запуском для реальных пользователей** заполните данные оператора в `src/legalConfig.ts` и покажите тексты юристу (`src/components/LegalPage.tsx`).
+- При создании аккаунта нужно принять условия (`acceptTerms` в `/api/auth/login-register`).
+- Страницы профилей по умолчанию скрыты от поисковиков (`noindex`); владелец включает индексацию в кабинете (поле `searchIndexing`), и только такие профили попадают в `sitemap.xml`.
+- Шрифты (Inter, JetBrains Mono, Outfit, Space Grotesk, Playfair Display) поставляются вместе со сборкой через `@fontsource-variable/*`; обращений к Google Fonts нет. Исключение: Google-шрифты, которые админ сам добавил в редакторе темы.
+- Видео- и аудио-эмбеды (YouTube, Spotify, SoundCloud, Vimeo) загружаются только после клика посетителя.
 
 ### Оформление платформы
 
@@ -128,7 +136,7 @@ docker run -d \
 
 ### Coolify / VPS
 
-Пошаговая инструкция: [COOLIFY_DEPLOYMENT.txt](COOLIFY_DEPLOYMENT.txt)  
+Пошаговая инструкция: [COOLIFY_DEPLOYMENT.txt](docs/COOLIFY_DEPLOYMENT.txt)  
 **Wildcard SSL для поддоменов:** [deploy/coolify/SSL_SETUP.md](deploy/coolify/SSL_SETUP.md)
 
 Ключевые моменты:
@@ -227,7 +235,7 @@ CRY-BIOs/
 ├── data/                  # SQLite, uploads, backups (gitignored)
 ├── Dockerfile
 ├── docker-compose.yml
-└── COOLIFY_DEPLOYMENT.txt
+└── docs/                  # COOLIFY_DEPLOYMENT.txt, RU-SECURITY.md
 ```
 
 ### База данных

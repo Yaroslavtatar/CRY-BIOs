@@ -8,7 +8,7 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 fails=0
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 jget() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const o=JSON.parse(s);console.log(process.argv[1].split(".").reduce((a,k)=>a==null?a:a[k],o)??"")}catch(e){console.log("")}})' "$1"; }
-reg() { curl -s -X POST $BASE/api/auth/login-register -H "$J" -d "{\"username\":\"$1\",\"password\":\"$2\"}"; }
+reg() { curl -s -X POST $BASE/api/auth/login-register -H "$J" -d "{\"username\":\"$1\",\"password\":\"$2\",\"acceptTerms\":true}"; }
 expect() { # name got want
   if [ "$2" = "$3" ]; then echo "ok   $1 ($2)"; else echo "FAIL $1: получили '$2', ожидали '$3'"; fails=$((fails+1)); fi
 }

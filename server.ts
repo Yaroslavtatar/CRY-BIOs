@@ -12,6 +12,7 @@ import multer from 'multer';
 import bcrypt from 'bcrypt';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import helmet from 'helmet';
+import compression from 'compression';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
@@ -51,8 +52,12 @@ import {
   isReservedUsername,
   isValidSlug,
   normalizeSlug,
+  parseShortPathSlug,
   parseSubdomainSlug,
+  getPrimaryProfileSlug,
 } from './src/platformDomain';
+import { EMBED_HOSTS } from './src/embedHosts';
+import { buildProfileMeta, injectProfileMeta, injectSiteMeta, buildRobotsTxt, buildSitemapXml } from './src/seo';
 import { getServerMediaCdnUrl } from './src/utils/cdn';
 import { registerDiscord, preserveDiscordFields } from './src/discord';
 import { createGithubService, isValidRepo, DEFAULT_REPO } from './src/github';
@@ -232,7 +237,7 @@ if (process.env.SEED_DEMO_USER === 'true' && !db.getBio('cryteam') && !db.getUse
     username: seedUsername,
     displayName: 'cryteam',
     bio: '⚡ the elite coding squad • premium open-source developers ⚡',
-    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+    avatarUrl: '/default-avatar.svg',
     verified: true,
     customBadge: 'CRYTEAM FOUNDER',
     sparkles: true,
@@ -257,10 +262,10 @@ if (process.env.SEED_DEMO_USER === 'true' && !db.getBio('cryteam') && !db.getUse
     bgValue: '#0b0f19',
     bgBlur: 2,
     bgDim: 40,
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-    audioTitle: 'SoundHelix Song 1',
+    audioUrl: '',
+    audioTitle: '',
     audioArtist: 'Open Source Beats',
-    audioEnabled: true,
+    audioEnabled: false,
     enterText: 'click to enter cryteam dashboard',
     blocks: [
       {
@@ -354,6 +359,14 @@ async function startServer() {
 
   // CSP в dev отключена (Vite HMR использует inline/eval)
   const cspEnabled = process.env.NODE_ENV === 'production';
+  // Сжатие ответов (gzip/br на прокси включать не обязательно). SSE не сжимаем: сжатие буферизует поток.
+  app.use(compression({
+    filter: (req, res) => {
+      const type = String(res.getHeader('Content-Type') || '');
+      if (type.includes('text/event-stream')) return false;
+      return compression.filter(req, res);
+    },
+  }));
   app.use(helmet({
     contentSecurityPolicy: cspEnabled ? {
       useDefaults: false,
@@ -365,7 +378,7 @@ async function startServer() {
         'img-src': ["'self'", 'data:', 'blob:', 'https:'],
         'media-src': ["'self'", 'data:', 'blob:', 'https:'],
         'connect-src': ["'self'", 'https:'],
-        'frame-src': ['https:'],
+        'frame-src': ["'self'", ...EMBED_HOSTS.map((h) => `https://${h}`)],
         'object-src': ["'none'"],
         'base-uri': ["'self'"],
         'form-action': ["'self'"],
@@ -1359,13 +1372,14 @@ async function startServer() {
     getBio: (u: string) => db.getBio(u),
     saveBio: (u: string, b: any) => db.saveBio(u, b),
     getAllBios: () => db.getAllBios(),
+    findBioByDiscordId: (id: string) => db.getBioByDiscordId(id),
     createOAuthState: (u: string) => db.createOAuthState(u),
     consumeOAuthState: (st: string) => db.consumeOAuthState(st),
   });
 
   // Register or Login endpoint
   app.post('/api/auth/login-register', authIpLimiter, authLimiter, (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, acceptTerms } = req.body;
     if (!username || !password || username.trim() === '' || password.trim() === '') {
       return res.status(400).json({ error: 'Укажите имя пользователя и пароль' });
     }
@@ -1419,6 +1433,14 @@ async function startServer() {
       return res.status(400).json({ error: 'Это имя недоступно' });
     }
 
+    // Согласие нужно только при создании аккаунта; вход существующего пользователя его не требует
+    if (acceptTerms !== true) {
+      return res.status(400).json({
+        error: 'Чтобы создать аккаунт, примите Условия использования и Политику конфиденциальности',
+        consentRequired: true,
+      });
+    }
+
     const regKey = ipKeyGenerator(req.ip || '');
     if (registrations.isBlocked(regKey)) {
       res.setHeader('Retry-After', '3600');
@@ -1433,7 +1455,7 @@ async function startServer() {
         username: normUsername,
         displayName: normUsername,
         bio: 'Just another badass awesome creator page.',
-        avatarUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${normUsername}`,
+        avatarUrl: '/default-avatar.svg',
         verified: false,
         customBadge: 'USER',
         sparkles: false,
@@ -2124,30 +2146,57 @@ async function startServer() {
       },
     }));
 
-    // robots.txt и sitemap.xml отдаём настоящими, а не SPA-fallback'ом
+    // robots.txt и sitemap.xml отдаём настоящими, а не SPA-fallback'ом.
+    // Адрес берём из APP_URL (getPlatformConfig использует его, а заголовок Host только как запасной вариант).
     app.get('/robots.txt', (req, res) => {
-      const origin = `${req.protocol}://${req.get('host')}`;
-      res.type('text/plain').set('Cache-Control', 'public, max-age=3600').send(
-        `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /dashboard\n\nSitemap: ${origin}/sitemap.xml\n`
-      );
+      const origin = getPlatformConfig(req).appUrl.replace(/\/$/, '');
+      res.type('text/plain').set('Cache-Control', 'public, max-age=3600').send(buildRobotsTxt(origin));
     });
     app.get('/sitemap.xml', (req, res) => {
-      const origin = `${req.protocol}://${req.get('host')}`;
-      res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(
-        `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/</loc></url></urlset>\n`
-      );
+      const origin = getPlatformConfig(req).appUrl.replace(/\/$/, '');
+      const profiles = db.getSitemapProfiles().map((p) => ({
+        slug: getPrimaryProfileSlug(p.username, p.aliasSlug),
+      }));
+      res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(buildSitemapXml(origin, profiles));
     });
     // Неизвестные «файловые» пути не должны возвращать HTML с кодом 200
     app.get(/\/(llms\.txt|ai-catalog\.json)$|\.(map|txt|json|xml|js|css)$/i, (req, res) => {
       res.status(404).type('text/plain').send('Not found');
     });
 
-    // Fallback everything else to SPA HTML load
+    // Шаблон index.html читаем один раз; мета-теги профилей подставляем на сервере,
+    // чтобы превью ссылок в Telegram/Discord/VK/Twitter показывали профиль, а не общую карточку платформы
+    const indexTemplate = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
+
     app.get('*', (req, res, next) => {
-      // Avoid intercepting /api endpoints
       if (req.path.startsWith('/api')) return next();
       res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(path.join(distPath, 'index.html'));
+
+      const platform = getPlatformConfig(req);
+      const host = getRequestHost(req).toLowerCase().split(':')[0];
+      const subSlug = platform.baseDomain ? parseSubdomainSlug(host, platform.baseDomain) : null;
+      const onApex = !subSlug && (!platform.baseDomain || host === platform.baseDomain || host === `www.${platform.baseDomain}` || host === 'localhost' || host === '127.0.0.1');
+      const pathSlug = onApex ? parseShortPathSlug(req.path) : null;
+      const slug = subSlug || pathSlug;
+
+      let bio = slug ? db.getBioBySlug(slug) : null;
+      if (!slug && req.path === '/' && host && !onApex) bio = db.getBioByCustomDomain(host);
+
+      const origin = platform.appUrl.replace(/\/$/, '');
+      if (!bio && slug) {
+        // Несуществующий профиль: отдаём тот же SPA, но с кодом 404 и без индексации
+        res.status(404).setHeader('X-Robots-Tag', 'noindex');
+        return res.type('html').send(injectSiteMeta(indexTemplate, origin, '/'));
+      }
+      if (!bio || db.isUserBanned(bio.username)) {
+        const knownPath = ['/', '/privacy', '/terms'].includes(req.path);
+        if (!knownPath) res.setHeader('X-Robots-Tag', 'noindex');
+        return res.type('html').send(injectSiteMeta(indexTemplate, origin, knownPath ? req.path : '/'));
+      }
+
+      const meta = buildProfileMeta({ bio, origin, slug: getPrimaryProfileSlug(bio.username, bio.aliasSlug) });
+      if (!meta.indexable) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      res.type('html').send(injectProfileMeta(indexTemplate, meta));
     });
   }
 

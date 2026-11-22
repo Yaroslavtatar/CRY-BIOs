@@ -123,6 +123,11 @@ function ensureBioIndexColumns() {
       } catch { /* битый JSON не должен ронять запуск */ }
     }
   })();
+  // Виртуальные (вычисляемые) колонки из JSON профиля: обновляются сами при любой записи data, вставки менять не нужно
+  if (!names.has('discord_id')) db.exec("ALTER TABLE bios ADD COLUMN discord_id TEXT GENERATED ALWAYS AS (json_extract(data, '$.discordId')) VIRTUAL");
+  if (!names.has('search_indexing')) db.exec("ALTER TABLE bios ADD COLUMN search_indexing INTEGER GENERATED ALWAYS AS (json_extract(data, '$.searchIndexing')) VIRTUAL");
+  db.exec('CREATE INDEX IF NOT EXISTS idx_bios_discord_id ON bios(discord_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_bios_search_indexing ON bios(search_indexing)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_bios_alias_slug ON bios(alias_slug)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_bios_custom_domain ON bios(custom_domain)');
 }
@@ -310,9 +315,25 @@ export function getBioByCustomDomain(host: string): BioConfig | null {
   return row ? JSON.parse(row.data) : null;
 }
 
+/** Поиск профиля по Discord ID через индекс (без разбора JSON всех профилей). */
+export function getBioByDiscordId(discordId: string): BioConfig | null {
+  if (!discordId) return null;
+  const row = db.prepare('SELECT data FROM bios WHERE discord_id = ? LIMIT 1').get(discordId) as { data: string } | undefined;
+  return row ? JSON.parse(row.data) : null;
+}
+
 export function getAllBios(): BioConfig[] {
   const rows = db.prepare('SELECT data FROM bios').all() as { data: string }[];
   return rows.map(r => JSON.parse(r.data));
+}
+
+/** Профили, владельцы которых разрешили индексацию (для sitemap). Забанённые исключены. */
+export function getSitemapProfiles(limit = 5000): { username: string; aliasSlug?: string }[] {
+  const rows = db.prepare(
+    'SELECT b.username AS username, b.alias_slug AS alias_slug FROM bios b JOIN users u ON u.username = b.username ' +
+    'WHERE b.search_indexing = 1 AND COALESCE(u.banned, 0) = 0 ORDER BY b.username LIMIT ?'
+  ).all(limit) as { username: string; alias_slug: string | null }[];
+  return rows.map(r => ({ username: r.username, aliasSlug: r.alias_slug || undefined }));
 }
 
 export function getAllUsersWithStats() {

@@ -256,6 +256,8 @@ export interface BioConfig {
   ogTitle?: string;
   ogDescription?: string;
   ogImage?: string;
+  /** Разрешить поисковикам индексировать страницу и включать её в sitemap. По умолчанию выключено. */
+  searchIndexing?: boolean;
 
   bgVideoAudioEnabled?: boolean;
   bgVideoUseAsAudio?: boolean;

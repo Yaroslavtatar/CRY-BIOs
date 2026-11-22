@@ -101,7 +101,7 @@ services:
         console.error("Error fetching bios index", err);
         // Fallback demo database list
         const fallback = [
-          { username: 'cryteam', displayName: 'cryteam', bio: '⚡ elite coding squad • custom HTML developers ⚡', avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80', verified: true }
+          { username: 'cryteam', displayName: 'cryteam', bio: '⚡ elite coding squad • custom HTML developers ⚡', avatarUrl: '/default-avatar.svg', verified: true }
         ];
         setActiveBios(fallback);
       });
@@ -587,6 +587,11 @@ services:
           </div>
         </div>
       </footer>
+
+      <nav className="bg-cb-surface border-t border-white/10 px-6 py-3 flex justify-center gap-6 font-mono text-[10px] uppercase tracking-wider text-neutral-400" aria-label="Правовая информация">
+        <a href="/privacy" className="hover:text-white">Политика конфиденциальности</a>
+        <a href="/terms" className="hover:text-white">Условия использования</a>
+      </nav>
 
       {/* Обязательная подпись разработчиков (см. NOTICE). Не управляется конструктором. */}
       <div className="cb-credit-bar bg-cb-surface border-t border-white/10 px-6 py-4 flex justify-center font-mono">

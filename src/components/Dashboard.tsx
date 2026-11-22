@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { BioConfig, BlockConfig, SocialLink, AnalyticsSummary, BackgroundType, UserBadge } from '../types';
-import AnalyticsView from './AnalyticsView';
+const AnalyticsView = lazy(() => import('./AnalyticsView'));
 import BioPage from './BioPage';
-import QRCode from 'qrcode';
+// qrcode нужен только на вкладке QR: подгружаем при использовании
+const loadQRCode = () => import('qrcode').then((m) => m.default ?? m);
 import { getThumbUrl } from '../utils/media';
 import { createDefaultBlock } from '../blockDefaults';
 import { enableCanvas } from '../canvasLayout';
@@ -122,6 +123,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   );
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   // Второй шаг входа (2FA): после верного пароля сервер просит код
@@ -205,6 +207,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
           // Clear previous canvas drawing fully to avoid traces
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+          const QRCode = await loadQRCode();
           await QRCode.toCanvas(canvas, qrText, {
             width: 320,
             margin: qrMargin,
@@ -274,6 +277,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
   const handleDownloadSVG = async () => {
     try {
+      const QRCode = await loadQRCode();
       const svgString = await QRCode.toString(qrText, {
         type: 'svg',
         margin: qrMargin,
@@ -710,7 +714,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     fetch('/api/auth/login-register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: loginUsername, password: loginPassword })
+      body: JSON.stringify({ username: loginUsername, password: loginPassword, acceptTerms })
     })
       .then(async res => {
         const text = await res.text();
@@ -1127,6 +1131,18 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   ⭐ <strong>Регистрация:</strong> если имя свободно — создаётся новый профиль. Пароль: минимум 8 символов, буквы и цифры.
                 </div>
 
+                <label className="flex items-start gap-2 text-[10px] text-neutral-400 leading-relaxed font-sans cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={acceptTerms}
+                    onChange={e => setAcceptTerms(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    При создании аккаунта я принимаю <a href="/terms" target="_blank" rel="noopener" className="text-cb-accent underline">Условия использования</a> и <a href="/privacy" target="_blank" rel="noopener" className="text-cb-accent underline">Политику конфиденциальности</a>
+                  </span>
+                </label>
+
                 <button
                   type="submit"
                   disabled={authLoading}
@@ -1195,7 +1211,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                 {/* 0. OVERVIEW SECTOR */}
                 {activeTab === 'overview' && (() => {
                   const totalViews = analytics?.totalViews || 0;
-                  const isCustomAvatar = config.avatarUrl && !config.avatarUrl.includes('api.dicebear.com/7.x/');
+                  const isCustomAvatar = config.avatarUrl && !config.avatarUrl.includes('api.dicebear.com/7.x/') && config.avatarUrl !== '/default-avatar.svg';
                   const isCustomBio = config.bio && config.bio !== 'Just another badass awesome creator page.' && config.bio.trim().length > 3;
                   const hasSocialsBlock = config.blocks.some(b => b.type === 'socials' && b.socialsList && b.socialsList.length > 0);
                   const isDiscordIntegrated = config.discordConnected === true;
@@ -1903,6 +1919,15 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                             onChange={e => updateConfigValue('customPageTitle', e.target.value)}
                             className="w-full bg-black/50 border border-white/15 rounded-sm p-2 text-[10px] text-white outline-none"
                           />
+                          <label className="flex items-start gap-2 text-[10px] text-neutral-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={config.searchIndexing === true}
+                              onChange={e => updateConfigValue('searchIndexing', e.target.checked)}
+                              className="mt-0.5"
+                            />
+                            <span>Разрешить поисковикам индексировать мою страницу и добавить её в sitemap (по умолчанию страница скрыта от поиска)</span>
+                          </label>
                           <input
                             type="text"
                             placeholder="URL иконки вкладки (favicon)"
@@ -3447,7 +3472,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                                     <input
                                       type="text"
                                       value={block.imageUrl || ''}
-                                      placeholder="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe"
+                                      placeholder="https://example.com/image.webp"
                                       onChange={e => updateBlock(block.id, { imageUrl: e.target.value })}
                                       className="flex-1 bg-black/50 border border-white/15 focus:border-cb-accent rounded-sm p-2 text-xs text-white outline-none"
                                     />
@@ -3596,10 +3621,12 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
 
                 {/* 5. ANALYTICS SECTOR */}
                 {activeTab === 'analytics' && (
-                  <AnalyticsView
-                    analytics={analytics}
-                    onRefresh={() => loadAnalytics(username)}
-                  />
+                  <Suspense fallback={null}>
+                    <AnalyticsView
+                      analytics={analytics}
+                      onRefresh={() => loadAnalytics(username)}
+                    />
+                  </Suspense>
                 )}
 
                 {/* 6. SELF-HOST SECTOR */}
