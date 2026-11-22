@@ -42,6 +42,7 @@ import { createAdminAuth, FailureLimiter } from './src/adminAuth';
 import { guardProfilePayload, sanitizeVisitHost } from './src/profileGuard';
 import { getSiteSettings, updateSiteSettings } from './src/siteSettings';
 import { buildThemeCss } from './src/theme';
+import { GoogleFontCache } from './src/googleFonts';
 import { saveAsset, listAssets, deleteAsset, MAX_ASSET_BYTES } from './src/themeAssets';
 import { installLogCapture, readLogs, clearLogs, writeAudit, readAudit, getSystemInfo, readHomeLayout, writeHomeLayout, resetHomeLayout } from './src/adminOps';
 import { startScheduledBackups } from './src/scheduledBackup';
@@ -373,11 +374,11 @@ async function startServer() {
       directives: {
         'default-src': ["'self'"],
         'script-src': ["'self'"],
-        'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-        'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        'style-src': ["'self'", "'unsafe-inline'"],
+        'font-src': ["'self'", 'data:'],
         'img-src': ["'self'", 'data:', 'blob:', 'https:'],
         'media-src': ["'self'", 'data:', 'blob:', 'https:'],
-        'connect-src': ["'self'", 'https:'],
+        'connect-src': ["'self'"],
         'frame-src': ["'self'", ...EMBED_HOSTS.map((h) => `https://${h}`)],
         'object-src': ["'none'"],
         'base-uri': ["'self'"],
@@ -795,9 +796,13 @@ async function startServer() {
     if (!req.body || typeof req.body !== 'object' || !Array.isArray(req.body.blocks)) {
       return res.status(400).json({ error: 'Layout must contain a blocks array' });
     }
-    res.json(writeHomeLayout(DATA_DIR, req.body));
+    const saved = writeHomeLayout(DATA_DIR, req.body);
+    // Прогреваем кэш Google-шрифтов при сохранении темы, чтобы первый посетитель не ждал загрузки
+    for (const g of saved.theme.fonts.google) void googleFonts.ensure(g);
+    res.json(saved);
   });
 
+  const googleFonts = new GoogleFontCache(path.join(THEME_DIR, 'gf'));
   const themeUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ASSET_BYTES, files: 1 } });
 
   app.post('/api/admin/theme/asset', checkAdminAuth, (req, res) => {
@@ -1267,11 +1272,14 @@ async function startServer() {
   });
 
   // Тема платформы как таблица стилей: подключается <link> в index.html (CSP style-src 'self' её разрешает)
-  app.get('/api/theme.css', (_req, res) => {
+  app.get('/api/theme.css', async (_req, res) => {
     res.type('text/css; charset=utf-8');
     res.set('Cache-Control', 'public, max-age=30');
     try {
-      res.send(buildThemeCss(readHomeLayout(DATA_DIR).theme));
+      const theme = readHomeLayout(DATA_DIR).theme;
+      // Google-шрифты отдаём с нашего сервера: скачиваем один раз и кэшируем на диске
+      await Promise.all(theme.fonts.google.map((g) => googleFonts.ensure(g)));
+      res.send(buildThemeCss(theme, { resolveGoogleFont: (g) => googleFonts.cached(g) }));
     } catch (err) {
       console.error('[theme] build failed:', err);
       res.send('');

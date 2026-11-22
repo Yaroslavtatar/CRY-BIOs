@@ -296,6 +296,11 @@ function mix(a: string, pct: number, b: string): string {
 export interface BuildOptions {
   /** CSS-селектор области (предпросмотр). Без него тема применяется ко всему документу. */
   scope?: string;
+  /**
+   * Локальный @font-face для Google-шрифта (сервер скачивает и кэширует его, см. googleFonts.ts).
+   * Без резолвера Google-шрифты не подключаются: внешний @import запрещён CSP и передавал бы IP посетителя Google.
+   */
+  resolveGoogleFont?: (font: GoogleFont) => string | null;
 }
 
 export function buildThemeCss(theme: Theme, opts: BuildOptions = {}): string {
@@ -311,9 +316,9 @@ export function buildThemeCss(theme: Theme, opts: BuildOptions = {}): string {
   const e = theme.effects;
   const bgc = theme.background;
 
-  // @import обязан стоять первым
   for (const g of f.google) {
-    out.push(`@import url("https://fonts.googleapis.com/css2?family=${g.name.replace(/ /g, '+')}:wght@${g.weights}&display=swap");`);
+    const local = opts.resolveGoogleFont?.(g);
+    if (local) out.push(local);
   }
   for (const cf of f.custom) {
     const fmt = cf.url.endsWith('.woff2') ? 'woff2' : cf.url.endsWith('.woff') ? 'woff' : cf.url.endsWith('.otf') ? 'opentype' : 'truetype';

@@ -77,9 +77,13 @@ describe('buildThemeCss', () => {
     expect(css).toContain('--color-neutral-400:var(--cb-muted)');
     expect(css).toContain('--color-red-400:var(--cb-danger)');
   });
-  it('шрифты: @font-face, Google @import первым, переменные', () => {
-    const css = buildThemeCss(on({ fonts: { heading: 'Foo', body: 'Bar', google: [{ name: 'Open Sans', weights: '700;400' }], custom: [{ family: 'Foo', url: '/theme-assets/a.woff2', weight: 700 }] } }));
-    expect(css.startsWith('@import url("https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700')).toBe(true);
+  it('шрифты: @font-face, локальный Google-шрифт через резолвер, без внешнего @import, переменные', () => {
+    const theme = on({ fonts: { heading: 'Foo', body: 'Bar', google: [{ name: 'Open Sans', weights: '700;400' }], custom: [{ family: 'Foo', url: '/theme-assets/a.woff2', weight: 700 }] } });
+    expect(buildThemeCss(theme)).not.toContain('fonts.googleapis.com');
+    const withLocal = buildThemeCss(theme, { resolveGoogleFont: (g) => `@font-face{font-family:"${g.name}";src:url("/theme-assets/gf/x.woff2")}` });
+    expect(withLocal).toContain('/theme-assets/gf/x.woff2');
+    expect(withLocal).not.toContain('@import url("https://fonts.googleapis.com');
+    const css = buildThemeCss(theme);
     expect(css).toContain('@font-face{font-family:"Foo";src:url("/theme-assets/a.woff2") format("woff2");font-weight:700');
     expect(css).toContain('--font-display:"Foo"');
     expect(css).toContain('--font-sans:"Bar"');
