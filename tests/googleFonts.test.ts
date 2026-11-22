@@ -29,6 +29,8 @@ const CSS = `
 }
 `;
 
+const isCssRequest = (url: string) => new URL(url).hostname === 'fonts.googleapis.com';
+
 describe('googleFonts', () => {
   let dir: string;
   beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gf-')); });
@@ -53,7 +55,7 @@ describe('googleFonts', () => {
     let calls = 0;
     const fakeFetch = async (url: string) => {
       calls++;
-      return url.includes('googleapis.com') ? new Response(CSS) : new Response(Buffer.concat([WOFF2, Buffer.from(url)]));
+      return isCssRequest(url) ? new Response(CSS) : new Response(Buffer.concat([WOFF2, Buffer.from(url)]));
     };
     const cache = new GoogleFontCache(dir, '/theme-assets/gf', fakeFetch as typeof fetch);
     const font = { name: 'Open Sans', weights: '400' };
@@ -77,7 +79,7 @@ describe('googleFonts', () => {
   });
 
   it('отвергает файл, который не woff2', async () => {
-    const fakeFetch = async (url: string) => (url.includes('googleapis.com') ? new Response(CSS) : new Response(Buffer.from('<html>not a font at all</html>')));
+    const fakeFetch = async (url: string) => (isCssRequest(url) ? new Response(CSS) : new Response(Buffer.from('<html>not a font at all</html>')));
     const cache = new GoogleFontCache(dir, '/theme-assets/gf', fakeFetch as typeof fetch);
     expect(await cache.ensure({ name: 'Open Sans', weights: '400' })).toBeNull();
   });
