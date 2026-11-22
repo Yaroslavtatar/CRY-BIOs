@@ -10,7 +10,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](Dockerfile)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](tsconfig.json)
 
-[Быстрый старт](#-быстрый-старт) · [Возможности](#-возможности) · [Деплой](#-деплой) · [Безопасность](SECURITY.md) · [Issues](https://github.com/Yaroslavtatar/CRY-BIOs/issues)
+[Быстрый старт](#-быстрый-старт) · [Возможности](#-возможности) · [Деплой](#-деплой) · [API](docs/API.md) · [Безопасность](SECURITY.md) · [Issues](https://github.com/Yaroslavtatar/CRY-BIOs/issues)
 
 </div>
 
@@ -51,7 +51,8 @@ CRY BIOS — open-source платформа для персональных би
 ### Инфраструктура
 
 - **Аналитика** — просмотры, referrers, устройства, страны (до 5000 записей / user)
-- **Админ-панель** — пользователи, verify, rename, экспорт/импорт
+- **Админ-панель** — пользователи, verify, rename, экспорт/импорт, юридические данные оператора (политика и условия)
+- **HTTP API** — профили, загрузка файлов, аналитика, 2FA, импорт: [docs/API.md](docs/API.md)
 - **Бэкапы** — полный ZIP (SQLite + uploads), scheduled backups, restore one-click
 - **Wildcard-домены** — `user.yourdomain.com` → профиль `user`
 - **Медиа-пайплайн** — оптимизация изображений (sharp), MP3 128 kbps, video transcode
@@ -235,7 +236,7 @@ CRY-BIOs/
 ├── data/                  # SQLite, uploads, backups (gitignored)
 ├── Dockerfile
 ├── docker-compose.yml
-└── docs/                  # COOLIFY_DEPLOYMENT.txt, RU-SECURITY.md
+└── docs/                  # API.md, COOLIFY_DEPLOYMENT.txt, RU-SECURITY.md
 ```
 
 ### База данных

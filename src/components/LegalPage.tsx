@@ -1,5 +1,12 @@
 import type { ReactNode } from 'react';
-import { LEGAL } from '../legalConfig';
+import {
+  formatLegalDate,
+  formatOperator,
+  requisitesLines,
+  splitParagraphs,
+  type LegalSettings,
+} from '../legalConfig';
+import { useLegal } from '../hooks/useLegal';
 
 type Doc = 'privacy' | 'terms';
 
@@ -17,11 +24,32 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Privacy() {
+function Extra({ text }: { text: string }) {
+  const paragraphs = splitParagraphs(text);
+  if (!paragraphs.length) return null;
+  return (
+    <Section title="Дополнительные положения">
+      {paragraphs.map((p, i) => <p key={i} className="whitespace-pre-line">{p}</p>)}
+    </Section>
+  );
+}
+
+function OperatorInfo({ legal }: { legal: LegalSettings }) {
+  const lines = requisitesLines(legal);
+  return (
+    <>
+      <p>Оператор сервиса: {formatOperator(legal)}. Связь по вопросам данных: {legal.operatorContact}.</p>
+      {lines.length > 0 && <p>Реквизиты: {lines.join(', ')}.</p>}
+      {legal.abuseContact && <p>Жалобы на контент и нарушения: {legal.abuseContact}.</p>}
+    </>
+  );
+}
+
+function Privacy({ legal }: { legal: LegalSettings }) {
   return (
     <>
       <Section title="1. Кто обрабатывает данные">
-        <p>Оператор сервиса: {LEGAL.operatorName}. Связь по вопросам данных: {LEGAL.operatorContact}.</p>
+        <OperatorInfo legal={legal} />
       </Section>
       <Section title="2. Какие данные мы храним">
         <ul className="list-disc pl-5 space-y-1">
@@ -46,20 +74,22 @@ function Privacy() {
         <p>По умолчанию ваша страница скрыта от поисковых систем. Включить индексацию можно в настройках кабинета, выключить её можно в любой момент.</p>
       </Section>
       <Section title="7. Срок хранения и ваши права">
-        <p>Данные хранятся, пока существует ваш аккаунт, резервные копии — ограниченное время. Вы можете изменить или удалить данные профиля в кабинете и запросить удаление аккаунта, написав по адресу {LEGAL.operatorContact}.</p>
+        <p>Данные хранятся, пока существует ваш аккаунт, резервные копии — ограниченное время. Вы можете изменить или удалить данные профиля в кабинете и запросить удаление аккаунта, написав по адресу {legal.operatorContact}.</p>
       </Section>
       <Section title="8. Изменения">
         <p>Мы можем обновлять эту политику. Актуальная версия всегда доступна на этой странице.</p>
       </Section>
+      <Extra text={legal.privacyExtra} />
     </>
   );
 }
 
-function Terms() {
+function Terms({ legal }: { legal: LegalSettings }) {
   return (
     <>
       <Section title="1. Общие положения">
-        <p>Сервис предоставляет возможность создать публичную био-страницу. Создавая аккаунт, вы принимаете эти условия и Политику конфиденциальности. Оператор: {LEGAL.operatorName}, контакт: {LEGAL.operatorContact}.</p>
+        <p>Сервис предоставляет возможность создать публичную био-страницу. Создавая аккаунт, вы принимаете эти условия и Политику конфиденциальности. Оператор: {formatOperator(legal)}, контакт: {legal.operatorContact}.</p>
+        {requisitesLines(legal).length > 0 && <p>Реквизиты: {requisitesLines(legal).join(', ')}.</p>}
       </Section>
       <Section title="2. Аккаунт">
         <p>Вы отвечаете за сохранность пароля и за действия под своим аккаунтом. Запрещено выдавать себя за другого человека, команду или администрацию сервиса.</p>
@@ -76,11 +106,23 @@ function Terms() {
       <Section title="6. Изменения">
         <p>Условия могут меняться. Продолжая пользоваться сервисом после изменений, вы принимаете новую редакцию.</p>
       </Section>
+      {legal.jurisdiction && (
+        <Section title="7. Применимое право">
+          <p>К отношениям сторон применяется право: {legal.jurisdiction}.</p>
+        </Section>
+      )}
+      {legal.abuseContact && (
+        <Section title={legal.jurisdiction ? '8. Жалобы' : '7. Жалобы'}>
+          <p>Сообщить о нарушении или запросить удаление контента можно по адресу {legal.abuseContact}.</p>
+        </Section>
+      )}
+      <Extra text={legal.termsExtra} />
     </>
   );
 }
 
 export default function LegalPage({ doc, onExit }: { doc: Doc; onExit: () => void }) {
+  const legal = useLegal();
   return (
     <div className="min-h-screen bg-cb-bg text-white px-6 py-12">
       <main className="max-w-2xl mx-auto space-y-8">
@@ -89,9 +131,9 @@ export default function LegalPage({ doc, onExit }: { doc: Doc; onExit: () => voi
         </button>
         <header className="space-y-1">
           <h1 className="text-3xl font-black">{TITLES[doc]}</h1>
-          <p className="text-xs text-neutral-500">Редакция от {LEGAL.lastUpdated}</p>
+          <p className="text-xs text-neutral-500">{legal.siteName} · редакция от {formatLegalDate(legal.lastUpdated)}</p>
         </header>
-        {doc === 'privacy' ? <Privacy /> : <Terms />}
+        {doc === 'privacy' ? <Privacy legal={legal} /> : <Terms legal={legal} />}
       </main>
     </div>
   );
