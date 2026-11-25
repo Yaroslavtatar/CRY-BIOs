@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import TelegramLogin from './TelegramLogin';
+import { getStoredRef } from '../referral';
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { BioConfig, BlockConfig, SocialLink, AnalyticsSummary, BackgroundType, UserBadge } from '../types';
 const AnalyticsView = lazy(() => import('./AnalyticsView'));
@@ -714,7 +716,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
     fetch('/api/auth/login-register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: loginUsername, password: loginPassword, acceptTerms })
+      body: JSON.stringify({ username: loginUsername, password: loginPassword, acceptTerms, ref: getStoredRef() || undefined })
     })
       .then(async res => {
         const text = await res.text();
@@ -1157,6 +1159,15 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                   )}
                 </button>
               </form>
+              )}
+              {!twoFactorChallenge && (
+                <TelegramLogin
+                  acceptTerms={acceptTerms}
+                  setAcceptTerms={setAcceptTerms}
+                  onError={setAuthError}
+                  onSuccess={completeLogin}
+                  onTwoFactor={(c) => { setTwoFactorChallenge(c); setTwoFactorCode(''); setAuthError(''); }}
+                />
               )}
             </div>
           </div>

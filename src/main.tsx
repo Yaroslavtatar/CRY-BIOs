@@ -8,6 +8,9 @@ import '@fontsource-variable/space-grotesk/wght.css';
 import '@fontsource-variable/playfair-display/wght.css';
 import '@fontsource-variable/playfair-display/wght-italic.css';
 import './index.css';
+import { captureRef } from './referral';
+
+captureRef();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -17,6 +17,9 @@ import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import { BioConfig, VisitRecord, AnalyticsSummary, SocialLink } from './src/types';
 import * as db from './src/db';
+import { createReferralStore, normalizeRefCode, ReferralError } from './src/referrals';
+import { createTelegramAuthStore, suggestUsername } from './src/telegramAuth';
+import { startTelegramBot, type RunningBot } from './src/telegramBot';
 import { writeBackupToFile, streamFullBackup, importFullBackup, previewBackupZip, streamUserBackup, importUserBackup, getMaxBackupBytes } from './src/backup';
 import {
   initChunkedUpload,
@@ -1420,6 +1423,265 @@ async function startServer() {
     consumeOAuthState: (st: string) => db.consumeOAuthState(st),
   });
 
+  // ───────── Рефералы и вход через Telegram-бота ─────────
+  const referrals = createReferralStore(db.db);
+  const tgStore = createTelegramAuthStore(db.db);
+  let telegramBot: RunningBot | null = null;
+  const telegramEnabled = () => Boolean((process.env.TELEGRAM_BOT_TOKEN || '').trim());
+  const telegramBotUsername = () => telegramBot?.username || (process.env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, '');
+
+  // Один переход с IP на одну ссылку в сутки (против накрутки кликов)
+  const refClickDedupe = new FailureLimiter(1, 24 * 60 * 60 * 1000);
+  const refErrorStatus = (e: unknown, res: express.Response) => {
+    if (e instanceof ReferralError) return res.status(e.status).json({ error: e.message });
+    throw e;
+  };
+  const tgLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: { error: 'Слишком много попыток. Попробуйте позже.' },
+    keyGenerator: (req) => ipKeyGenerator(req.ip || ''),
+  });
+
+  // Фронтенд зовёт при заходе по ссылке ?ref=код: считаем переход и запоминаем код на 30 дней
+  app.post('/api/ref/click', publicLimiter, (req, res) => {
+    const code = normalizeRefCode(req.body?.code);
+    const link = code ? referrals.getLink(code) : null;
+    if (!link || !link.active) return res.json({ ok: false });
+    res.cookie(REF_COOKIE, link.code, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: req.secure,
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    const key = `${ipKeyGenerator(req.ip || '')}:${link.code}`;
+    if (!refClickDedupe.isBlocked(key)) {
+      refClickDedupe.fail(key);
+      referrals.recordClick(link.code);
+    }
+    res.json({ ok: true });
+  });
+
+  // Статистика для рекламщика по секретному токену (только числа, без списка пользователей)
+  app.get('/api/ref/stats/:token', publicLimiter, (req, res) => {
+    const stats = referrals.getPublicStats(req.params.token);
+    if (!stats) return res.status(404).json({ error: 'Не найдено' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex');
+    res.json(stats);
+  });
+
+  app.get('/ref-stats/:token', publicLimiter, (req, res) => {
+    const stats = referrals.getPublicStats(req.params.token);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+    if (!stats) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Не найдено</title><body style="font-family:sans-serif;background:#0c0a0f;color:#fff;padding:40px">Статистика не найдена</body>');
+    const esc = (v: string) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+    const rows = [...stats.series].reverse().map((r) => `<tr><td>${esc(r.day)}</td><td>${r.clicks}</td><td>${r.signups}</td></tr>`).join('');
+    res.type('html').send(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Статистика: ${esc(stats.name)}</title>
+<style>body{font-family:system-ui,sans-serif;background:#0c0a0f;color:#f5f5f5;margin:0;padding:24px}main{max-width:640px;margin:0 auto}h1{font-size:20px}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0}.c{background:#17141c;border:1px solid #2a2530;border-radius:12px;padding:12px}.c b{display:block;font-size:24px}.c span{font-size:12px;color:#a0a0b0}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px;border-bottom:1px solid #2a2530;text-align:left}</style></head><body><main>
+<h1>${esc(stats.name)}${stats.active ? '' : ' (ссылка отключена)'}</h1>
+<div class="g"><div class="c"><b>${stats.clicks}</b><span>переходов</span></div><div class="c"><b>${stats.signups}</b><span>регистраций</span></div><div class="c"><b>${stats.signups24h}</b><span>за 24 часа</span></div><div class="c"><b>${stats.signups7d}</b><span>за 7 дней</span></div><div class="c"><b>${stats.conversion === null ? '—' : stats.conversion + '%'}</b><span>конверсия</span></div></div>
+<table><tr><th>День (UTC)</th><th>Переходы</th><th>Регистрации</th></tr>${rows}</table></main></body></html>`);
+  });
+
+  app.get('/api/auth/telegram/config', publicLimiter, (_req, res) => {
+    res.json({ enabled: telegramEnabled(), botUsername: telegramBotUsername() });
+  });
+
+  // Вход/регистрация по ключу из бота. Если аккаунта ещё нет — вторым запросом передаётся username (ключ не расходуется до создания).
+  app.post('/api/auth/telegram/login', tgLimiter, (req, res) => {
+    if (!telegramEnabled()) return res.status(503).json({ error: 'Вход через Telegram не настроен' });
+    const { key, username, acceptTerms } = req.body || {};
+    const row = tgStore.peekKey(key);
+    if (!row) return res.status(401).json({ error: 'Ключ неверный или истёк. Получите новый у бота командой /start' });
+
+    const linked = tgStore.getUsernameByTelegramId(row.telegramId);
+    if (linked) {
+      const user = db.getUser(linked);
+      if (!user) return res.status(401).json({ error: 'Аккаунт не найден' });
+      if (user.banned) return res.status(403).json({ error: 'Аккаунт заблокирован администратором' });
+      if (!tgStore.consumeKey(key)) return res.status(401).json({ error: 'Ключ неверный или истёк' });
+      // Ключ — это один фактор: при включённой 2FA код из приложения всё равно нужен
+      if (db.getTwoFactor(linked)?.enabled) {
+        return res.json({ twoFactorRequired: true, challenge: twoFactorChallenges.create(linked) });
+      }
+      const sessionToken = crypto.randomUUID();
+      db.updateUserToken(linked, sessionToken);
+      setSessionCookie(req, res, sessionToken);
+      return res.json({ token: sessionToken, username: linked, isNew: false });
+    }
+
+    if (!getSiteSettings(DATA_DIR).registrationOpen) {
+      return res.status(403).json({ error: 'Регистрация новых аккаунтов временно закрыта администратором' });
+    }
+    if (typeof username !== 'string' || !username.trim()) {
+      return res.json({ needUsername: true, suggestedUsername: suggestUsername(row.tgUsername) });
+    }
+    const normUsername = username.toLowerCase().trim();
+    if (!/^[a-zA-Z0-9_-]{3,15}$/.test(normUsername)) {
+      return res.status(400).json({ error: 'Имя: 3–15 символов, латиница, цифры, _ или -', needUsername: true });
+    }
+    if (db.getUser(normUsername) || isReservedUsername(normUsername) || db.isAliasSlugTaken(normUsername)) {
+      return res.status(400).json({ error: 'Это имя недоступно', needUsername: true });
+    }
+    if (acceptTerms !== true) {
+      return res.status(400).json({
+        error: 'Чтобы создать аккаунт, примите Условия использования и Политику конфиденциальности',
+        consentRequired: true,
+        needUsername: true,
+      });
+    }
+    const regKey = ipKeyGenerator(req.ip || '');
+    if (registrations.isBlocked(regKey)) {
+      res.setHeader('Retry-After', '3600');
+      return res.status(429).json({ error: 'Слишком много регистраций с вашего IP. Попробуйте позже.' });
+    }
+    const used = tgStore.consumeKey(key);
+    if (!used) return res.status(401).json({ error: 'Ключ неверный или истёк' });
+    registrations.fail(regKey);
+
+    const sessionToken = crypto.randomUUID();
+    // Пароль случайный и никому не известен: вход в такой аккаунт — только через бота
+    createAccount(normUsername, hashPassword(crypto.randomBytes(24).toString('base64url') + 'aA1!'), sessionToken, {
+      ref: used.refCode || normalizeRefCode(readCookie(req, REF_COOKIE)),
+      source: 'telegram',
+    });
+    if (!tgStore.link(used.telegramId, normUsername, used.tgUsername, true)) {
+      db.deleteUser(normUsername);
+      return res.status(409).json({ error: 'Этот Telegram уже привязан к другому аккаунту. Запросите ключ заново.' });
+    }
+    setSessionCookie(req, res, sessionToken);
+    res.status(201).json({ token: sessionToken, username: normUsername, isNew: true });
+  });
+
+  app.get('/api/auth/telegram/me', publicLimiter, (req, res) => {
+    const user = getUsernameFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'Требуется вход' });
+    const link = tgStore.getLinkByUsername(user);
+    res.json({ enabled: telegramEnabled(), botUsername: telegramBotUsername(), linked: !!link, tgUsername: link?.tgUsername || '', canUnlink: !!link && !link.createdViaTelegram });
+  });
+
+  // Привязать Telegram к уже существующему аккаунту (ключ получен у бота)
+  app.post('/api/auth/telegram/link', tgLimiter, (req, res) => {
+    const user = getUsernameFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'Требуется вход' });
+    if (!telegramEnabled()) return res.status(503).json({ error: 'Вход через Telegram не настроен' });
+    if (tgStore.getLinkByUsername(user)) return res.status(409).json({ error: 'Telegram уже привязан к этому аккаунту' });
+    const row = tgStore.peekKey(req.body?.key);
+    if (!row) return res.status(401).json({ error: 'Ключ неверный или истёк' });
+    if (tgStore.getUsernameByTelegramId(row.telegramId)) {
+      return res.status(409).json({ error: 'Этот Telegram уже привязан к другому аккаунту' });
+    }
+    if (!tgStore.consumeKey(req.body?.key)) return res.status(401).json({ error: 'Ключ неверный или истёк' });
+    tgStore.link(row.telegramId, user, row.tgUsername, false);
+    res.json({ success: true, tgUsername: row.tgUsername });
+  });
+
+  app.delete('/api/auth/telegram/link', tgLimiter, (req, res) => {
+    const user = getUsernameFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'Требуется вход' });
+    const link = tgStore.getLinkByUsername(user);
+    if (!link) return res.json({ success: true });
+    if (link.createdViaTelegram) {
+      return res.status(400).json({ error: 'Аккаунт создан через Telegram и не имеет пароля — отвязать нельзя, иначе вы потеряете доступ' });
+    }
+    tgStore.deleteUser(user);
+    res.json({ success: true });
+  });
+
+  // Админка: реферальные ссылки
+  app.get('/api/admin/referrals', checkAdminAuth, (_req, res) => {
+    res.json({
+      links: referrals.listLinksWithStats(),
+      telegram: { enabled: telegramEnabled(), botUsername: telegramBotUsername(), ...tgStore.stats() },
+    });
+  });
+  app.post('/api/admin/referrals', checkAdminAuth, (req, res) => {
+    try {
+      const link = referrals.createLink({ name: String(req.body?.name ?? ''), code: req.body?.code ? String(req.body.code) : undefined, note: String(req.body?.note ?? '') });
+      writeAudit(DATA_DIR, { ip: ipKeyGenerator(req.ip || ''), action: `referral.create ${link.code}` });
+      res.status(201).json(link);
+    } catch (e) { refErrorStatus(e, res); }
+  });
+  app.put('/api/admin/referrals/:code', checkAdminAuth, (req, res) => {
+    try {
+      const b = req.body || {};
+      res.json(referrals.updateLink(req.params.code, {
+        name: typeof b.name === 'string' ? b.name : undefined,
+        note: typeof b.note === 'string' ? b.note : undefined,
+        active: typeof b.active === 'boolean' ? b.active : undefined,
+      }));
+    } catch (e) { refErrorStatus(e, res); }
+  });
+  app.delete('/api/admin/referrals/:code', checkAdminAuth, (req, res) => {
+    if (!referrals.deleteLink(req.params.code)) return res.status(404).json({ error: 'Ссылка не найдена' });
+    writeAudit(DATA_DIR, { ip: ipKeyGenerator(req.ip || ''), action: `referral.delete ${req.params.code}` });
+    res.json({ success: true });
+  });
+  app.get('/api/admin/referrals/:code/signups', checkAdminAuth, (req, res) => {
+    const limit = Number(req.query.limit) || 100;
+    const offset = Number(req.query.offset) || 0;
+    res.json(referrals.listSignups(req.params.code, limit, offset));
+  });
+
+  const REF_COOKIE = 'cry_ref';
+
+  const createAccount = (
+    normUsername: string,
+    passwordHash: string,
+    sessionToken: string,
+    opts: { ref?: string; source: 'web' | 'telegram' },
+  ) => {
+    db.createUser(normUsername, passwordHash, sessionToken);
+
+    const defaultBio: BioConfig = {
+        username: normUsername,
+        displayName: normUsername,
+        bio: 'Just another badass awesome creator page.',
+        avatarUrl: '/default-avatar.svg',
+        verified: false,
+        customBadge: 'USER',
+        sparkles: false,
+        uid: Math.floor(100000 + Math.random() * 900000),
+        discordConnected: false,
+        googleConnected: false,
+        fontFamily: 'Inter',
+        primaryColor: '#8a2be2',
+        textColor: '#ffffff',
+        glowColor: '#a855f7',
+        bgType: 'color',
+        bgValue: '#0c0a0f',
+        bgBlur: 0,
+        bgDim: 0,
+        audioUrl: '',
+        audioTitle: '',
+        audioArtist: '',
+        audioEnabled: false,
+        enterText: 'click to enter',
+        blocks: [
+          {
+            id: crypto.randomUUID(),
+            type: 'socials',
+            title: 'My Links',
+            enabled: true,
+            socialsList: [
+              { id: crypto.randomUUID(), platform: 'github', url: 'https://github.com/' + normUsername },
+              { id: crypto.randomUUID(), platform: 'telegram', url: 'https://t.me/' }
+            ]
+          }
+        ]
+      };
+
+    db.saveBio(normUsername, defaultBio);
+    if (opts.ref) referrals.recordSignup(normUsername, opts.ref, opts.source);
+  };
+
   // Register or Login endpoint
   app.post('/api/auth/login-register', authIpLimiter, authLimiter, (req, res) => {
     const { username, password, acceptTerms } = req.body;
@@ -1492,47 +1754,10 @@ async function startServer() {
     registrations.fail(regKey);
 
     const sessionToken = crypto.randomUUID();
-    db.createUser(normUsername, hashPassword(password), sessionToken);
-
-    const defaultBio: BioConfig = {
-        username: normUsername,
-        displayName: normUsername,
-        bio: 'Just another badass awesome creator page.',
-        avatarUrl: '/default-avatar.svg',
-        verified: false,
-        customBadge: 'USER',
-        sparkles: false,
-        uid: Math.floor(100000 + Math.random() * 900000),
-        discordConnected: false,
-        googleConnected: false,
-        fontFamily: 'Inter',
-        primaryColor: '#8a2be2',
-        textColor: '#ffffff',
-        glowColor: '#a855f7',
-        bgType: 'color',
-        bgValue: '#0c0a0f',
-        bgBlur: 0,
-        bgDim: 0,
-        audioUrl: '',
-        audioTitle: '',
-        audioArtist: '',
-        audioEnabled: false,
-        enterText: 'click to enter',
-        blocks: [
-          {
-            id: crypto.randomUUID(),
-            type: 'socials',
-            title: 'My Links',
-            enabled: true,
-            socialsList: [
-              { id: crypto.randomUUID(), platform: 'github', url: 'https://github.com/' + normUsername },
-              { id: crypto.randomUUID(), platform: 'telegram', url: 'https://t.me/' }
-            ]
-          }
-        ]
-      };
-
-    db.saveBio(normUsername, defaultBio);
+    createAccount(normUsername, hashPassword(password), sessionToken, {
+      ref: normalizeRefCode(req.body.ref) || normalizeRefCode(readCookie(req, REF_COOKIE)),
+      source: 'web',
+    });
 
     setSessionCookie(req, res, sessionToken);
     res.status(201).json({ token: sessionToken, username: normUsername, isNew: true });
@@ -2246,6 +2471,15 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Open-Source CRY BIOS Server started on http://0.0.0.0:${PORT}`);
     console.log(`Persisted database synchronized successfully.`);
+
+    startTelegramBot({
+      token: process.env.TELEGRAM_BOT_TOKEN,
+      apiBase: process.env.TELEGRAM_API_BASE,
+      username: process.env.TELEGRAM_BOT_USERNAME,
+      store: tgStore,
+      refs: referrals,
+      siteUrl: () => getPlatformConfig().appUrl.replace(/\/$/, ''),
+    }).then((bot) => { telegramBot = bot; }).catch((e) => console.error('[telegram] не удалось запустить бота:', e?.message || e));
 
     if (process.env.DISABLE_SCHEDULED_BACKUP !== 'true') {
       startScheduledBackups({
