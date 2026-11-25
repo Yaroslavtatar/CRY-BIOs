@@ -36,9 +36,10 @@ import { isVideoMime } from './src/videoProcessing';
 import { isAudioMime } from './src/audioProcessing';
 import { validateUserPassword, validateAdminPassword } from './src/passwordPolicy';
 import { isAccountLocked, recordFailedLogin, clearLoginAttempts } from './src/authLockout';
-import { rehostImportMedia } from './src/rehostMedia';
-import { getImportPreviewSummary } from './src/gunsImportMap';
-import { parseImportInput } from './src/importHub';
+import { MAX_IMPORT_HTML_CHARS, getImportProvider } from './src/import/catalog';
+import { ImportJobs } from './src/import/jobs';
+import { importProfile } from './src/import/pipeline';
+import { ImportError } from './src/import/types';
 import { cleanupAllOrphans, deleteUnusedBetweenConfigs } from './src/uploadCleanup';
 import { getStorageStats, runHealthChecks } from './src/storageStats';
 import { createAdminAuth, FailureLimiter } from './src/adminAuth';
@@ -115,24 +116,8 @@ if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR, { recursive: true });
 }
 
-type ImportJob = {
-  username: string;
-  status: 'running' | 'done' | 'error';
-  progress: { current: number; total: number; label: string };
-  result?: unknown;
-  error?: string;
-  listeners: Set<(event: string, data: unknown) => void>;
-};
-
-const importJobs = new Map<string, ImportJob>();
-
-function emitImportJob(jobId: string, event: string, data: unknown) {
-  const job = importJobs.get(jobId);
-  if (!job) return;
-  for (const listener of job.listeners) {
-    listener(event, data);
-  }
-}
+// Фоновые задачи импорта профиля с других платформ (см. src/import)
+const profileImportJobs = new ImportJobs();
 
 const adminAuth = createAdminAuth(DATA_DIR);
 const adminFailures = new FailureLimiter(10, 15 * 60 * 1000);
@@ -399,7 +384,13 @@ async function startServer() {
   // Макет главной вместе со своим CSS может быть крупнее стандартного лимита; остальным маршрутам лимит прежний
   const jsonDefault = express.json();
   const jsonLayout = express.json({ limit: '512kb' });
-  app.use((req, res, next) => (req.path === '/api/admin/home-layout' && req.method === 'PUT' ? jsonLayout(req, res, next) : jsonDefault(req, res, next)));
+  // Вставленный HTML страницы-источника (до 2 млн символов) тоже крупнее стандартного лимита
+  const jsonImport = express.json({ limit: '2.5mb' });
+  app.use((req, res, next) => {
+    if (req.path === '/api/admin/home-layout' && req.method === 'PUT') return jsonLayout(req, res, next);
+    if (req.path === '/api/import-profile' && req.method === 'POST') return jsonImport(req, res, next);
+    return jsonDefault(req, res, next);
+  });
 
   // Канонический URL: name.cbios.ru → cbios.ru/name (когда Traefik уже проксирует поддомен)
   app.use((req, res, next) => {
@@ -1567,12 +1558,29 @@ async function startServer() {
     res.json({ enabled: telegramEnabled(), botUsername: telegramBotUsername(), linked: !!link, tgUsername: link?.tgUsername || '', canUnlink: !!link && !link.createdViaTelegram });
   });
 
+  // Подтверждение текущим паролем: привязка/отвязка Telegram меняет способ входа в аккаунт,
+  // поэтому одной действующей сессии (например, украденной) для неё недостаточно.
+  const confirmAccountPassword = (user: string, password: unknown): { status: number; error: string } | null => {
+    const row = db.getUser(user);
+    if (!row) return { status: 401, error: 'Сессия недействительна' };
+    if (typeof password !== 'string' || !password) {
+      return { status: 400, error: 'Введите текущий пароль для подтверждения' };
+    }
+    if (!verifyPassword(password, row.password_hash).valid) {
+      recordFailedLogin(user);
+      return { status: 401, error: 'Неверный пароль' };
+    }
+    return null;
+  };
+
   // Привязать Telegram к уже существующему аккаунту (ключ получен у бота)
   app.post('/api/auth/telegram/link', tgLimiter, (req, res) => {
     const user = getUsernameFromRequest(req);
     if (!user) return res.status(401).json({ error: 'Требуется вход' });
     if (!telegramEnabled()) return res.status(503).json({ error: 'Вход через Telegram не настроен' });
     if (tgStore.getLinkByUsername(user)) return res.status(409).json({ error: 'Telegram уже привязан к этому аккаунту' });
+    const confirmed = confirmAccountPassword(user, req.body?.password);
+    if (confirmed) return res.status(confirmed.status).json({ error: confirmed.error });
     const row = tgStore.peekKey(req.body?.key);
     if (!row) return res.status(401).json({ error: 'Ключ неверный или истёк' });
     if (tgStore.getUsernameByTelegramId(row.telegramId)) {
@@ -1591,6 +1599,8 @@ async function startServer() {
     if (link.createdViaTelegram) {
       return res.status(400).json({ error: 'Аккаунт создан через Telegram и не имеет пароля — отвязать нельзя, иначе вы потеряете доступ' });
     }
+    const confirmed = confirmAccountPassword(user, req.body?.password);
+    if (confirmed) return res.status(confirmed.status).json({ error: confirmed.error });
     tgStore.deleteUser(user);
     res.json({ success: true });
   });
@@ -1985,151 +1995,51 @@ async function startServer() {
     res.json({ success: true, username: normNewUsername });
   });
 
-  // Unified import hub (guns.lol URL or HTML)
-  app.post('/api/import-profile', importLimiter, async (req, res) => {
+  // Импорт профиля с другой платформы. Результат не применяется к профилю: клиент показывает
+  // предпросмотр, пользователь отмечает разделы и сохраняет сам.
+  app.post('/api/import-profile', importLimiter, (req, res) => {
     const authedUser = getUsernameFromRequest(req);
-    if (!authedUser) {
-      return res.status(401).json({ error: 'Unauthorized Session' });
+    if (!authedUser) return res.status(401).json({ error: 'Требуется вход' });
+
+    const { provider, input } = req.body ?? {};
+    if (typeof provider !== 'string' || !getImportProvider(provider)) {
+      return res.status(400).json({ error: 'Выберите платформу для импорта', code: 'bad_input' });
+    }
+    if (typeof input !== 'string' || !input.trim()) {
+      return res.status(400).json({ error: 'Введите ссылку или имя профиля', code: 'bad_input' });
+    }
+    if (input.length > MAX_IMPORT_HTML_CHARS) {
+      return res.status(400).json({ error: 'Слишком длинный ввод. Вставьте ссылку или HTML страницы', code: 'bad_input' });
     }
 
-    const { input } = req.body ?? {};
-    if (!input || typeof input !== 'string' || !input.trim()) {
-      return res.status(400).json({ error: 'Укажите ссылку guns.lol или HTML страницы' });
-    }
-
-    const jobId = crypto.randomUUID();
-    const job: ImportJob = {
-      username: authedUser,
-      status: 'running',
-      progress: { current: 0, total: 0, label: 'parse' },
-      listeners: new Set(),
-    };
-    importJobs.set(jobId, job);
-
-    res.json({ success: true, jobId });
-
-    (async () => {
-      try {
-        emitImportJob(jobId, 'progress', { ...job.progress, label: 'Разбор профиля…' });
-        const parsed = await parseImportInput(input);
-        emitImportJob(jobId, 'progress', { current: 0, total: 1, label: 'Загрузка медиа…' });
-
-        const withMedia = await rehostImportMedia(
-          parsed,
-          UPLOADS_DIR,
-          TMP_DIR,
-          (current, total, label) => {
-            job.progress = { current, total, label };
-            emitImportJob(jobId, 'progress', job.progress);
+    try {
+      const jobId = profileImportJobs.start(authedUser, (report) =>
+        importProfile(
+          provider,
+          input,
+          {
+            uploadsDir: UPLOADS_DIR,
+            tmpDir: TMP_DIR,
+            dataDir: DATA_DIR,
+            ctx: { githubToken: process.env.GITHUB_TOKEN?.trim() || undefined },
           },
-          DATA_DIR,
-        );
-
-        job.status = 'done';
-        job.result = {
-          ...withMedia,
-          preview: getImportPreviewSummary(withMedia as import('./src/gunsImportMap').GunsImportResult),
-        };
-        emitImportJob(jobId, 'done', job.result);
-      } catch (err: any) {
-        job.status = 'error';
-        job.error = err.message || 'Import failed';
-        emitImportJob(jobId, 'error', { error: job.error });
-      } finally {
-        setTimeout(() => importJobs.delete(jobId), 15 * 60 * 1000);
-      }
-    })();
-  });
-
-  app.get('/api/import-profile/progress/:jobId', (req, res) => {
-    const authedUser = getUsernameFromRequest(req);
-    if (!authedUser) {
-      return res.status(401).json({ error: 'Unauthorized Session' });
-    }
-
-    const job = importJobs.get(req.params.jobId);
-    if (!job || job.username !== authedUser) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders?.();
-
-    const send = (event: string, data: unknown) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    };
-
-    send('progress', job.progress);
-    if (job.status === 'done') {
-      send('done', job.result);
-      return res.end();
-    }
-    if (job.status === 'error') {
-      send('error', { error: job.error });
-      return res.end();
-    }
-
-    const listener = (event: string, data: unknown) => send(event, data);
-    job.listeners.add(listener);
-
-    req.on('close', () => {
-      job.listeners.delete(listener);
-    });
-  });
-
-  // Legacy import endpoint (deprecated, uses import hub)
-  app.post('/api/import-gunslol', importLimiter, async (req, res) => {
-    const authedUser = getUsernameFromRequest(req);
-    if (!authedUser) {
-      return res.status(401).json({ error: 'Unauthorized Session' });
-    }
-
-    const { targetUsername, input } = req.body;
-    const importInput = input || (targetUsername ? `https://guns.lol/${targetUsername.trim()}` : '');
-    if (!importInput) {
-      return res.status(400).json({ error: 'Target guns.lol username or input required' });
-    }
-
-    try {
-      const parsed = await parseImportInput(importInput);
-      const responseData = await rehostImportMedia(parsed, UPLOADS_DIR, TMP_DIR, undefined, DATA_DIR);
-      res.json({
-        success: true,
-        data: {
-          ...responseData,
-          preview: getImportPreviewSummary(responseData as import('./src/gunsImportMap').GunsImportResult),
-        },
-      });
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ error: error.message || 'Import failure' });
+          report,
+        ),
+      );
+      res.status(202).json({ jobId });
+    } catch (err) {
+      if (err instanceof ImportError) return res.status(err.code === 'busy' ? 409 : 400).json({ error: err.message, code: err.code });
+      throw err;
     }
   });
 
-  app.post('/api/rehost-import-media', importLimiter, async (req, res) => {
+  app.get('/api/import-profile/:jobId', (req, res) => {
     const authedUser = getUsernameFromRequest(req);
-    if (!authedUser) {
-      return res.status(401).json({ error: 'Unauthorized Session' });
-    }
-
-    try {
-      const payload = req.body as {
-        avatarUrl?: string;
-        bgType?: string;
-        bgValue?: string;
-        audioUrl?: string;
-        customCursorUrl?: string;
-        playlist?: { id: string; url: string; title: string; artist: string }[];
-      };
-
-      const rehosted = await rehostImportMedia(payload, UPLOADS_DIR, TMP_DIR, undefined, DATA_DIR);
-      res.json({ success: true, data: rehosted });
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ error: `Rehost failure: ${error.message}` });
-    }
+    if (!authedUser) return res.status(401).json({ error: 'Требуется вход' });
+    const job = profileImportJobs.get(req.params.jobId, authedUser);
+    if (!job) return res.status(404).json({ error: 'Импорт не найден или устарел' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(job);
   });
 
   // Save/Update Bio Config

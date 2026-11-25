@@ -2,7 +2,7 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import AccountSettings, { TwoFactorCard } from '../src/components/AccountSettings';
+import AccountSettings, { TelegramCard, TwoFactorCard } from '../src/components/AccountSettings';
 import FirstSteps from '../src/components/FirstSteps';
 import { DEFAULT_UI_PREFS, accentStyle, isChecklistHidden, isOnboardingPending, readUiPrefs, setChecklistHidden, setOnboardingPending } from '../src/uiPrefs';
 import { detectStudioPreset, readStudioPrefs, STUDIO_PRESETS } from '../src/studioPrefs';
@@ -243,5 +243,96 @@ describe('FirstSteps', () => {
     expect(go).toHaveBeenCalledOnce();
     await click(/Скрыть чек-лист/);
     expect(hide).toHaveBeenCalledOnce();
+  });
+});
+
+describe('TelegramCard', () => {
+  const me = (patch: Record<string, unknown> = {}) => ({
+    json: { enabled: true, botUsername: 'cry_bios_bot', linked: false, tgUsername: '', canUnlink: false, ...patch },
+  });
+
+  it('скрыта, если вход через Telegram не настроен', async () => {
+    mockFetch({ '/api/auth/telegram/me': me({ enabled: false }) });
+    await act(async () => root.render(<TelegramCard />));
+    await flush();
+    expect(container.querySelector('[data-testid="telegram-card"]')).toBeNull();
+  });
+
+  it('скрыта, если статус не удалось получить', async () => {
+    mockFetch({ '/api/auth/telegram/me': { ok: false, json: {} } });
+    await act(async () => root.render(<TelegramCard />));
+    await flush();
+    expect(container.querySelector('[data-testid="telegram-card"]')).toBeNull();
+  });
+
+  it('привязывает Telegram ключом из бота и паролем', async () => {
+    const seen = mockFetch({
+      '/api/auth/telegram/me': [me(), me({ linked: true, tgUsername: 'alice_tg', canUnlink: true })],
+      '/api/auth/telegram/link': { json: { success: true, tgUsername: 'alice_tg' } },
+    });
+    await act(async () => root.render(<TelegramCard />));
+    await flush();
+    expect(container.querySelector('a[href="https://t.me/cry_bios_bot"]')).not.toBeNull();
+
+    await type('Ключ из Telegram', 'ABCDE-FGHJK');
+    await type('Пароль для привязки Telegram', 'Correct-Horse-9');
+    await click(/Привязать Telegram/);
+    await flush();
+
+    expect(seen.find((s) => s.url === '/api/auth/telegram/link')!.body).toEqual({ key: 'ABCDE-FGHJK', password: 'Correct-Horse-9' });
+    expect(container.textContent).toContain('@alice_tg');
+    expect(container.textContent).toContain('Отвязать Telegram');
+  });
+
+  it('не отправляет форму без ключа или пароля', async () => {
+    const seen = mockFetch({ '/api/auth/telegram/me': me() });
+    await act(async () => root.render(<TelegramCard />));
+    await flush();
+    await type('Ключ из Telegram', 'ABCDE-FGHJK');
+    await click(/Привязать Telegram/);
+    expect(container.querySelector('[role="alert"]')!.textContent).toMatch(/ключ из бота и пароль/);
+    expect(seen.some((s) => s.url === '/api/auth/telegram/link')).toBe(false);
+  });
+
+  it('показывает ошибку сервера и остаётся на форме привязки', async () => {
+    mockFetch({
+      '/api/auth/telegram/me': me(),
+      '/api/auth/telegram/link': { ok: false, json: { error: 'Неверный пароль' } },
+    });
+    await act(async () => root.render(<TelegramCard />));
+    await flush();
+    await type('Ключ из Telegram', 'ABCDE-FGHJK');
+    await type('Пароль для привязки Telegram', 'wrong');
+    await click(/Привязать Telegram/);
+    await flush();
+    expect(container.querySelector('[role="alert"]')!.textContent).toBe('Неверный пароль');
+    expect(container.querySelector('input[aria-label="Ключ из Telegram"]')).not.toBeNull();
+  });
+
+  it('отвязывает Telegram по паролю', async () => {
+    const seen = mockFetch({
+      '/api/auth/telegram/me': [me({ linked: true, tgUsername: 'alice_tg', canUnlink: true }), me()],
+      '/api/auth/telegram/link': { json: { success: true } },
+    });
+    await act(async () => root.render(<TelegramCard />));
+    await flush();
+    await click(/Отвязать Telegram/);
+    expect(container.querySelector('[role="alert"]')!.textContent).toMatch(/пароль/);
+    expect(seen.some((s) => s.url === '/api/auth/telegram/link')).toBe(false);
+
+    await type('Пароль для отвязки Telegram', 'Correct-Horse-9');
+    await click(/Отвязать Telegram/);
+    await flush();
+    expect(seen.find((s) => s.url === '/api/auth/telegram/link')!.body).toEqual({ password: 'Correct-Horse-9' });
+    expect(container.textContent).toContain('Привязать Telegram');
+  });
+
+  it('аккаунт, созданный через Telegram, отвязать нельзя', async () => {
+    mockFetch({ '/api/auth/telegram/me': me({ linked: true, tgUsername: 'alice_tg', canUnlink: false }) });
+    await act(async () => root.render(<TelegramCard />));
+    await flush();
+    expect(container.textContent).toContain('@alice_tg');
+    expect(container.textContent).toMatch(/отвязать его нельзя/);
+    expect(container.querySelector('input[type="password"]')).toBeNull();
   });
 });

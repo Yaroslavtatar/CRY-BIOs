@@ -105,9 +105,3 @@ export const ELEMENT_COLOR_LABELS: Record<string, { label: string; hint: string 
     hint: 'Частицы, следующие за курсором.',
   },
 };
-
-export const IMPORT_PREVIEW_STATUS_LABELS: Record<string, string> = {
-  found: 'Найдено',
-  missing: 'Не найдено',
-  partial: 'Частично',
-};

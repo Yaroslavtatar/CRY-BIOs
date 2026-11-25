@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { AtSign, Check, Copy, Download, GraduationCap, KeyRound, Layout, LogOut, Palette, ShieldCheck, ShieldOff } from 'lucide-react';
+import { AtSign, Check, Copy, Download, GraduationCap, KeyRound, Layout, LogOut, Palette, Send, ShieldCheck, ShieldOff } from 'lucide-react';
 import { STUDIO_PRESETS, detectStudioPreset, resetTour, useStudioPrefs } from '../studioPrefs';
 import { UI_ACCENTS, useUiPrefs } from '../uiPrefs';
 
@@ -97,6 +97,99 @@ function PasswordForm() {
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={`text-[11px] font-mono ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>}
       <button type="submit" disabled={busy} className={ghostBtn}>{busy ? 'Сохранение…' : 'Сменить пароль'}</button>
     </form>
+  );
+}
+
+// ---------------- Telegram ----------------
+
+interface TelegramState {
+  enabled: boolean;
+  botUsername: string;
+  linked: boolean;
+  tgUsername: string;
+  canUnlink: boolean;
+}
+
+/** Привязка Telegram к существующему аккаунту: вход по ключу из бота, не только регистрация. */
+export function TelegramCard() {
+  const [state, setState] = useState<TelegramState | null>(null);
+  const [keyValue, setKeyValue] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/telegram/me');
+      if (!res.ok) throw new Error();
+      setState(await res.json());
+    } catch {
+      setState(null);
+    }
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  if (!state?.enabled) return null;
+
+  const botUrl = state.botUsername ? `https://t.me/${state.botUsername}` : '';
+
+  const link = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!keyValue.trim() || !password) { setMsg({ ok: false, text: 'Введите ключ из бота и пароль' }); return; }
+    setBusy(true);
+    const r = await postJson('/api/auth/telegram/link', { key: keyValue, password });
+    setBusy(false);
+    if (r.ok) {
+      setKeyValue(''); setPassword('');
+      setMsg({ ok: true, text: 'Telegram привязан. Теперь можно входить по ключу из бота.' });
+      void refresh();
+    } else setMsg({ ok: false, text: r.data?.error || 'Не удалось привязать Telegram' });
+  };
+
+  const unlink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password) { setMsg({ ok: false, text: 'Введите пароль для подтверждения' }); return; }
+    setBusy(true);
+    let ok = false; let data: any = {};
+    try {
+      const res = await fetch('/api/auth/telegram/link', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+      ok = res.ok; data = await res.json().catch(() => ({}));
+    } catch { data = { error: 'Нет связи с сервером' }; }
+    setBusy(false);
+    if (ok) { setPassword(''); setMsg({ ok: true, text: 'Telegram отвязан.' }); void refresh(); }
+    else setMsg({ ok: false, text: data?.error || 'Не удалось отвязать Telegram' });
+  };
+
+  return (
+    <div className="space-y-2.5" data-testid="telegram-card">
+      <span className="block text-[10px] uppercase tracking-wider font-bold text-neutral-400">Telegram</span>
+      {state.linked ? (
+        <form onSubmit={unlink} className="space-y-2.5">
+          <p className="text-xs font-mono text-white">
+            Привязан{state.tgUsername ? <> · <span className="text-cb-accent">@{state.tgUsername}</span></> : null}
+          </p>
+          {state.canUnlink ? (
+            <>
+              <input type="password" autoComplete="current-password" aria-label="Пароль для отвязки Telegram" placeholder="Пароль для подтверждения" value={password} onChange={(e) => setPassword(e.target.value)} className={fieldCls} />
+              <button type="submit" disabled={busy} className={dangerBtn}>{busy ? 'Отвязываем…' : 'Отвязать Telegram'}</button>
+            </>
+          ) : (
+            <p className="text-[11px] text-neutral-500 font-sans">Аккаунт создан через Telegram и входит только через бота, поэтому отвязать его нельзя.</p>
+          )}
+        </form>
+      ) : (
+        <form onSubmit={link} className="space-y-2.5">
+          <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">
+            1. Откройте бота {botUrl ? <a href={botUrl} target="_blank" rel="noopener noreferrer" className="text-cb-accent underline">@{state.botUsername}</a> : 'в Telegram'} и нажмите «Старт».<br />
+            2. Вставьте присланный ключ и подтвердите паролем. После этого можно входить по ключу из бота.
+          </p>
+          <input type="text" autoComplete="off" aria-label="Ключ из Telegram" placeholder="ABCDE-FGHJK" maxLength={20} value={keyValue} onChange={(e) => setKeyValue(e.target.value)} className={`${fieldCls} tracking-[0.2em] uppercase`} />
+          <input type="password" autoComplete="current-password" aria-label="Пароль для привязки Telegram" placeholder="Текущий пароль" value={password} onChange={(e) => setPassword(e.target.value)} className={fieldCls} />
+          <button type="submit" disabled={busy} className={primaryBtn}><span className="inline-flex items-center gap-1.5"><Send className="w-3.5 h-3.5" />{busy ? 'Привязываем…' : 'Привязать Telegram'}</span></button>
+        </form>
+      )}
+      {msg && <p role={msg.ok ? 'status' : 'alert'} className={`text-[11px] font-mono ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>}
+    </div>
   );
 }
 
@@ -319,9 +412,10 @@ export default function AccountSettings({ username, onRename, onLogout, onRestar
         </div>
       </Section>
 
-      <Section icon={<KeyRound className="w-3.5 h-3.5" />} title="Безопасность" hint="Смена пароля завершает все остальные сессии.">
+      <Section icon={<KeyRound className="w-3.5 h-3.5" />} title="Безопасность" hint="Смена пароля завершает все остальные сессии. Привязка Telegram и 2FA требуют пароль.">
         <PasswordForm />
         <div className="border-t border-white/10 pt-4"><TwoFactorCard username={username} /></div>
+        <div className="border-t border-white/10 pt-4"><TelegramCard /></div>
       </Section>
 
       <Section icon={<Palette className="w-3.5 h-3.5" />} title="Стиль редактора профиля" hint="Как выглядит и работает этот кабинет.">
