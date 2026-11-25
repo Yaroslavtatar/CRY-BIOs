@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { BioConfig, VisitRecord } from './types';
 import crypto from 'crypto';
+import { initReferralSchema } from './referrals';
+import { initTelegramSchema } from './telegramAuth';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 if (!fs.existsSync(DATA_DIR)) {
@@ -45,6 +47,9 @@ db.exec(`
     expires_at INTEGER NOT NULL
   );
 `);
+
+initReferralSchema(db);
+initTelegramSchema(db);
 
 try {
   db.exec("ALTER TABLE analytics ADD COLUMN host TEXT DEFAULT ''");
@@ -264,6 +269,8 @@ export function updateUsername(oldUsername: string, newUsername: string) {
     
     // Update analytics
     db.prepare('UPDATE analytics SET username = ? WHERE username = ?').run(newUsername, oldUsername);
+    db.prepare('UPDATE referral_signups SET username = ? WHERE username = ?').run(newUsername, oldUsername);
+    db.prepare('UPDATE telegram_accounts SET username = ? WHERE username = ?').run(newUsername, oldUsername);
     
     // Delete old (this cascades to old bio)
     db.prepare('DELETE FROM users WHERE username = ?').run(oldUsername);
@@ -427,6 +434,8 @@ export function deleteUser(username: string) {
   const transaction = db.transaction(() => {
     db.prepare('DELETE FROM bios WHERE username = ?').run(username);
     db.prepare('DELETE FROM analytics WHERE username = ?').run(username);
+    db.prepare('DELETE FROM referral_signups WHERE username = ?').run(username);
+    db.prepare('DELETE FROM telegram_accounts WHERE username = ?').run(username);
     db.prepare('DELETE FROM users WHERE username = ?').run(username);
   });
   transaction();

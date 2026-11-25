@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { LayoutDashboard, Users as UsersIcon, Layout, Archive, Server as ServerIcon, Scale, LogOut, ArrowLeft, Shield, Menu, X, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Users as UsersIcon, Layout, Archive, Server as ServerIcon, Scale, Link2, LogOut, ArrowLeft, Shield, Menu, X, Loader2 } from 'lucide-react';
 import { useAdminApi } from './admin/adminApi';
 import { Button, Field, TextInput, Toasts, cx, type ToastMsg } from './admin/ui';
 import Overview from './admin/sections/Overview';
@@ -8,17 +8,19 @@ import HomeBuilder from './admin/sections/HomeBuilder';
 import Backups from './admin/sections/Backups';
 import Server from './admin/sections/Server';
 import Legal from './admin/sections/Legal';
+import Referrals from './admin/sections/Referrals';
 
 interface AdminPanelProps {
   onExit: () => void;
 }
 
-type Page = 'overview' | 'users' | 'home' | 'legal' | 'backups' | 'server';
+type Page = 'overview' | 'users' | 'referrals' | 'home' | 'legal' | 'backups' | 'server';
 
 const NAV: { id: Page; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Обзор', icon: LayoutDashboard },
   { id: 'home', label: 'Конструктор главной', icon: Layout },
   { id: 'users', label: 'Пользователи', icon: UsersIcon },
+  { id: 'referrals', label: 'Рефералы', icon: Link2 },
   { id: 'legal', label: 'Юр. данные', icon: Scale },
   { id: 'backups', label: 'Бэкапы', icon: Archive },
   { id: 'server', label: 'Сервер', icon: ServerIcon },
@@ -180,6 +182,7 @@ export default function AdminPanel({ onExit }: AdminPanelProps) {
             {page === 'overview' && <Overview {...sectionProps} goTo={goTo} />}
             {page === 'home' && <HomeBuilder {...sectionProps} />}
             {page === 'users' && <Users {...sectionProps} />}
+            {page === 'referrals' && <Referrals {...sectionProps} />}
             {page === 'legal' && <Legal {...sectionProps} />}
             {page === 'backups' && <Backups {...sectionProps} />}
             {page === 'server' && <Server {...sectionProps} />}

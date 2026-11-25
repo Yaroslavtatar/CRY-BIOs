@@ -400,6 +400,34 @@ curl -s -X PUT $BASE/api/admin/legal \
 
 ---
 
+## Рефералы и вход через Telegram
+
+Рекламная ссылка: `https://<сайт>/?ref=<код>`. Код создаётся в админке («Рефералы»). При заходе по ссылке фронтенд считает переход и запоминает код на 30 дней; он засчитывается при регистрации через форму и через Telegram-бота. Один переход с IP на одну ссылку в сутки.
+
+| Путь | Доступ | Описание |
+|---|---|---|
+| `POST /api/ref/click` | публичный | `{code}` — засчитать переход, выставить cookie `cry_ref` |
+| `GET /api/ref/stats/:token` | по токену | Числа для рекламщика: переходы, регистрации, 24 ч / 7 дн, конверсия, ряд по дням. Страница: `/ref-stats/:token` |
+| `GET /api/admin/referrals` | админ | Ссылки со статистикой + сводка по Telegram |
+| `POST /api/admin/referrals` | админ | `{name, code?, note?}` |
+| `PUT /api/admin/referrals/:code` | админ | `{name?, note?, active?}` |
+| `DELETE /api/admin/referrals/:code` | админ | Удалить ссылку и счётчик переходов |
+| `GET /api/admin/referrals/:code/signups` | админ | Список зарегистрировавшихся (`limit`, `offset`) |
+
+Регистрация формой принимает необязательное поле `ref` в `POST /api/auth/login-register`.
+
+**Вход по ключу из бота.** Включается переменной `TELEGRAM_BOT_TOKEN`. Пользователь пишет боту `/start` (или заходит по `https://t.me/<бот>?start=ref_<код>`), бот присылает одноразовый ключ `ABCDE-FGHJK` на 10 минут. Ключ вводится на сайте. Если Telegram ещё не привязан, нужно выбрать имя и принять условия — создаётся аккаунт без пароля (вход только через бота). Если у аккаунта включена 2FA, код из приложения всё равно запрашивается.
+
+| Путь | Описание |
+|---|---|
+| `GET /api/auth/telegram/config` | `{enabled, botUsername}` |
+| `POST /api/auth/telegram/login` | `{key}` → сессия, либо `{needUsername:true, suggestedUsername}`; вторым запросом `{key, username, acceptTerms:true}` |
+| `GET /api/auth/telegram/me` | Привязан ли Telegram к текущему аккаунту |
+| `POST /api/auth/telegram/link` | `{key}` — привязать Telegram к существующему аккаунту |
+| `DELETE /api/auth/telegram/link` | Отвязать (нельзя для аккаунтов, созданных через бота) |
+
+---
+
 ## Служебные
 
 | Путь | Описание |
