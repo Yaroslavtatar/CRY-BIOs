@@ -1,50 +1,50 @@
-# Security Policy
+# Политика безопасности
 
-## Supported Versions
+## Поддерживаемые версии
 
-Starting from version **1.2.0 Stable**, CRY BIOS enters the phase of stable releases. Active security support is provided only for the latest minor version within a major release.
+Начиная с версии **1.2.0 Stable** CRY BIOs вступает в фазу стабильных релизов. Активная поддержка безопасности предоставляется только для последней минорной версии в рамках мажорного релиза.
 
-| Version | Supported |
+| Версия | Поддержка |
 | ------ | --------------- |
-| **1.2.x** (latest) | :white_check_mark: Active support |
-| **1.1.x** and older | :x: Support discontinued |
-| Forks and modified builds | :x: |
+| **1.2.x** (последняя) | :white_check_mark: Активная поддержка |
+| **1.1.x** и старше | :x: Поддержка прекращена |
+| Форки и модифицированные сборки | :x: |
 
-> **Recommendation**: Always use the latest version from the `main` branch to receive up-to-date security fixes.
+> **Рекомендация**: всегда используйте последнюю версию из ветки `main`, чтобы получать актуальные исправления безопасности.
 
-## Responsible Disclosure of Vulnerabilities
+## Ответственное раскрытие уязвимостей
 
-If you discover a potential security vulnerability in CRY BIOS, **please DO NOT create a public Issue**. Instead, follow the responsible disclosure procedure:
+Если вы обнаружили потенциальную уязвимость безопасности в CRY BIOS, **пожалуйста, НЕ создавайте публичный Issue**. Вместо этого следуйте процедуре ответственного раскрытия:
 
-### How to Report a Problem
+### Как сообщить о проблеме
 
-1.  **Contact us privately** via email: **`ceo@cryteam.ru`**
-2.  In your message, please provide as much detail as possible:
-    *   Steps to reproduce the issue.
-    *   The version where the vulnerability was found (e.g., 1.2.0).
-    *   Potential impact (what could happen).
-    *   (Optional) Suggestions for a fix or a workaround.
+1.  **Свяжитесь с нами приватно** по электронной почте: **`ceo@cryteam.ru`**
+2.  В сообщении укажите как можно больше деталей:
+    *   Шаги для воспроизведения проблемы.
+    *   Версию, в которой обнаружена уязвимость (например, 1.2.0).
+    *   Потенциальное воздействие (что может произойти).
+    *   (Опционально) Предложения по исправлению или обходному решению.
 
-### What Happens Next
+### Что происходит дальше
 
-*   **Acknowledgment (within 48 hours)**: We will confirm receipt of your email and begin an investigation.
-*   **Investigation (up to 7 days)**: We will confirm or refute the vulnerability. If confirmed, we will determine its severity (CVSS) and priority.
-*   **Fix**: If the vulnerability is confirmed, we will release a patch in a new version. The release date depends on the complexity of the issue. We will notify you when the fix is ready.
-*   **Credit**: We will publicly thank you in the release notes (if you don't object) but will not disclose details of the vulnerability until most users have installed the update.
+*   **Подтверждение получения (в течение 48 часов)**: мы подтвердим получение письма и начнём расследование.
+*   **Расследование (до 7 дней)**: мы подтвердим или опровергнем уязвимость. Если она подтверждена, определим её серьёзность (CVSS) и приоритет.
+*   **Исправление**: если уязвимость подтверждена, мы выпустим патч в новой версии. Дата релиза зависит от сложности проблемы. Мы уведомим вас, когда исправление будет готово.
+*   **Благодарность**: мы публично поблагодарим вас в примечаниях к релизу (если вы не возражаете), но не будем раскрывать детали уязвимости, пока большинство пользователей не установят обновление.
 
-### Exceptions and Clarifications
+### Исключения и уточнения
 
-*   **Social Engineering**: If the issue involves phishing or user deception, it falls outside the scope of this document. We will handle such cases on a case-by-case basis.
-*   **Incidents on the Official Node**: If you are exploiting a vulnerability on `bio.cryteam.ru`, please report it using the same method. This constitutes a violation of the Terms of Service.
-*   **Outdated Forks**: We are not responsible for the security of forks and modified versions of the project.
+*   **Социальная инженерия**: если проблема связана с фишингом или обманом пользователей, это выходит за рамки данного документа. Такие случаи мы рассматриваем в индивидуальном порядке.
+*   **Инциденты на официальном узле**: если вы эксплуатируете уязвимость на `cbios.ru`, сообщите об этом тем же способом. Это является нарушением Условий использования.
+*   **Устаревшие форки**: мы не несём ответственности за безопасность форков и модифицированных версий проекта.
 
-## Sovereignty Philosophy
+## Философия суверенитета
 
-CRY BIOS provides you with sovereign control over your data, but this also imposes responsibility on you:
-*   Always use the latest stable version.
-*   Configure your own server securely (change default passwords, use HTTPS).
-*   Review the code before running it if you are using a fork.
+CRY BIOS даёт вам суверенный контроль над вашими данными, но это также накладывает на вас ответственность:
+*   Всегда используйте последнюю стабильную версию.
+*   Настраивайте свой сервер безопасно (меняйте пароли по умолчанию, используйте HTTPS).
+*   Просматривайте код перед запуском, если используете форк.
 
 ---
 
-**Security Contact**: `ceo@cryteam.ru`
+**Контакт по безопасности**: `ceo@cryteam.ru`
