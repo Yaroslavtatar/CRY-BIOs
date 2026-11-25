@@ -289,6 +289,6 @@ CRY-BIOs/
 
 Made with neon glow by the CRY BIOS community
 
-**Последнее обновление:** август 2026
+**Последнее обновление:** ноябрь 2026
 
 </div>
