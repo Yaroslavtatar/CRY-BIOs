@@ -5,6 +5,7 @@ import { processUploadedImage, type ImageUploadType } from './imageProcessing';
 import { processUploadedVideo } from './videoProcessing';
 import { processUploadedAudio } from './audioProcessing';
 import { processMedia } from './mediaPipeline';
+import { isImportMediaHost } from './import/mediaHosts';
 
 export type RehostMediaType = 'avatar' | 'bg' | 'video' | 'audio' | 'cursor';
 
@@ -31,13 +32,9 @@ function isAllowedRemoteUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    if (parsed.username || parsed.password) return false;
     const host = parsed.hostname.toLowerCase();
-    if (ALLOWED_HOSTS.has(host)) return true;
-    if (host.endsWith('.guns.lol')) return true;
-    if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.|localhost|::1|\[::1\])/.test(host)) {
-      return false;
-    }
-    return false;
+    return ALLOWED_HOSTS.has(host) || host.endsWith('.guns.lol') || isImportMediaHost(host);
   } catch {
     return false;
   }

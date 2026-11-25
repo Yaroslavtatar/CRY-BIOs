@@ -1,4 +1,4 @@
-/** Cloudflare Worker cbios-edge теперь нужен только для импорта guns.lol (см. importHub.ts). */
+/** Cloudflare Worker cbios-edge теперь нужен только для импорта guns.lol (см. src/import/providers/guns.ts). */
 export function getEdgeUrl(): string | null {
   const url = process.env.CBIOS_EDGE_URL?.trim();
   return url || null;

@@ -21,7 +21,7 @@ import AccountSettings from './AccountSettings';
 import FirstSteps from './FirstSteps';
 import { MobileBottomNav, MobileSubTabs, MOBILE_NAV_HEIGHT } from './MobileNav';
 import { SIMPLE_TABS, accentStyle, isChecklistHidden, isOnboardingPending, setChecklistHidden, setOnboardingPending, useUiPrefs } from '../uiPrefs';
-import { applyGunsImportToConfig, getImportPreviewSummary, getImportPreviewItems, type GunsImportResult, type ImportPreviewItem } from '../gunsImportMap';
+import ImportMenu from './ImportMenu';
 import {
   GLOW_TARGET_LABELS,
   LOCATION_STYLE_LABELS,
@@ -35,7 +35,6 @@ import {
   AUDIO_PLAYER_STYLE_LABELS,
   TEXTBOX_STYLE_LABELS,
   ELEMENT_COLOR_LABELS,
-  IMPORT_PREVIEW_STATUS_LABELS,
 } from '../dashboardLabels';
 import { resolveThemeColor, ELEMENT_COLOR_FIELDS, type ElementColorField } from '../themeColors';
 import { buildProfileUrls, getPlatformDomainConfig, type PlatformDomainConfig } from '../platformDomain';
@@ -416,15 +415,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
   };
 
   // Guns.lol import hub
-  const [importInput, setImportInput] = useState('');
-  const [importLoading, setImportLoading] = useState(false);
-  const [importError, setImportError] = useState('');
-  const [importSuccess, setImportSuccess] = useState('');
-  const [importPreview, setImportPreview] = useState('');
-  const [importPreviewItems, setImportPreviewItems] = useState<ImportPreviewItem[]>([]);
-  const [pendingImport, setPendingImport] = useState<GunsImportResult | null>(null);
-  const [importProgress, setImportProgress] = useState('');
-  const [importProgressPct, setImportProgressPct] = useState(0);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [studioOpen, setStudioOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -601,106 +591,6 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
         if (data) setAnalytics(data);
       })
       .catch(err => console.error("Analytics fetch error", err));
-  };
-
-  const showImportPreview = (parsed: GunsImportResult) => {
-    setPendingImport(parsed);
-    setImportPreviewItems(getImportPreviewItems(parsed));
-    setImportPreview(getImportPreviewSummary(parsed));
-  };
-
-  const handleApplyImport = () => {
-    if (!config || !pendingImport) return;
-    setConfig(applyGunsImportToConfig(config, pendingImport));
-    setImportSuccess(`Профиль применён! ${getImportPreviewSummary(pendingImport)}. Нажмите «Сохранить».`);
-    setPendingImport(null);
-    setImportPreviewItems([]);
-    setImportPreview('');
-    setImportInput('');
-  };
-
-  const handleCancelImport = () => {
-    setPendingImport(null);
-    setImportPreviewItems([]);
-    setImportPreview('');
-    setImportError('');
-  };
-
-  // Handler to migrate/import configurations of user
-  const handleImportFromGunsLol = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setImportError('');
-    setImportSuccess('');
-    setImportProgress('');
-    setImportProgressPct(0);
-    handleCancelImport();
-
-    if (!config || !token) return;
-
-    if (!importInput.trim()) {
-      setImportError('Вставьте ссылку https://guns.lol/username или HTML страницы (Ctrl+U → Copy).');
-      return;
-    }
-
-    setImportLoading(true);
-    setImportProgress('Запуск импорта…');
-
-    try {
-      const res = await fetch('/api/import-profile', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ input: importInput.trim() }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || 'Import failed');
-
-      const jobId = body.jobId as string;
-      const progRes = await fetch(`/api/import-profile/progress/${jobId}`);
-      if (!progRes.ok) throw new Error('Progress stream failed');
-
-      const reader = progRes.body?.getReader();
-      if (!reader) throw new Error('No progress stream');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let finished = false;
-
-      while (!finished) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-
-        for (const part of parts) {
-          const lines = part.split('\n');
-          const eventLine = lines.find(l => l.startsWith('event: '));
-          const dataLine = lines.find(l => l.startsWith('data: '));
-          if (!eventLine || !dataLine) continue;
-          const event = eventLine.replace('event: ', '').trim();
-          const data = JSON.parse(dataLine.replace('data: ', ''));
-
-          if (event === 'progress') {
-            const { current, total, label } = data;
-            setImportProgress(typeof label === 'string' ? label : `Медиа ${current}/${total}`);
-            setImportProgressPct(total ? Math.round((current / total) * 100) : 0);
-          } else if (event === 'done') {
-            showImportPreview(data as GunsImportResult);
-            finished = true;
-          } else if (event === 'error') {
-            throw new Error(data.error || 'Import error');
-          }
-        }
-      }
-    } catch (err: any) {
-      setImportError(err.message || 'Ошибка импорта');
-    } finally {
-      setImportLoading(false);
-      setImportProgress('');
-      setImportProgressPct(0);
-    }
   };
 
   const handleLoginRegister = (e: React.FormEvent) => {
@@ -1378,150 +1268,7 @@ export default function Dashboard({ onExit, onViewProfile, platformConfig }: Das
                         />
                       )}
 
-                      {/* --- GUNS.LOL MODERN PROFILE IMPORTER --- */}
-                      <div className="p-5 bg-gradient-to-r from-purple-950/30 to-black border border-purple-500/20 rounded-sm relative overflow-hidden space-y-4">
-                        <div className="absolute top-0 right-0 w-44 h-44 bg-cb-accent/5 rounded-full blur-3xl pointer-events-none" />
-                        
-                        <div className="flex items-center space-x-2.5">
-                          <span className="text-lg">📥</span>
-                          <div>
-                            <h4 className="text-[11px] font-black uppercase text-purple-400 font-mono tracking-widest leading-none">
-                              Адаптивный Перенос Данных
-                            </h4>
-                            <h3 className="text-sm font-black text-white font-mono uppercase tracking-wider mt-1">
-                              Копирование Вашего Профиля с Guns.lol
-                            </h3>
-                          </div>
-                        </div>
-
-                        <p className="text-[11px] leading-relaxed text-neutral-400 font-sans max-w-2xl">
-                          Не хотите настраивать дизайн с нуля? Наша платформа умеет автоматически забирать ваше оформление, аватарку, БИО-описание, бейджи, фоны, ссылки и музыкальный плеер прямо со страницы guns.lol!
-                        </p>
-
-                        <div className="border border-white/5 bg-black/40 rounded-sm p-3.5 space-y-3 font-mono text-xs">
-                          <form onSubmit={handleImportFromGunsLol} className="space-y-3.5 pt-1">
-                            <div className="space-y-2">
-                              <label className="block text-[9px] text-neutral-500 uppercase font-black">
-                                Ссылка guns.lol или HTML страницы
-                              </label>
-                              <textarea
-                                placeholder="https://guns.lol/username  или  вставьте HTML (Ctrl+U на guns.lol → Ctrl+A → Ctrl+C)"
-                                value={importInput}
-                                onChange={e => setImportInput(e.target.value)}
-                                rows={4}
-                                className="w-full bg-black/50 border border-white/10 focus:border-cb-accent rounded-sm p-3 text-xs text-neutral-300 font-mono outline-none placeholder-neutral-800"
-                              />
-                              <div className="flex justify-between items-center gap-4">
-                                <span className="text-[9.5px] leading-snug text-neutral-500">
-                                  Авто-определение формата. Медиа оптимизируются и загружаются на сервер параллельно.
-                                </span>
-                                <button
-                                  type="submit"
-                                  disabled={importLoading || !!pendingImport}
-                                  className="px-6 py-2.5 bg-cb-accent text-cb-on-accent font-black text-[10px] uppercase tracking-wider rounded-sm hover:bg-cb-accent-hover active:scale-95 transition-all text-center flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_15px_color-mix(in_srgb,var(--cb-accent)_25%,transparent)] flex-shrink-0"
-                                >
-                                  {importLoading ? (
-                                    <span className="w-3.5 h-3.5 border-2 border-t-black border-transparent animate-spin rounded-full" />
-                                  ) : (
-                                    <span>Импортировать</span>
-                                  )}
-                                </button>
-                              </div>
-                              {importLoading && importProgressPct > 0 && (
-                                <div className="space-y-1">
-                                  <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                                    <div className="h-full bg-cb-accent/70 transition-all" style={{ width: `${importProgressPct}%` }} />
-                                  </div>
-                                  <span className="text-[8px] text-neutral-500">{importProgress}</span>
-                                </div>
-                              )}
-                            </div>
-                          </form>
-
-                          {importProgress && (
-                            <div className="p-2.5 bg-cyan-500/5 border border-cyan-500/20 text-cyan-300 rounded-sm text-[10px] font-mono flex items-center gap-2">
-                              <span className="w-3 h-3 border-2 border-t-cyan-400 border-transparent animate-spin rounded-full flex-shrink-0" />
-                              {importProgress}
-                            </div>
-                          )}
-
-                          {pendingImport && importPreviewItems.length > 0 && (
-                            <div className="p-3.5 bg-black/60 border border-cb-accent/25 rounded-sm space-y-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[10px] font-black uppercase text-cb-accent tracking-wider">Предпросмотр импорта</span>
-                                <span className="text-[9px] text-neutral-500">{pendingImport.displayName}</span>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
-                                {importPreviewItems.map(item => (
-                                  <div
-                                    key={item.id}
-                                    className={`flex items-start gap-2 p-2 rounded-sm border text-[9px] ${
-                                      item.status === 'found'
-                                        ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-300'
-                                        : item.status === 'partial'
-                                          ? 'bg-amber-500/5 border-amber-500/20 text-amber-300'
-                                          : 'bg-neutral-500/5 border-white/5 text-neutral-500'
-                                    }`}
-                                  >
-                                    <span className="font-black flex-shrink-0">
-                                      {item.status === 'found' ? '✓' : item.status === 'partial' ? '~' : '✗'}
-                                    </span>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-1.5">
-                                        {item.color && (
-                                          <span
-                                            className="w-3 h-3 rounded-sm border border-white/20 flex-shrink-0"
-                                            style={{ backgroundColor: item.color }}
-                                          />
-                                        )}
-                                        <span className="font-bold uppercase tracking-wide">{item.label}</span>
-                                        <span className="text-[8px] opacity-60">({IMPORT_PREVIEW_STATUS_LABELS[item.status]})</span>
-                                      </div>
-                                      {item.detail && <p className="text-neutral-400 truncate mt-0.5">{item.detail}</p>}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="flex gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={handleApplyImport}
-                                  className="flex-1 py-2 bg-cb-accent text-cb-on-accent font-black text-[10px] uppercase rounded-sm hover:bg-cb-accent-hover transition"
-                                >
-                                  Применить к профилю
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleCancelImport}
-                                  className="px-4 py-2 bg-black/40 border border-white/10 text-neutral-400 font-bold text-[10px] uppercase rounded-sm hover:text-white transition"
-                                >
-                                  Отмена
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Dynamic Feedback channels */}
-                          {importError && (
-                            <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-sm leading-normal text-[10px] flex items-center space-x-2">
-                              <span>🛑</span>
-                              <span className="font-sans">{importError}</span>
-                            </div>
-                          )}
-
-                          {importSuccess && (
-                            <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-sm leading-normal text-[10px] flex items-start space-x-2">
-                              <span>✅</span>
-                              <span className="font-sans">{importSuccess}</span>
-                            </div>
-                          )}
-                          {importPreview && !pendingImport && (
-                            <div className="p-3 bg-cyan-500/5 border border-cyan-500/20 text-cyan-300 rounded-sm text-[10px] font-mono">
-                              {importPreview}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      {config && <ImportMenu config={config} onApply={setConfig} />}
 
                       {/* Main Overview Columns (Progress Split) */}
                       <div className="grid grid-cols-1 md:grid-cols-1 gap-5 items-start mt-2">
